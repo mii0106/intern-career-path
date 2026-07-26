@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>STEP｜キャリアステップシート</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='34' fill='%23151C2E'/><ellipse cx='90' cy='96' rx='70' ry='21' fill='none' stroke='%23FFC44D' stroke-width='10' transform='rotate(-16 90 96)'/><circle cx='90' cy='94' r='46' fill='%23FAF8FF'/><circle cx='75' cy='92' r='7' fill='%232C2748'/><circle cx='105' cy='92' r='7' fill='%232C2748'/><path d='M81 106 q9 9 18 0' stroke='%232C2748' stroke-width='5.5' fill='none' stroke-linecap='round'/><circle cx='146' cy='52' r='9' fill='%23FFC44D'/></svg>">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#EDECF9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="STEP">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#181240;
+  --ink2:#615C88;
+  --ink3:#9A95B8;
+  --base:#EDECF9;
+  --surface:#FFFFFF;
+  --line:#E4E2F3;
+  --violet:#5B3DF5;
+  --violet-soft:#EEEAFF;
+  --mint:#17B98A;
+  --mint-soft:#E1F8F0;
+  --sky:#2E8FE0;
+  --sky-soft:#E4F1FC;
+  --amber:#F59E17;
+  --amber-soft:#FDF0DA;
+  --coral:#F2536A;
+  --coral-soft:#FDE7EA;
+  --radius:20px;
+  --shadow:0 2px 3px rgba(24,18,64,.04), 0 12px 28px -12px rgba(24,18,64,.18);
+  --tab-h:64px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Noto Sans JP',-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(900px 500px at 8% -8%, #DCD8FB 0%, transparent 60%),
+    radial-gradient(700px 480px at 105% 4%, #D9F3EA 0%, transparent 58%),
+    var(--base);
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;
+  line-height:1.6;
+}
+#app{max-width:480px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 18px)}
+.disp{font-family:'Bricolage Grotesque','Noto Sans JP',sans-serif;font-weight:800;letter-spacing:-.02em}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+input,textarea,select{font-family:inherit;font-size:15px;color:var(--ink)}
+:focus-visible{outline:3px solid var(--violet);outline-offset:2px;border-radius:8px}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 6px}
+.brand{display:flex;align-items:baseline;gap:8px}
+.brand .mark{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:.06em}
+.brand .sub{font-size:10.5px;color:var(--ink2);letter-spacing:.16em}
+.saved{font-size:10.5px;color:var(--ink2);opacity:0;transition:opacity .3s;letter-spacing:.04em}
+.saved.on{opacity:1}
+main{padding:0 16px}
+
+/* ---------- generic ---------- */
+.card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
+.sec-label{font-size:11px;letter-spacing:.14em;color:var(--ink2);font-weight:700;margin:22px 4px 10px}
+.muted{color:var(--ink2)}
+.tiny{font-size:11.5px;line-height:1.7}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;letter-spacing:.03em}
+
+/* ---------- capsule / hero ---------- */
+.hero{position:relative;background:var(--surface);border-radius:28px;box-shadow:var(--shadow);padding:20px 20px 18px;margin-bottom:14px;overflow:hidden}
+.hero::after{content:'';position:absolute;inset:0;pointer-events:none;border-radius:28px;border:1px solid rgba(255,255,255,.7)}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.hero-grade{font-size:11px;letter-spacing:.14em;color:var(--ink2);font-weight:700}
+.hero-title{font-size:26px;line-height:1.15;margin:2px 0 6px}
+.hero-name{font-size:12.5px;color:var(--ink2)}
+.capsule-wrap{display:flex;justify-content:center;margin:6px 0 2px}
+.pct{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:40px;line-height:1}
+.pct small{font-size:15px;margin-left:2px}
+.bar{height:9px;border-radius:99px;background:#EDEBF8;overflow:hidden;margin-top:12px}
+.bar > i{display:block;height:100%;border-radius:99px;transition:width .6s cubic-bezier(.2,.9,.25,1)}
+.hero-foot{display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--surface);border-radius:16px;padding:11px 8px;text-align:center;box-shadow:var(--shadow)}
+.stat b{display:block;font-family:'Bricolage Grotesque',sans-serif;font-size:20px;font-weight:800}
+.stat span{font-size:10px;color:var(--ink2);letter-spacing:.06em}
+
+/* ---------- next-up list ---------- */
+.next-item{display:flex;gap:11px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line);text-align:left;width:100%}
+.next-item:first-of-type{border-top:0}
+.next-item .cat{font-size:10px;color:var(--ink2);letter-spacing:.04em;display:block;margin-bottom:2px}
+.next-item .txt{font-size:13.5px;line-height:1.55}
+.box{width:22px;height:22px;border-radius:8px;border:2px solid #D6D2ED;flex:0 0 auto;margin-top:1px;display:grid;place-items:center;transition:.18s;background:#fff}
+.box svg{opacity:0;transform:scale(.5);transition:.18s}
+.box.on{background:var(--violet);border-color:var(--violet)}
+.box.on svg{opacity:1;transform:scale(1)}
+
+/* ---------- grade list ---------- */
+.glist{display:flex;flex-direction:column;gap:10px}
+.gcard{display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:18px;padding:14px;box-shadow:var(--shadow);width:100%;text-align:left;transition:transform .15s}
+.gcard:active{transform:scale(.985)}
+.gcard.done{background:linear-gradient(180deg,#fff,#F7FFFC)}
+.gnum{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:12px;letter-spacing:.08em}
+.gtitle{font-size:14.5px;font-weight:700;line-height:1.35}
+.gmeta{font-size:11px;color:var(--ink2);margin-top:2px}
+.ring{position:relative;width:46px;height:46px;flex:0 0 auto}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:'Bricolage Grotesque',sans-serif;font-size:12px;font-weight:800}
+
+/* ---------- detail ---------- */
+.dhead{padding:6px 4px 14px}
+.back{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);font-weight:700;padding:6px 0}
+.dtitle{font-size:23px;margin:8px 0 4px}
+.block{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 6px;margin-bottom:12px}
+.block > h3{font-size:13px;margin:0 0 4px;line-height:1.45;display:flex;gap:8px;align-items:baseline}
+.block .grp{font-size:11.5px;font-weight:700;color:var(--ink2);margin:14px 0 2px;letter-spacing:.04em}
+.block.ai{background:linear-gradient(180deg,#FFFDF7,#FFF8EA);border:1px solid #F7E7C4}
+.item{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line);width:100%;text-align:left}
+.item:first-of-type{border-top:0}
+.item .txt{font-size:13.5px;line-height:1.6;flex:1}
+.item.on .txt{color:var(--ink2);text-decoration:line-through;text-decoration-color:#CFCBE6}
+.item.sub{padding-left:30px}
+.item.lk{cursor:default}
+.item.lk .txt{color:var(--ink3)}
+.item.lk .box{border-color:#EAE7F5;background:#F6F5FB}
+.box.lkbox{border-color:#EAE7F5;background:#F6F5FB}
+.note.lockbox{background:#F1EFFA;color:var(--ink2)}
+.gcard.lk .gtitle{color:var(--ink3)}
+.item a{color:var(--violet);word-break:break-all}
+.note{background:var(--amber-soft);border-radius:14px;padding:12px 14px;font-size:12px;line-height:1.7;margin-bottom:12px}
+.vision{background:linear-gradient(135deg,#F4F1FF,#EAFBF4);border-radius:var(--radius);padding:16px 16px 6px;margin-bottom:12px}
+.vision h3{font-size:12px;letter-spacing:.1em;margin:0 0 2px;color:var(--ink2)}
+
+/* ---------- dex ---------- */
+.dex{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dcard{background:var(--surface);border-radius:18px;padding:12px 10px 14px;box-shadow:var(--shadow);text-align:center;position:relative;overflow:hidden}
+.dcard .stage-no{position:absolute;top:8px;left:11px;font-family:'Bricolage Grotesque',sans-serif;font-size:11px;font-weight:800;color:var(--ink3);opacity:.7}
+.dcard .nm{font-weight:700;font-size:14px;margin-top:4px}
+.dcard .dsc{font-size:10.5px;color:var(--ink2);line-height:1.55;margin-top:3px;min-height:32px}
+.dcard.lock{background:#F6F5FC}
+.dcard.lock .nm{color:var(--ink3)}
+.dcard.now::after{content:'いま';position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:700;background:var(--violet);color:#fff;padding:2px 7px;border-radius:99px;letter-spacing:.06em}
+
+/* ---------- sheet form ---------- */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:5px;letter-spacing:.04em}
+.field input[type=text],.field input[type=date],.field textarea,.field select{
+  width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:12px;padding:11px 12px;font-size:14.5px;transition:.15s
+}
+.field textarea{min-height:78px;resize:vertical;line-height:1.7}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--violet);background:#fff;outline:none}
+.creed{border-top:1px solid var(--line);padding:12px 0}
+.creed:first-of-type{border-top:0}
+.creed .row{display:flex;align-items:center;gap:9px}
+.creed .no{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:13px;color:var(--ink3);width:16px;flex:0 0 auto}
+.creed input{flex:1;border:0;border-bottom:1.5px solid var(--line);background:none;padding:6px 2px;font-size:14px}
+.creed input:focus{border-color:var(--violet);outline:none}
+.scores{display:flex;gap:6px;margin:9px 0 0 25px}
+.scores button{width:32px;height:32px;border-radius:10px;background:#F4F2FD;font-size:12.5px;font-weight:700;color:var(--ink2);font-family:'Bricolage Grotesque',sans-serif}
+.scores button.on{background:var(--violet);color:#fff}
+.atari{border-top:1px solid var(--line);padding:13px 0}
+.atari:first-of-type{border-top:0}
+.atari .h{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.atari .h b{font-size:13.5px}
+.atari p{margin:5px 0 0;font-size:11.5px;color:var(--ink2);line-height:1.65}
+.seg{display:flex;gap:5px;flex:0 0 auto}
+.seg button{width:36px;height:29px;border-radius:9px;background:#F4F2FD;font-size:12px;font-weight:700;color:var(--ink2)}
+.seg button.ok.on{background:var(--mint);color:#fff}
+.seg button.ng.on{background:var(--coral);color:#fff}
+.danger{width:100%;padding:13px;border-radius:14px;background:#fff;border:1.5px solid var(--coral);color:var(--coral);font-weight:700;font-size:13px;margin-top:6px}
+
+
+/* ---------- step map ---------- */
+.maprail{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px;margin:0 -16px;padding-left:16px;padding-right:16px}
+.mapgrid{display:grid;grid-template-columns:104px repeat(10,168px);gap:6px;min-width:max-content}
+.mh{background:var(--surface);border-radius:12px;padding:9px 8px;text-align:center;box-shadow:var(--shadow);position:relative}
+.mh-cat{display:grid;place-items:center;font-size:10.5px;font-weight:700;color:var(--ink2);letter-spacing:.06em;position:sticky;left:0;z-index:3}
+.mh-g{display:block;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px}
+.mh-t{display:block;font-size:10px;color:var(--ink2);margin-top:1px}
+.mh.now{outline:2px solid var(--violet)}
+.mh-now{display:inline-block;margin-top:4px;font-size:9px;font-weight:700;color:#fff;background:var(--violet);border-radius:99px;padding:1px 7px}
+.mc-cat{background:var(--surface);border-radius:12px;padding:12px 10px;font-size:11.5px;font-weight:700;line-height:1.4;display:flex;align-items:center;box-shadow:var(--shadow);position:sticky;left:0;z-index:2}
+.mc{background:var(--surface);border-radius:12px;padding:10px;text-align:left;box-shadow:var(--shadow);display:flex;flex-direction:column;justify-content:space-between;gap:8px;min-height:78px;transition:transform .12s}
+.mc:active{transform:scale(.98)}
+.mc-txt{font-size:11.5px;line-height:1.45;color:var(--ink);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.mc-num{font-size:10.5px;font-weight:700;color:var(--ink2);letter-spacing:.02em}
+.mc.part{background:linear-gradient(180deg,#fff,#F6F3FF)}
+.mc.part .mc-num{color:var(--violet)}
+.mc.full{background:linear-gradient(180deg,#F3FDF9,#E6F8F1)}
+.mc.full .mc-num{color:var(--mint)}
+.mc.lk{opacity:.55}
+.mc.empty{background:#F4F3FB;box-shadow:none;color:#C9C5DE;align-items:center;justify-content:center;display:grid;min-height:78px}
+.maplegend{display:flex;gap:14px;margin:10px 4px 0;flex-wrap:wrap}
+.maplegend span{display:inline-flex;align-items:center;gap:5px}
+.lg{width:11px;height:11px;border-radius:4px;background:#fff;border:1px solid var(--line);display:inline-block}
+.lg.full{background:#DFF6EC;border-color:#BFEBDC}
+.lg.part{background:#EDE7FF;border-color:#DCD3FF}
+.lg.lk{background:#EFEDF7;border-color:#E2DFF0;opacity:.7}
+.lbl-full{display:none}
+
+/* ---------- sidebar buddy (desktop only) ---------- */
+.side-buddy{display:none}
+
+
+
+
+/* ---------- roadmap ---------- */
+.roadcard{padding:18px 14px 14px}
+.road-inner{position:relative;padding-top:46px}
+.road-bar{position:absolute;left:5%;right:5%;top:calc(46px + 15px);height:6px;border-radius:99px;background:#EDEBF8;overflow:hidden}
+.road-bar > i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#5B3DF5,#17B98A);transition:width .6s cubic-bezier(.2,.9,.25,1)}
+.road-nodes{position:relative;display:flex}
+.rn{flex:1;min-width:0;display:flex;justify-content:center;position:relative}
+.rn-dot{width:min(30px,100%);aspect-ratio:1;height:auto;border-radius:50%;background:#fff;border:2px solid #E0DDF0;
+  font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:12px;color:var(--ink2);
+  display:grid;place-items:center;position:relative;z-index:2;transition:.2s}
+.rn-you{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap;z-index:3}
+.rn-you.edgeL{left:0;transform:none}
+.rn-you.edgeR{left:auto;right:0;transform:none}
+.rn-you b{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#fff;background:var(--violet);border-radius:99px;padding:2px 8px}
+.rn-you.tag{bottom:40px}
+.rn-pod{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 32% 26%,#36425F,#141A2B)}
+.road-tiers{display:flex;margin-top:9px}
+.road-tiers span{flex:1;min-width:0;text-align:center;font-size:9.5px;color:var(--ink3);letter-spacing:.02em;
+  border-top:1px solid var(--line);padding-top:6px;margin:0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mc.now{outline:2px solid rgba(91,61,245,.35)}
+.mc.empty.now{outline:2px solid rgba(91,61,245,.2)}
+@media (min-width:900px){
+  .roadcard{padding:22px 22px 16px}
+  .rn-dot{width:min(36px,100%);font-size:13.5px}
+  .road-bar{top:calc(46px + 18px)}
+  .rn-you{bottom:44px}
+  .rn-pod{width:44px;height:44px}
+  .road-tiers span{font-size:11px}
+}
+
+/* ---------- tabbar ---------- */
+.tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;height:calc(var(--tab-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(4,1fr);
+  background:rgba(255,255,255,.86);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--line);z-index:40}
+.tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;font-weight:700;color:var(--ink3);letter-spacing:.04em}
+.tabbar button.on{color:var(--violet)}
+.tabbar svg{width:22px;height:22px}
+
+/* ---------- toast / evolution ---------- */
+#toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + 20px);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+.toast{background:var(--ink);color:#fff;font-size:12.5px;font-weight:700;padding:9px 16px;border-radius:99px;box-shadow:0 10px 24px -8px rgba(24,18,64,.5);animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+.toast.xp{background:var(--violet)}
+@keyframes pop{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
+#evo{position:fixed;inset:0;z-index:80;display:none;place-items:center;padding:24px;overflow:hidden;background:rgba(19,14,52,.74);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#evo.on{display:grid;animation:fade .28s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.evo-card{background:var(--surface);border-radius:28px;padding:22px 22px 24px;text-align:center;max-width:340px;width:100%;position:relative;overflow:hidden;z-index:2;animation:rise .45s cubic-bezier(.2,1.2,.3,1)}
+@keyframes rise{from{opacity:0;transform:translateY(28px) scale(.94)}to{opacity:1;transform:none}}
+.sfx-btn{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;background:#F4F2FD;color:var(--ink2);display:grid;place-items:center;z-index:4}
+.evo-stage{position:relative;display:grid;place-items:center;height:178px}
+.evo-stage>*{grid-area:1/1}
+.rays{width:320px;height:320px;border-radius:50%;opacity:0;
+  background:conic-gradient(from 0deg,rgba(255,196,77,.8) 0 5deg,rgba(255,196,77,0) 5deg 28deg);
+  -webkit-mask-image:radial-gradient(circle,transparent 30%,#000 40%,#000 60%,transparent 72%);
+  mask-image:radial-gradient(circle,transparent 30%,#000 40%,#000 60%,transparent 72%);
+  animation:raysIn .6s .62s forwards,spin 14s linear infinite}
+@keyframes raysIn{to{opacity:.9}}
+.glow{width:230px;height:230px;border-radius:50%;opacity:0;
+  background:radial-gradient(circle,rgba(255,214,120,.95),rgba(255,214,120,0) 62%);
+  animation:glowP 1.1s .5s ease-out}
+@keyframes glowP{0%{opacity:0;transform:scale(.5)}22%{opacity:1}100%{opacity:0;transform:scale(1.5)}}
+.shock{width:110px;height:110px;border-radius:50%;border:4px solid #FFC44D;opacity:0;animation:shockW .85s .62s ease-out}
+.shock.s2{border-color:#FF9F45;animation-delay:.8s}
+@keyframes shockW{0%{opacity:.95;transform:scale(.35)}100%{opacity:0;transform:scale(3)}}
+.fig{display:grid;place-items:center;z-index:2}
+.fig.old{animation:oldGo 1.05s forwards}
+@keyframes oldGo{
+  0%{opacity:1;transform:scale(1);filter:none}
+  18%{filter:brightness(2.4) saturate(.2)}
+  30%{filter:none}
+  46%{filter:brightness(2.6) saturate(.2)}
+  56%{filter:none;transform:scale(1.06)}
+  62%{opacity:1;transform:scale(1.22);filter:brightness(3.4) saturate(0)}
+  70%{opacity:0;transform:scale(1.42)}
+  100%{opacity:0;transform:scale(1.42)}}
+.fig.new{opacity:0;animation:newIn .8s .68s cubic-bezier(.16,1.5,.4,1) forwards}
+.fig.new.solo{animation-delay:.3s}
+@keyframes newIn{0%{opacity:0;transform:scale(.32) rotate(-14deg)}55%{opacity:1;transform:scale(1.14) rotate(4deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
+.evo-card .kick{font-size:11px;letter-spacing:.22em;color:var(--violet);font-weight:800;animation:upIn .5s .95s backwards}
+.evo-card h2{font-size:27px;margin:6px 0 2px;animation:upIn .5s 1.06s backwards}
+.evo-card .cap{font-size:12.5px;color:var(--ink2);line-height:1.7;animation:upIn .5s 1.18s backwards}
+.evo-btn{margin-top:16px;width:100%;padding:14px;border-radius:16px;background:var(--ink);color:#fff;font-weight:700;font-size:14px;animation:upIn .5s 1.34s backwards}
+@keyframes upIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.conf{position:absolute;top:-14%;border-radius:2px;opacity:0;z-index:1;animation-name:fallC;animation-timing-function:linear;animation-fill-mode:forwards}
+.conf.r{border-radius:50%}
+@keyframes fallC{0%{opacity:0;transform:translate3d(0,0,0) rotate(0)}6%{opacity:1}100%{opacity:.85;transform:translate3d(20px,116vh,0) rotate(760deg)}}
+
+/* ---------- creature ---------- */
+.art{display:block}
+.float{animation:float 3.6s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.eyes{transform-box:fill-box;transform-origin:center;animation:blink 5.4s infinite}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.12)}}
+.orbit{transform-box:fill-box;transform-origin:center;animation:spin 9s linear infinite}
+.mochi{transform-box:fill-box;transform-origin:50% 88%;animation:mochi 2.8s ease-in-out infinite}
+@keyframes mochi{0%,100%{transform:scale(1,1)}50%{transform:scale(1.035,.965)}}
+.pod{width:104px;height:104px;margin:2px auto 0;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 32% 26%,#36425F,#141A2B);box-shadow:inset 0 0 0 3px rgba(255,255,255,.06)}
+.pod-lg{width:168px;height:168px;margin:10px auto 2px}
+.dcard.lock .pod{background:#E9E7F3;box-shadow:none}
+.dcard.lock .art{filter:brightness(0) opacity(.13)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.wave{animation:wave 4.5s linear infinite}
+@keyframes wave{from{transform:translateX(0)}to{transform:translateX(-60px)}}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+@media (prefers-reduced-motion:reduce){.fig.old,.conf,.rays,.glow,.shock{display:none}.fig.new{opacity:1}}
+/* ---------- desktop ---------- */
+@media (min-width:900px){
+  #app{max-width:1240px;padding-bottom:48px;display:grid;grid-template-columns:236px minmax(0,1fr);
+       grid-template-areas:"head head" "side main";column-gap:20px;align-items:start}
+  .top{grid-area:head;padding:22px 8px 10px}
+  main{grid-area:main;padding:0 8px 0 0}
+  .tabbar{grid-area:side;position:sticky;top:16px;left:auto;bottom:auto;transform:none;width:auto;max-width:none;height:auto;
+    display:flex;flex-direction:column;gap:4px;padding:16px 12px 18px;border-top:0;border:1px solid var(--line);
+    border-radius:22px;background:rgba(255,255,255,.82);z-index:10}
+  .tabbar button{flex-direction:row;justify-content:flex-start;gap:11px;padding:11px 13px;border-radius:13px;font-size:13.5px;letter-spacing:.01em}
+  .tabbar button.on{background:var(--violet-soft)}
+  .tabbar svg{width:19px;height:19px}
+  .lbl-full{display:inline}
+  .lbl-short{display:none}
+  .side-buddy{display:block;padding:6px 6px 14px;margin-bottom:8px;border-bottom:1px solid var(--line);text-align:center}
+  .sb-name{font-weight:700;font-size:14px;margin-top:9px}
+  .sb-meta{font-size:10.5px;color:var(--ink2)}
+  .home-grid{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr);gap:18px;align-items:start}
+  .hero{margin-bottom:12px}
+  .capsule-wrap svg{width:260px;height:236px}
+  .hero-title{font-size:30px}
+  .glist{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .dex{grid-template-columns:repeat(5,1fr)}
+  .blocks{columns:2;column-gap:16px}
+  .block{break-inside:avoid;-webkit-column-break-inside:avoid}
+  .vision,.note,.dhead{max-width:none}
+  .maprail{margin:0;padding-left:0;padding-right:0}
+  .mapgrid{grid-template-columns:98px repeat(10,minmax(0,1fr));min-width:0;gap:5px}
+  .mc,.mc.empty{min-height:86px;padding:8px 7px}
+  .mc-txt{font-size:10.8px;line-height:1.4;-webkit-line-clamp:4}
+  .mc-num{font-size:10px}
+  .mc-cat{font-size:11px;padding:10px 8px}
+  .mh{padding:8px 4px}
+  .maplegend{margin-left:0}
+  #view>.sec-label:first-child{margin-top:6px}
+  .sheetwrap{max-width:720px}
+  .stat b{font-size:22px}
+  #toasts{bottom:28px}
+}
+@media (min-width:1400px){ #app{max-width:1340px} }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="brand">
+      <span class="mark">STEP</span>
+      <span class="sub">CAREER LOG</span>
+    </div>
+    <span class="saved" id="saved">保存しました</span>
+  </div>
+  <main id="view"></main>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+<input type="file" id="importFile" accept="application/json" style="display:none">
+<div id="toasts"></div>
+<div id="evo"></div>
+<script>
+/* ============================================================
+   DATA — Notionのキャリアステップシートをそのまま格納
+   ============================================================ */
+const TIERS = {
+  starter:{name:'スターター', c:'--violet', soft:'--violet-soft', hex:'#5B3DF5'},
+  player:{name:'プレイヤー', c:'--mint', soft:'--mint-soft', hex:'#17B98A'},
+  pro:{name:'プロフェッショナル', c:'--sky', soft:'--sky-soft', hex:'#2E8FE0'},
+  leader:{name:'リーダー', c:'--amber', soft:'--amber-soft', hex:'#F59E17'},
+  exec:{name:'エグゼクティブ', c:'--coral', soft:'--coral-soft', hex:'#F2536A'}
+};
+
+const GRADES = [
+{n:1,tier:'starter',period:'1ヶ月',
+ vision:['インプットの完了','スタンダードアカウント運用ができる'],
+ sections:[
+  {title:'スタンス｜アリエナイ基準を厳守して行動している',items:[
+    '2ヶ月連続フォロワー増加100以下になっていない（他人が手伝った場合も対象）',
+    '投稿ミス・漏れ（準備・ストーリー）が3ヶ月以内に3回未満',
+    '遅刻月2回が2ヶ月以上発生していない',
+    '改善策を自分から出せる・対応できる',
+    'その他スタンス面（クライアント様へご迷惑をかける行為等）が発生していない']},
+  {title:'コミュニケーション｜聞く力',items:[
+    '上司の指示を理解し実行に移せる',
+    '不明点をそのままにせず、周囲に確認して解消できる',
+    '業務上の報告・連絡・相談を適切なタイミングでできる']},
+  {title:'タスク管理｜ToDo管理',items:[
+    '日々のタスクを認識できている',
+    '日次・月次のスケジュールを立てられる',
+    '日報（attendance）で次回予定の記載、管理ができる']},
+  {title:'業務スキル｜知見（インプット）',items:[
+    'スキルアップリスト「アカウント運用開始」のシートまで完了',
+    'ラーニングボックススターター編読了',
+    'Notionで不明点を自己解決できる']},
+  {title:'業務スキル｜運用（基本運用）',items:[
+    '基本的な投稿作成・ストーリーズ投稿ができる',
+    'Instagramのアルゴリズムに適した画像選定ができる（高数値投稿の画像傾向を分析し、再現できる）',
+    'Social drive / AIproで適切な分析ができる（数値確認ができる／見方を理解しているレベル）',
+    'レポートの記載ができる',
+    'スタンダードアカウントの運用が、質を担保した状態で可能である',
+    '【Canva基礎】青空加工・ぼかし加工ができる／画像リールの作成ができる']}
+ ]},
+
+{n:2,tier:'starter',period:'2ヶ月',
+ vision:['2社のスタンダード運用が滞りなくできる'],
+ sections:[
+  {title:'スタンス｜社内から信頼されて、アカウントを任せられる状態（池田塾10ヶ条）',items:[
+    'レスは最短【意思表示も合わせてする】',
+    'タスクの優先度を精査する',
+    '自分の前後の仕事に思いをはせる',
+    '相手の立場を慮る',
+    'ボールの持ち主を常に確認する',
+    '意図・目的を理解する',
+    'まずは一歩踏み出す',
+    '出来ない理由ではなく、出来る方法を考える',
+    '周囲からの期待を自覚する',
+    '周りに興味をもつ',
+    '自分事化ができている（自分が最終責任者）']},
+  {title:'コミュニケーション｜相互コミュニケーション',items:[
+    'ユニットメンバー同士でコミュニケーションが取れる',
+    'ユニット定例で適切な共有ができる',
+    '指揮系統を理解したうえでの報連相']},
+  {title:'タスク管理｜納期厳守（投稿作成）',items:['納期遅延・タスク履行漏れを起こさない']},
+  {title:'業務スキル｜知見（定着・実行）',items:[
+    'マニュアルに沿った運用ができる',
+    'インプットしたノウハウを確実に実行できる']},
+  {title:'業務スキル｜運用（プレイヤー基準のクリア）',items:[
+    'フォロワー200／月（フォロー制限時にも適切な対応ができる）',
+    '2アカウント以上の運用',
+    '商圏理解およびペルソナに基づいた運用ができている（ペルソナ分析実施済み）',
+    'メンバー予約投稿のWチェックができる（トリプルチェック必要）',
+    {t:'クライアントに提出できるレベルのレポートが一人で作成できる',sub:['数値の変化に対して自分なりの考察が書けている']}]},
+  {title:'AI活用｜AI基礎知識のインプット',ai:true,groups:[
+    {label:'なりたい姿',items:[
+      'AIを知って触れる',
+      'チャットにてAI使用ができる',
+      '質問をする前にAIに聞き、会話コストを減らせる',
+      '日常的にAIに触れる習慣がついている']},
+    {label:'スキル感｜定量・定性',items:[
+      'AIを用いてプロンプトの作成ができる（前提の定義／どの立場で分析するのか等）',
+      'AIツールの使い分けについての理解がある（Gemini、ChatGPT、Claudeの違いを認識）',
+      {t:'ノートブックLMにてAI基礎クイズを解く（9/10以上正解で達成）',link:'https://notebooklm.google.com/notebook/e188464f-8003-4b1f-889b-f6f2a103728e?authuser=2'}]}
+  ]}
+ ]},
+
+{n:3,tier:'player',period:'3ヶ月',
+ vision:['リーダーのチェックを受けながら、アドバンス運用の全工程（投稿・ストーリー・ハイライト・イベントスケジュール管理等）を実行できる'],
+ sections:[
+  {title:'コミュニケーション｜メンバー交流',items:[
+    '他Unitのメンバーやリーダーとコミュニケーションが取れる',
+    '他Unitのメンバーやリーダー含めて、情報共有ができる']},
+  {title:'タスク管理｜質・スピード',items:['タスク消化の質を担保しながら、スピード感高く業務遂行ができる']},
+  {title:'業務スキル｜知見（アウトプット）',items:[
+    'マニュアルに対して鵜呑みでなく自分なりの解釈のアウトプットができる',
+    '既存のマニュアルなどに対して、改善提案ができる']},
+  {title:'業務スキル｜運用（アドバンス運用の対応）',items:[
+    'アドバンス投稿に必要な画像加工（背景修正・電線除去・家具の追加等）を、Canvaやnanobananaを活用して行える',
+    'リールのサムネイルを一人で作成できる',
+    'ハイライトの運用ができる',
+    'スタンダードの新規会社を受け入れることができる',
+    '自身の運用しているアカウントを新人メンバーに引き継ぎ対応できる',
+    '新人に渡した後でも、成果を継続できる引き継ぎができる',
+    {t:'デザイン',sub:['UnitDデザインレクチャー会_0515 インプット済み','上記の内容を理解したうえで、実際にAIを用いてデザイン作成ができる']}]}
+ ]},
+
+{n:4,tier:'player',period:'4ヶ月',
+ note:'⚠️ プロフェ昇格面談前に、改めて担当アカウントの理解度を高めましょう！面談時に内容を確認します。すでに担当アカウントについてまとまった資料（戦略メモ・運用設計など）がある人は、それを使ってもOKです。',
+ vision:['担当アカウントの課題を究明したうえで、打ち手を考え実行に移すことができる','フロントとの円滑なコミュニケーションから必要な情報を集めることができる'],
+ sections:[
+  {title:'スタンス',items:[
+    'リーダーフォローの下、クライアントがアドバンス運用を任せてよかったと思えるような運用ができる',
+    '担当業務の状況をチームに共有できている',
+    'メンバーが困っているときに声をかけられる状態にある',
+    'クレドを意識し、体現できている']},
+  {title:'コミュニケーション｜フロント・外部連携（基礎）',items:['フロントとコミュニケーションが取れる']},
+  {title:'タスク管理｜完全自走（PDCAを自分で回せる）',items:[
+    'タスクの実行を自走できる',
+    '自ら考え、能動的に課題解決できる']},
+  {title:'組織運営',items:[
+    'ユニット定例で自分の担当状況を報告できる',
+    '困っているメンバーを見つけたとき、リーダーに報告または直接声をかけられる']},
+  {title:'業務スキル｜知見（ナレッジ創出・発信）',items:[
+    '自発的に新しい情報を取りにいくことができる',
+    '自ら検証などを行うことができる',
+    'ナレッジ賞にノミネートされるレベルのナレッジの創出・発信ができる']},
+  {title:'業務スキル｜運用（運用成果創出）',items:[
+    '【主指標】フォロワー200以上／月を2ヶ月連続で達成、かつCV獲得1件以上',
+    '【副指標】担当アカウントの課題となる指標（リーチ、ENG、リンククリック、プロフアクセス等）の改善（任意記録）']},
+  {title:'AI活用｜アウトプットメイン（施策の壁打ち、運用で使う）',ai:true,groups:[
+    {label:'なりたい姿',items:[
+      'AIで精度の高い成果物を生成し業務で成果につなげることができる',
+      'AIユースケースインプット、実践画像生成・プロンプト作成ができる',
+      'Claude Codeの概要と危険性を理解することができる状態になる',
+      {t:'バイブコーディングの基礎がわかる（クイズ9/10以上正解で達成）',link:'https://notebooklm.google.com/notebook/6d195191-fcb5-4711-af7b-71f427fd0588'}]},
+    {label:'業務スキル｜定量・定性',items:[
+      'アドバンス定例でAIと壁打ちした施策を提案し、根拠を説明できる',
+      '業務内でのAI使用をしている（★投稿の画像生成 ★キャプション作成）']}
+  ]}
+ ]},
+
+{n:5,tier:'pro',period:'5ヶ月',
+ vision:['アカウント戦略を描き成果創出まで自立自走で可能','自分の担当アカウントで継続的に結果を出せる'],
+ sections:[
+  {title:'スタンス',items:['集めた情報から戦略を自ら描き、自分の担当アカウントで成果を出すことにこだわれる']},
+  {title:'コミュニケーション｜フロント・外部連携（応用）',items:[
+    'フロントからクライアントのニーズを自ら引き出した上で、適切な運用改善ができる',
+    '自ら戦略を言語化し、伝えることができる']},
+  {title:'タスク管理｜自分のタスク',items:[
+    '期限を守る・約束を守る',
+    '細かいところまで気を配り、丁寧な仕事をする',
+    '周囲の期待を超えるアウトプットを意識する']},
+  {title:'組織運営｜メンバー協働',items:[
+    'メンバーへ納期の声かけができる',
+    'タスク漏れの指摘やサポートができる',
+    '他の人のボールを把握できる',
+    'リーダー不在時などのサポート対応ができる',
+    'メンバーの運用会社の動き理解、ミス発生時の把握']},
+  {title:'業務スキル｜知見（レクチャー）',items:[
+    '習得した知識・知見をメンバーにアウトプットできる（ユニット定例、ナレッジ）',
+    'インスタのアルゴリズムや運用方法を新人にアウトプットできる']},
+  {title:'業務スキル｜知見（インプット）',items:['最新のトレンドや業界の動向をリサーチし、業務に活かす']},
+  {title:'業務スキル｜運用（アドバンス運用の対応）',items:[
+    'アドバンスアカウント2社ともCVが出せる',
+    'アドバンスアカウントのチェック（投稿、レポート、ストーリー等）ができる',
+    '他のunit活動のために業務効率化できる状態',
+    '新規のアドバンスアカウントを受け入れることができる（戦略設計ができる）']}
+ ]},
+
+{n:6,tier:'pro',period:'6ヶ月',
+ vision:['自身の担当アカウントで成果を継続的に出せるうえで、困っているメンバーを助けることができる'],
+ sections:[
+  {title:'スタンス',items:[
+    '運用アカウントに対し、集めた情報から貢献（主にCV出し）する為の戦略を自ら描くことができる',
+    'ユニットがよりよい方向に向かう為の施策を自ら考え、行動できる']},
+  {title:'コミュニケーション｜フロント・外部連携（応用）',items:[
+    'フロントからクライアントのニーズを自ら引き出した上で、適切な運用改善ができる',
+    '自ら戦略を言語化し、伝えることができる']},
+  {title:'タスク管理｜アカウント運用でのタスク意識',items:['周囲の期待を超えるアウトプットを意識する']},
+  {title:'タスク管理｜ユニットでのタスク意識',items:[
+    '納期の声かけができる',
+    'タスク履行漏れの指摘やサポートができる',
+    '他の人のボールを把握できる',
+    '自分のボールを少しでも進められる']},
+  {title:'組織運営｜メンバー協働（育成応用）',items:[
+    '個人ではなく「組織の成果」を最優先に考える',
+    'チームの成長を促す行動を取る（知識の共有、仕組み化など）']},
+  {title:'業務スキル｜知見（レクチャー）',items:[
+    '習得した知識・知見をメンバーにアウトプットできる（ユニット定例、ナレッジ）',
+    'インスタのアルゴリズムや運用方法を新人にアウトプットできる']},
+  {title:'業務スキル｜運用（圧倒的な成果へのこだわり）',items:[
+    '「頑張った」ではなく、「価値を提供できたか？」を意識する',
+    '「早くて質が高い」仕事を目指す（どちらか一方ではなく、両方）']},
+  {title:'業務スキル｜運用（他のメンバーの成果創出フォロー）',items:[
+    'アドバンス定例において、担当アカウントの状況を過不足なく説明できる',
+    'ユニットメンバーの運用面での補助ができる']},
+  {title:'AI活用',ai:true,groups:[
+    {label:'なりたい姿',items:[
+      'AIで新しい価値を生み出す＋unit内に広め始める',
+      '最新AI情報を自分でキャッチアップ・発信、組織でAI推進ができる',
+      'AI活用で生まれた余白を次の業務に活用できている']},
+    {label:'業務スキル｜定量・定性',items:[
+      '業務の中でAIを使って何か試した経験がある（アカウント設計、投稿作成、工数削減、業務管理などで具体的な課題に対するアプローチとして）',
+      '日常の業務の中でスターター・プレイヤーのAI活用をサポートしている']}
+  ]}
+ ]},
+
+{n:7,tier:'leader',period:'8ヶ月',
+ vision:['リーダーと一緒に組織運営ができる'],
+ sections:[
+  {title:'スタンス',items:[
+    '圧倒的な当事者意識を持っている',
+    '成長マインドセットを持っている',
+    '単にスキルがある人ではなく、成果を出し続ける人である']},
+  {title:'コミュニケーション｜改善方針の起案（社内）',items:['指示された内容以外でも、運用面での改善提案ができる（対フロント）']},
+  {title:'コミュニケーション｜対外的な役割',items:[
+    '社員・リーダーとの橋渡しを行う',
+    '他のUnitなどと協働する',
+    'チームの代表として成果や問題点を報告できる']},
+  {title:'タスク管理｜ユニットメンバー管理',items:['ユニット全体の納期管理ができる']},
+  {title:'組織運営｜UL業務（基礎）',items:[
+    'メンバーのエスカレ処理ができる',
+    'メンバーの面談ができる',
+    'アカウント差配ができる',
+    '勤務時間・スキル・アカウント数字・求められていることの理解などを鑑みる']},
+  {title:'業務スキル｜知見（ユニット横断）',items:[
+    '習得した知識・知見をメンバーにレクチャーできる',
+    'インスタのアルゴリズムや運用方法を新人にレクチャーできる',
+    'ナレッジ箱の中に成果を格納する']},
+  {title:'業務スキル｜運用（メンバーディレクション）',items:[
+    '運用レポートのチェックができる',
+    'アドバンスの企画・投稿予約チェックができる',
+    'アドバンス会議への参加・ファシリができる',
+    {t:'アポ同行（1回以上参加）',sub:['レポート自分で報告（任意、アカウントによる）']}]}
+ ]},
+
+{n:8,tier:'leader',period:'9ヶ月',
+ vision:['一人でメンバーマネジメントができる','リーダー育成ができる'],
+ sections:[
+  {title:'スタンス',items:[
+    'メンバーの成長を促し喜べる',
+    '高いコミュニケーション能力がある',
+    '信頼を積み重ねている']},
+  {title:'コミュニケーション｜改善方針の起案（社外）',items:[
+    '指示された内容以外でも、運用面での改善提案ができる（対クライアント）',
+    'クライアントへの振り返りプレゼンなどが任せられる']},
+  {title:'コミュニケーション｜対外的な役割',items:['他部署の社員ともコミュニケーションが問題なく行える']},
+  {title:'タスク管理｜ユニット管理',items:['取りこぼしがあったタスクを全て自分ごとにし、対応しようとする状態']},
+  {title:'組織運営｜UL業務（応用）',items:[
+    '適切な目標設定、行動マネジメント、モチベーション管理ができる',
+    'Unit内でのスタンス・方針を発信し、チーム感を作り扇動できる']},
+  {title:'業務スキル｜知見（外からの情報収集と展開）',items:[
+    '社外（YouTube、記事、セミナーなど）からの積極的な情報収集とトレンドキャッチ',
+    '最新情報の全体に向けた展開']},
+  {title:'業務スキル｜運用（運用企画）',items:[
+    '成果を上げるための新たな運用方法を企画できる',
+    '効率の良い運用フローを企画できる']},
+  {title:'AI活用',ai:true,groups:[
+    {label:'なりたい姿',items:[
+      'AIを用いた突破力：AIを中心に業務を設計・実行できる',
+      'AI活用の横展開：Claude Codeを用いて業務上の課題を解決するツールを開発・実装できる',
+      'リーダー業務として業務改善にClaude Codeの使用ができる']},
+    {label:'業務スキル｜定量・定性',items:[
+      'ナレッジ共有・勉強会・ツール整備などを通じてAI活用が広まる仕組みを自ら作り、組織に還元できている']}
+  ]}
+ ]},
+
+{n:9,tier:'exec',period:'12ヶ月',
+ vision:['事業責任者になれる'],
+ sections:[
+  {title:'スタンス｜6SENSEの体現',items:['6SENSEを体現している']},
+  {title:'個別設定',custom:true,note:'各項目は面談時に本人とすり合わせて設定する。社会人としての即戦力レベルであることが基準。',items:[
+    '社会人基礎｜コミュニケーション','社会人基礎｜タスク管理','社会人基礎｜組織運営',
+    '業務スキル｜知見','業務スキル｜運用','専属Unit業務']},
+  {title:'AI活用',ai:true,groups:[
+    {label:'なりたい姿',items:['AIを用いた新規事業の創出','全ての業務でAIの使用']},
+    {label:'業務スキル｜定量・定性',items:[
+      'AIを用いた新規事業を創出・運営ができている',
+      '全ての業務においてのAI活用をしており、それが周囲から見て明らかである']}
+  ]}
+ ]},
+
+{n:10,tier:'exec',period:'—',
+ vision:['事業責任者として組織を牽引できる'],
+ sections:[
+  {title:'個別設定',custom:true,note:'各項目は面談時に本人とすり合わせて設定する。社会人としての即戦力レベルであることが基準。',items:[
+    '社会人基礎｜コミュニケーション','社会人基礎｜タスク管理','社会人基礎｜組織運営',
+    '業務スキル｜知見','業務スキル｜運用','専属Unit業務']},
+  {title:'AI活用',ai:true,groups:[
+    {label:'なりたい姿',items:['AIを用いた新規事業の創出','全ての業務でAIの使用']},
+    {label:'業務スキル｜定量・定性',items:[
+      'AIを用いた新規事業を創出・運営ができている',
+      '全ての業務においてのAI活用をしており、それが周囲から見て明らかである']}
+  ]}
+ ]}
+];
+
+const ATARIMAE = [
+  {k:'late',n:'遅刻数',d:'前日報告以外の遅刻（朝のattendance含む）は月2回以下であること。2ヶ月以上あった場合は除籍対象'},
+  {k:'kintai',n:'勤怠管理',d:'連絡なくシフトの修正を行わない'},
+  {k:'taido',n:'勤務態度',d:'正当な理由がなく上司に事前承認のない出勤中の不稼働や欠勤、明らかな規律・モラルの欠如と取れる行動があった場合✕'},
+  {k:'horenso',n:'報連相',d:'報連相の欠如により会社やメンバーに著しい損害や迷惑がかかった事案があった場合✕'},
+  {k:'rule',n:'ルール遵守',d:'社内で広報されているルールが遵守できず、会社やメンバーに著しい損害や迷惑がかかった事案があった場合✕（就業規定や経費規定、オペレーションルール等）'}
+];
+
+const STAGES = [
+  {t:'ちいさな光',    dsc:'まだ小さな光。ここから全部はじまる。'},
+  {t:'ひかる',        dsc:'自分の力で光りはじめた。'},
+  {t:'衛星がひとつ',  dsc:'まわりに人がついてきた。'},
+  {t:'リング',        dsc:'自分の軌道ができた。'},
+  {t:'ふたつめの衛星',dsc:'任せてもらえる範囲が広がった。'},
+  {t:'二重のリング',  dsc:'自分の型を持ちはじめた。'},
+  {t:'みっつめの衛星',dsc:'まわりを巻き込んで動かせる。'},
+  {t:'光をまとう',    dsc:'いるだけで場が明るくなる。'},
+  {t:'きらめく',      dsc:'遠くからでも見つけてもらえる。'},
+  {t:'まんまるの惑星',dsc:'ひとつの世界をつくった。'}
+];
+</script>
+<script>
+/* ============================================================
+   STATE + STORAGE
+   ============================================================ */
+const KEY='careerstep:v1';
+/* 保存先：Claudeのアーティファクト内では window.storage、
+   Vercel等の通常のWebでは localStorage、どちらも使えなければメモリのみ */
+const STORE=(()=>{
+  let api=false;
+  try{ api = !!(window.storage && typeof window.storage.get==='function'); }catch(e){ api=false; }
+  let ls=false;
+  try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); ls=true; }catch(e){ ls=false; }
+  const mem={};
+  return {
+    mode: api?'app':(ls?'local':'none'),
+    async get(k){
+      if(api){ try{ const r=await window.storage.get(k); return (r&&r.value)||null; }catch(e){} }
+      if(ls){ try{ return localStorage.getItem(k); }catch(e){} }
+      return mem[k]||null;
+    },
+    async set(k,v){
+      if(api){ try{ await window.storage.set(k,v); return 'app'; }catch(e){} }
+      if(ls){ try{ localStorage.setItem(k,v); return 'local'; }catch(e){} }
+      mem[k]=v; return 'none';
+    }
+  };
+})();
+const DEFAULT={
+  profile:{name:'',join:'',grade:''}, buddy:'', sound:true,
+  goals:{basic:'',skill:''},
+  creed:[{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0}],
+  atarimae:{}, checks:{}, custom:{}, log:[], seen:[]
+};
+let D=JSON.parse(JSON.stringify(DEFAULT));
+let view='home', openG=null, ready=false;
+
+async function load(){
+  try{
+    const v=await STORE.get(KEY);
+    if(v) D=Object.assign(JSON.parse(JSON.stringify(DEFAULT)),JSON.parse(v));
+  }catch(e){ /* 初回 */ }
+  ready=true;
+}
+let saveT=null;
+function save(){
+  clearTimeout(saveT);
+  saveT=setTimeout(async()=>{
+    const m=await STORE.set(KEY,JSON.stringify(D));
+    flash(m);
+  },400);
+}
+function flash(m){
+  const el=document.getElementById('saved');
+  if(m==='none'){ el.textContent='保存できません'; el.style.color='var(--coral)'; el.classList.add('on'); return; }
+  el.textContent = m==='local' ? 'この端末に保存しました' : '保存しました';
+  el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),1200);
+}
+
+/* ============================================================
+   MODEL HELPERS
+   ============================================================ */
+function gradeItems(g){
+  const out=[];
+  const gi=GRADES.findIndex(x=>x.n===g.n);
+  g.vision.forEach((t,i)=>out.push({id:'g'+g.n+'.v.'+i,t:t,cat:'なりたい姿',vision:true}));
+  g.sections.forEach((s,si)=>{
+    const push=(list,gl)=>list.forEach((it,ii)=>{
+      const base='g'+g.n+'.'+si+'.'+(gl!=null?gl+'-':'')+ii;
+      if(typeof it==='string'){ out.push({id:base,t:it,cat:s.title,custom:!!s.custom}); }
+      else{
+        out.push({id:base,t:it.t,cat:s.title,link:it.link,custom:!!s.custom});
+        (it.sub||[]).forEach((st,k)=>out.push({id:base+'.'+k,t:st,cat:s.title,sub:true}));
+      }
+    });
+    if(s.groups) s.groups.forEach((gr,gl)=>push(gr.items,gl));
+    else push(s.items,null);
+  });
+  return out;
+}
+const ITEMS={}; GRADES.forEach(g=>ITEMS[g.n]=gradeItems(g));
+function done(g){return ITEMS[g].filter(i=>D.checks[i.id]).length;}
+function total(g){return ITEMS[g].length;}
+function isDone(g){return done(g)===total(g);}
+function gradeOf(id){return +id.slice(1).split('.')[0];}
+function isLocked(n){return n>currentGrade();}
+function currentGrade(){for(const g of GRADES){if(!isDone(g.n))return g.n;}return 10;}
+function stage(){let c=0;GRADES.forEach(g=>{if(isDone(g.n))c++;});return Math.min(c+1,10);}
+function totalChecked(){return Object.values(D.checks).filter(Boolean).length;}
+function totalItems(){return GRADES.reduce((a,g)=>a+total(g.n),0);}
+function weekCount(){const wk=Date.now()-6048e5;return D.log.filter(t=>t>wk).length;}
+function tierOf(n){return TIERS[GRADES[n-1].tier];}
+
+/* ============================================================
+   CREATURE — 段階でパーツが増えるSVG
+   ============================================================ */
+function star(cx,cy,r,f){
+  return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
+}
+/* 相棒：まるい光。育つほど大きくなり、リングと衛星が増えていく */
+function creature(st,size,cls){
+  const W='#FAF8FF', E='#2C2748', A='#FFC44D', A2='#FF9F45';
+  const cx=60, cy=62, r=17+st*1.8;
+  const p=[];
+  const sp=(x,y,q,f)=>'<path d="M'+x+' '+(y-q)+' Q'+x+' '+y+' '+(x+q)+' '+y+' Q'+x+' '+y+' '+x+' '+(y+q)+' Q'+x+' '+y+' '+(x-q)+' '+y+' Q'+x+' '+y+' '+x+' '+(y-q)+' Z" fill="'+f+'"/>';
+  const moon=(deg,rad,mr)=>{const t=deg*Math.PI/180;
+    return '<circle cx="'+(cx+Math.cos(t)*rad).toFixed(1)+'" cy="'+(cy+Math.sin(t)*rad).toFixed(1)+'" r="'+mr+'" fill="'+A+'"/>';};
+
+  if(st>=10) p.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(r+22)+'" fill="'+A+'" opacity=".10"/>');
+  if(st>=8)  p.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(r+11)+'" fill="'+A+'" opacity=".13"/>');
+
+  if(st>=6) p.push('<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+(r+19)+'" ry="'+((r+19)*0.3).toFixed(1)+'" fill="none" stroke="'+A2+'" stroke-width="2.6" opacity=".8" transform="rotate(24 '+cx+' '+cy+')"/>');
+  if(st>=4) p.push('<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+(r+14)+'" ry="'+((r+14)*0.3).toFixed(1)+'" fill="none" stroke="'+A+'" stroke-width="3" transform="rotate(-16 '+cx+' '+cy+')"/>');
+
+  p.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+W+'"/>');
+  p.push('<circle cx="'+(cx-r*0.34).toFixed(1)+'" cy="'+(cy-r*0.3).toFixed(1)+'" r="'+(r*0.3).toFixed(1)+'" fill="#fff" opacity=".7"/>');
+
+  const er=2.5+st*0.14, ex=r*0.33, ey=cy-r*0.05;
+  p.push('<g class="eyes"><circle cx="'+(cx-ex).toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="'+er.toFixed(1)+'" fill="'+E+'"/>'+
+         '<circle cx="'+(cx+ex).toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="'+er.toFixed(1)+'" fill="'+E+'"/></g>');
+  if(st>=2) p.push('<path d="M'+(cx-r*0.2).toFixed(1)+' '+(ey+r*0.32).toFixed(1)+' q'+(r*0.2).toFixed(1)+' '+(r*0.22).toFixed(1)+' '+(r*0.4).toFixed(1)+' 0" stroke="'+E+'" stroke-width="2.1" fill="none" stroke-linecap="round"/>');
+
+  const ms=[];
+  if(st>=3) ms.push(moon(-25,r+17,4.2));
+  if(st>=5) ms.push(moon(150,r+17,3.6));
+  if(st>=7) ms.push(moon(75,r+17,3));
+  if(ms.length) p.push('<g class="orbit">'+ms.join('')+'</g>');
+
+  if(st>=9) p.push(sp(104,26,5,A)+sp(18,44,3.6,A)+sp(96,102,3.2,A));
+
+  return '<svg class="art '+(cls||'')+'" viewBox="0 0 120 120" width="'+size+'" height="'+size+'" aria-hidden="true">'+
+    '<g class="mochi">'+p.join('')+'</g></svg>';
+}
+
+/* 丸窓：月に向かって相棒が進んでいく。進捗＝月までの距離 */
+function porthole(st,pct,accent){
+  const cx=110, cy=100, R=78;
+  const P0=[88,132], C=[60,100], P1=[132,68];
+  const at=t=>[Math.pow(1-t,2)*P0[0]+2*(1-t)*t*C[0]+t*t*P1[0], Math.pow(1-t,2)*P0[1]+2*(1-t)*t*C[1]+t*t*P1[1]];
+  const poly=n=>{let d='';for(let i=0;i<=n;i++){const q=at(i/n);d+=(i?' L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1);}return d;};
+  const t=Math.min(1,Math.max(0,pct/100)), pos=at(t);
+  const stars=[[52,58,1.6],[70,38,1.2],[96,30,1.8],[128,34,1.2],[160,84,1.5],[168,116,1.2],[62,120,1.4],[46,96,1.2],[92,150,1.6],[128,158,1.2],[150,138,1.5],[84,66,1.1],[112,50,1.3],[176,66,1.2],[58,140,1.2]]
+    .map(v=>'<circle cx="'+v[0]+'" cy="'+v[1]+'" r="'+v[2]+'" fill="#fff" opacity=".75"/>').join('');
+  const bolts=[0,45,90,135,180,225,270,315].map(a=>{
+    const r=(a-90)*Math.PI/180;
+    return '<circle cx="'+(cx+Math.cos(r)*84).toFixed(1)+'" cy="'+(cy+Math.sin(r)*84).toFixed(1)+'" r="2.6" fill="#D9D6EB"/>';}).join('');
+  const arc=2*Math.PI*88;
+  return '<svg viewBox="0 0 220 200" width="212" height="193" aria-hidden="true">'+
+   '<defs><radialGradient id="ph_sky" cx="35%" cy="25%"><stop offset="0" stop-color="#33405F"/><stop offset="1" stop-color="#131A2B"/></radialGradient>'+
+   '<clipPath id="ph_c"><circle cx="'+cx+'" cy="'+cy+'" r="'+R+'"/></clipPath></defs>'+
+   '<circle cx="'+cx+'" cy="'+cy+'" r="84" fill="#F5F4FB"/>'+bolts+
+   '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="url(#ph_sky)"/>'+
+   '<g clip-path="url(#ph_c)">'+stars+
+     '<circle cx="152" cy="52" r="30" fill="#fff" opacity=".08"/>'+
+     '<circle cx="152" cy="52" r="20" fill="#EFEDE2"/>'+
+     '<circle cx="146" cy="46" r="4" fill="#DAD7C7"/><circle cx="158" cy="58" r="3" fill="#DAD7C7"/><circle cx="157" cy="43" r="2.2" fill="#DAD7C7"/>'+
+     '<path d="M40 44 l16 -12" stroke="#fff" stroke-width="1.6" opacity=".5" stroke-linecap="round"/>'+
+     '<path d="M74 152 l14 -11" stroke="#fff" stroke-width="1.4" opacity=".35" stroke-linecap="round"/>'+
+     '<path d="'+poly(24)+'" stroke="#fff" stroke-width="1.6" fill="none" opacity=".25" stroke-dasharray="3 5"/>'+
+     (t>0.02?'<path d="'+poly(Math.max(2,Math.round(24*t)))+'" stroke="'+accent+'" stroke-width="2.4" fill="none" opacity=".9" stroke-linecap="round"/>':'')+
+     '<g transform="translate('+(pos[0]-41).toFixed(1)+','+(pos[1]-41).toFixed(1)+') scale(.68)">'+creature(st,120,'float')+'</g>'+
+   '</g>'+
+   '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="#E4E2F2" stroke-width="4"/>'+
+   '<circle cx="'+cx+'" cy="'+cy+'" r="88" fill="none" stroke="#EDEBF7" stroke-width="5"/>'+
+   '<circle cx="'+cx+'" cy="'+cy+'" r="88" fill="none" stroke="'+accent+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+arc+'" stroke-dashoffset="'+(arc*(1-t))+'" transform="rotate(-90 '+cx+' '+cy+')"/>'+
+   '</svg>';
+}
+
+/* ============================================================
+   SMALL UI PARTS
+   ============================================================ */
+const SPK_ON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 9.5h3.6L12.5 5v14L7.6 14.5H4z" fill="currentColor"/><path d="M16 9.2a4 4 0 0 1 0 5.6M18.7 6.6a7.6 7.6 0 0 1 0 10.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
+const SPK_OFF='<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 9.5h3.6L12.5 5v14L7.6 14.5H4z" fill="currentColor"/><path d="M16.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
+const LOCK='<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M7 10V7a5 5 0 0 1 10 0v3" stroke="#B9B4D0" stroke-width="2.6" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="10.5" rx="3" fill="#B9B4D0"/></svg>';
+const CHECK='<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12.5 L9.5 18 L20 6.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function ring(pct,color,label){
+  const r=19,c=2*Math.PI*r;
+  return '<div class="ring"><svg width="46" height="46" viewBox="0 0 46 46">'+
+   '<circle cx="23" cy="23" r="'+r+'" fill="none" stroke="#EFEDF9" stroke-width="5"/>'+
+   '<circle cx="23" cy="23" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+(c*(1-pct/100))+'" transform="rotate(-90 23 23)"/>'+
+   '</svg><b style="color:'+color+'">'+(label!=null?label:pct)+'</b></div>';
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(msg,cls){
+  const t=document.createElement('div');t.className='toast '+(cls||'');t.textContent=msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),320);},1500);
+}
+</script>
+<script>
+/* ============================================================
+   カテゴリ（ステップ一覧の行）
+   ============================================================ */
+const CATS=[
+  {k:'vision',            n:'なりたい姿'},
+  {k:'スタンス',           n:'スタンス'},
+  {k:'コミュニケーション',   n:'コミュニケーション'},
+  {k:'タスク管理',         n:'タスク管理'},
+  {k:'組織運営',           n:'組織運営'},
+  {k:'業務スキル｜知見',    n:'業務スキル・知見'},
+  {k:'業務スキル｜運用',    n:'業務スキル・運用'},
+  {k:'AI活用',            n:'AI活用'},
+  {k:'個別設定',           n:'個別設定'}
+];
+function secStats(gn,si){
+  const its=ITEMS[gn].filter(i=>i.id.split('.')[1]===String(si));
+  return {t:its.length, d:its.filter(i=>D.checks[i.id]).length};
+}
+function visStats(gn){
+  const its=ITEMS[gn].filter(i=>i.id.split('.')[1]==='v');
+  return {t:its.length, d:its.filter(i=>D.checks[i.id]).length};
+}
+function subLabel(title,cat){
+  let r=title.slice(cat.length);
+  if(r.charAt(0)==='｜') r=r.slice(1);
+  if(r.charAt(0)==='（'&&r.charAt(r.length-1)==='）') r=r.slice(1,-1);
+  return r||title;
+}
+
+/* ============================================================
+   SOUND — 音源ファイルなし、Web Audioで生成
+   ============================================================ */
+let AC=null;
+function actx(){
+  try{
+    if(!AC){ const C=window.AudioContext||window.webkitAudioContext; if(!C) return null; AC=new C(); }
+    if(AC.state==='suspended') AC.resume();
+    return AC;
+  }catch(e){ return null; }
+}
+function tone(f,at,dur,type,vol,f2){
+  const a=actx(); if(!a) return;
+  const t0=a.currentTime+at, o=a.createOscillator(), g=a.createGain();
+  o.type=type||'sine'; o.frequency.setValueAtTime(f,t0);
+  if(f2) o.frequency.exponentialRampToValueAtTime(f2,t0+dur);
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol||.15,t0+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g); g.connect(a.destination); o.start(t0); o.stop(t0+dur+0.06);
+}
+function whoosh(at,dur,vol){
+  const a=actx(); if(!a) return;
+  const t0=a.currentTime+at, n=Math.floor(a.sampleRate*dur), buf=a.createBuffer(1,n,a.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(i/n,1.6);
+  const src=a.createBufferSource(); src.buffer=buf;
+  const bp=a.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=1.1;
+  bp.frequency.setValueAtTime(300,t0); bp.frequency.exponentialRampToValueAtTime(5200,t0+dur);
+  const g=a.createGain(); g.gain.value=vol||.16;
+  src.connect(bp); bp.connect(g); g.connect(a.destination); src.start(t0);
+}
+function blip(prog){
+  if(!D.sound) return;
+  const f=392*Math.pow(2,Math.min(1,prog||0));
+  tone(f,0,.11,'triangle',.075); tone(f*2,0.01,.07,'sine',.02);
+}
+function fanfare(big){
+  if(!D.sound) return;
+  whoosh(0.05,.62,.13);
+  tone(70,.62,.55,'sine',.22,42);
+  const ch=big?[523.25,659.25,783.99,1046.5,1318.5]:[523.25,659.25,783.99,1046.5];
+  ch.forEach((f,i)=>{ tone(f,.62+i*0.085,.5,'triangle',.16); tone(f*2,.62+i*0.085,.32,'sine',.04); });
+  for(let i=0;i<8;i++) tone(1400+Math.random()*1500,.95+i*0.06,.22,'sine',.045);
+  if(big){ tone(1046.5,1.5,1.1,'triangle',.1); tone(1567.98,1.52,1.1,'sine',.05); }
+}
+
+/* ============================================================
+   VIEWS
+   ============================================================ */
+function vHome(){
+  const cg=currentGrade(), g=GRADES[cg-1], t=tierOf(cg);
+  const dn=done(cg), tt=total(cg), pct=Math.round(dn/tt*100);
+  const st=stage(), sg=STAGES[st-1];
+  const rest=tt-dn;
+  const nm=D.profile.name?esc(D.profile.name)+' さん':'名前を登録しよう';
+  const nexts=ITEMS[cg].filter(i=>!D.checks[i.id]).slice(0,3);
+
+  let h='<div class="home-grid"><div class="hg-l"><section class="hero">'+
+   '<div class="hero-top"><div>'+
+     '<div class="hero-grade">GRADE '+cg+' ／ '+t.name+'（'+g.period+'）</div>'+
+     '<div class="hero-title disp">'+(D.buddy?esc(D.buddy):'なまえ未設定')+'</div>'+
+     '<div class="hero-name">'+nm+(D.buddy?'':' ・ <button data-act="tab" data-tab="sheet" style="color:var(--violet);font-weight:700;font-size:12px">名前をつける</button>')+'</div>'+
+   '</div><div style="text-align:right"><div class="pct" style="color:'+t.hex+'">'+pct+'<small>%</small></div></div></div>'+
+   '<div class="capsule-wrap">'+porthole(st,pct,t.hex)+'</div>'+
+   '<div class="bar"><i style="width:'+pct+'%;background:linear-gradient(90deg,#C9202B,'+t.hex+')"></i></div>'+
+   '<div class="hero-foot"><span class="muted">'+dn+' / '+tt+' 項目 ・ 第'+st+'形態「'+sg.t+'」</span>'+
+     '<b style="color:'+t.hex+'">'+(rest===0?'昇格条件クリア！':'あと '+rest+' 項目で進化')+'</b></div>'+
+   '</section>';
+
+  h+='<div class="stats">'+
+    '<div class="stat"><b style="color:var(--violet)">Lv.'+(Math.floor(totalChecked()/5)+1)+'</b><span>レベル</span></div>'+
+    '<div class="stat"><b>'+totalChecked()+'</b><span>達成した項目</span></div>'+
+    '<div class="stat"><b style="color:var(--mint)">+'+weekCount()+'</b><span>今週の達成</span></div>'+
+  '</div>';
+
+  h+='</div><div class="hg-r">';
+  h+='<div class="sec-label">つぎの一歩</div><div class="card">';
+  if(nexts.length===0){
+    h+='<div style="text-align:center;padding:10px 0"><b style="font-size:15px">Grade '+cg+' はコンプリート！</b>'+
+       '<p class="tiny muted" style="margin:6px 0 0">メンターとの定例で昇格を相談しよう。</p></div>';
+  }else{
+    nexts.forEach(i=>{
+      h+='<button class="next-item" data-act="toggle" data-id="'+i.id+'"><span class="box">'+CHECK+'</span>'+
+         '<span class="txt"><span class="cat">'+esc(i.cat)+'</span>'+esc(i.t)+'</span></button>';
+    });
+    h+='<button class="next-item" data-act="openGrade" data-g="'+cg+'" style="border-top:1px solid var(--line);color:var(--violet);font-weight:700;font-size:13px;justify-content:center;padding-top:14px">Grade '+cg+' の項目をすべて見る →</button>';
+  }
+  h+='</div>';
+
+  const cleared=GRADES.filter(x=>isDone(x.n)).length;
+  h+='<div class="sec-label">全体の歩み</div><div class="card roadcard">'+roadmap(false)+
+   '<div style="height:12px"></div>'+
+   '<div class="tiny muted">10グレード中 <b style="color:var(--ink)">'+cleared+'</b> グレード達成／全'+totalItems()+'項目のうち '+totalChecked()+' 項目クリア</div>'+
+   '</div></div></div>';
+  return h;
+}
+
+function vGrades(){
+  let h='<div class="sec-label">キャリアステップ</div>'+
+   '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。チェックボックスがすべて埋まったら昇格を検討します。</div>'+
+   '<div class="glist">';
+  const cg=currentGrade();
+  GRADES.forEach(g=>{
+    const t=tierOf(g.n), dn=done(g.n), tt=total(g.n), pct=Math.round(dn/tt*100);
+    const dd=dn===tt, lk=isLocked(g.n);
+    h+='<button class="gcard'+(dd?' done':'')+(lk?' lk':'')+'" data-act="openGrade" data-g="'+g.n+'">'+
+      ring(pct,dd?'#17B98A':(lk?'#C9C5DE':t.hex),dd?'✓':pct)+
+      '<span style="flex:1">'+
+        '<span class="gnum" style="color:'+(lk?'#A5A0C0':t.hex)+'">GRADE '+g.n+(lk?' 🔒':'')+'</span>'+
+        '<div class="gtitle">'+t.name+'<span class="muted" style="font-weight:400;font-size:12px">（'+g.period+'）</span></div>'+
+        '<div class="gmeta">'+(lk?'Grade '+(g.n-1)+' を埋めると開く':dn+' / '+tt+' 項目'+(g.n===cg?' ・ 挑戦中':''))+'</div>'+
+      '</span>'+
+      '<span style="color:var(--ink3);font-size:18px">›</span></button>';
+  });
+  return h+'</div>';
+}
+
+function vDetail(n){
+  const g=GRADES[n-1], t=tierOf(n), dn=done(n), tt=total(n), pct=Math.round(dn/tt*100), lk=isLocked(n);
+  let h='<div class="dhead"><button class="back" data-act="back">‹ グレード一覧</button>'+
+    '<div class="gnum" style="color:'+t.hex+'">GRADE '+n+' ／ '+g.period+'</div>'+
+    '<div class="dtitle disp">'+t.name+'</div>'+
+    '<div class="bar"><i style="width:'+pct+'%;background:'+t.hex+'"></i></div>'+
+    '<div class="hero-foot"><span class="tiny muted">'+dn+' / '+tt+' 項目</span><b class="tiny" style="color:'+t.hex+'">'+pct+'%</b></div></div>';
+
+  if(lk) h+='<div class="note lockbox">Grade '+(n-1)+' がすべて埋まると、ここにチェックを入れられます。内容の確認は先にできます。</div>';
+  if(g.note) h+='<div class="note">'+esc(g.note)+'</div>';
+
+  h+='<div class="vision"><h3>なりたい姿</h3>';
+  g.vision.forEach((v,i)=>{h+=itemHTML('g'+n+'.v.'+i,v,null,false,lk);});
+  h+='</div>';
+
+  h+='<div class="blocks">';
+  g.sections.forEach((s,si)=>{
+    h+='<div class="block'+(s.ai?' ai':'')+'"><h3>'+(s.ai?'<span>🤖</span>':'')+'<span>'+esc(s.title)+'</span></h3>';
+    if(s.note) h+='<p class="tiny muted" style="margin:2px 0 6px">'+esc(s.note)+'</p>';
+    const render=(list,gl)=>list.forEach((it,ii)=>{
+      const base='g'+n+'.'+si+'.'+(gl!=null?gl+'-':'')+ii;
+      if(s.custom){ h+=customHTML(base,it,lk); return; }
+      if(typeof it==='string'){ h+=itemHTML(base,it,null,false,lk); }
+      else{
+        h+=itemHTML(base,it.t,it.link,false,lk);
+        (it.sub||[]).forEach((st,k)=>{h+=itemHTML(base+'.'+k,st,null,true,lk);});
+      }
+    });
+    if(s.groups) s.groups.forEach((gr,gl)=>{h+='<div class="grp">'+esc(gr.label)+'</div>';render(gr.items,gl);});
+    else render(s.items,null);
+    h+='</div>';
+  });
+  h+='</div>';
+  return h;
+}
+function itemHTML(id,txt,link,sub,lk){
+  const on=!!D.checks[id];
+  return '<button class="item'+(on?' on':'')+(sub?' sub':'')+(lk&&!on?' lk':'')+'" data-act="toggle" data-id="'+id+'">'+
+    '<span class="box'+(on?' on':'')+'">'+(lk&&!on?LOCK:CHECK)+'</span>'+
+    '<span class="txt">'+esc(txt)+(link?'<br><a href="'+link+'" target="_blank" rel="noopener" class="tiny">クイズを開く →</a>':'')+'</span></button>';
+}
+function customHTML(id,label,lk){
+  const on=!!D.checks[id];
+  return '<div style="padding:11px 0;border-top:1px solid var(--line)">'+
+   '<div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:6px">'+esc(label)+'</div>'+
+   '<div style="display:flex;gap:10px;align-items:center">'+
+   '<button class="box'+(on?' on':'')+(lk&&!on?' lkbox':'')+'" data-act="toggle" data-id="'+id+'" aria-label="達成">'+(lk&&!on?LOCK:CHECK)+'</button>'+
+   '<input type="text" data-custom="'+id+'" value="'+esc(D.custom[id]||'')+'" placeholder="面談ですり合わせた内容を入力" style="flex:1;border:1.5px solid var(--line);background:#FBFAFF;border-radius:10px;padding:9px 11px;font-size:13.5px">'+
+   '</div></div>';
+}
+
+function vSheet(){
+  const st=stage();
+  let h='<div class="sheetwrap"><div class="sec-label">相棒</div>'+
+   '<div class="card" style="display:flex;gap:14px;align-items:center">'+
+     '<div class="pod" style="width:84px;height:84px;flex:0 0 auto;margin:0">'+creature(st,74,'')+'</div>'+
+     '<div style="flex:1"><div class="field" style="margin:0"><label>相棒の名前（自分で決める・進化しても変わりません）</label>'+
+     '<input type="text" data-field="buddy" value="'+esc(D.buddy)+'" placeholder="例：コスモ"></div>'+
+     '<div class="tiny muted" style="margin-top:6px">いま 第'+st+'形態「'+STAGES[st-1].t+'」</div></div>'+
+   '</div>';
+  h+='<div class="sec-label">マイシート</div>';
+  h+='<div class="card">'+
+   '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
+   '<div class="field"><label>入社日</label><input type="date" data-field="profile.join" value="'+esc(D.profile.join)+'"></div>'+
+   '<div class="field" style="margin-bottom:0"><label>Grade（社内で認定されている現グレード）</label>'+
+   '<select data-field="profile.grade"><option value="">未設定</option>'+
+    GRADES.map(g=>'<option value="'+g.n+'"'+(String(D.profile.grade)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
+   '</select></div></div>';
+
+  h+='<div class="sec-label">インターンを卒業した時にどうなっていたいか？</div><div class="card">'+
+   '<div class="field"><label>社会人基礎</label><textarea data-field="goals.basic" placeholder="例：どんな相手にも自分から状況を共有しにいける状態になる">'+esc(D.goals.basic)+'</textarea></div>'+
+   '<div class="field" style="margin-bottom:0"><label>業務スキル</label><textarea data-field="goals.skill" placeholder="例：戦略設計からCV創出まで一人で回せるようになる">'+esc(D.goals.skill)+'</textarea></div></div>';
+
+  h+='<div class="sec-label">自身の五箇条<span class="muted" style="letter-spacing:0;font-weight:400"> ※池田塾受講後に記入</span></div><div class="card">';
+  D.creed.forEach((c,i)=>{
+    h+='<div class="creed"><div class="row"><span class="no">'+(i+1)+'</span>'+
+      '<input type="text" data-creed="'+i+'" value="'+esc(c.t)+'" placeholder="自分で決めた一箇条"></div>'+
+      '<div class="scores">'+[1,2,3,4,5].map(v=>'<button data-act="creed" data-i="'+i+'" data-v="'+v+'" class="'+(c.s===v?'on':'')+'">'+v+'</button>').join('')+
+      '<span class="tiny muted" style="align-self:center;margin-left:4px">評価</span></div></div>';
+  });
+  h+='</div>';
+
+  h+='<div class="sec-label">アタリマエ評価<span class="muted" style="letter-spacing:0;font-weight:400"> ※自己申告</span></div><div class="card">';
+  ATARIMAE.forEach(a=>{
+    const v=D.atarimae[a.k];
+    h+='<div class="atari"><div class="h"><b>'+a.n+'</b><span class="seg">'+
+      '<button class="ok'+(v==='ok'?' on':'')+'" data-act="atari" data-k="'+a.k+'" data-v="ok">○</button>'+
+      '<button class="ng'+(v==='ng'?' on':'')+'" data-act="atari" data-k="'+a.k+'" data-v="ng">✕</button></span></div>'+
+      '<p>'+esc(a.d)+'</p></div>';
+  });
+  h+='</div>';
+
+  h+='<div class="note" style="background:var(--coral-soft)">※ 4ヶ月スターターから上がれない場合は、アカウント運用ができなくなります。<br>※ プレイヤーに上がった後でも、アタリマエが著しく伴わない場合は降格します。</div>';
+  h+='<div class="sec-label">効果音</div><div class="card">'+
+   '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+     '<div><b style="font-size:13.5px">昇格の演出とチェック音</b>'+
+     '<p class="tiny muted" style="margin:4px 0 0">まわりに人がいるときはオフにできます。</p></div>'+
+     '<span class="seg"><button class="ok'+(D.sound?' on':'')+'" data-act="sfx">ON</button>'+
+     '<button class="ng'+(D.sound?'':' on')+'" data-act="sfx">OFF</button></span>'+
+   '</div></div>';
+  h+='<div class="sec-label">データの保管</div><div class="card">'+
+   '<p class="tiny muted" style="margin:0 0 12px">'+
+     (STORE.mode==='local'
+       ? '入力内容は<b>この端末のこのブラウザ</b>だけに保存されます。別の端末やシークレットウィンドウでは引き継がれません。機種変更の前にバックアップを書き出してください。'
+       : STORE.mode==='app'
+         ? '入力内容は自動保存されます。'
+         : 'このブラウザでは保存ができない設定になっています。閉じると入力が消えるので、バックアップを書き出してください。')+
+   '</p>'+
+   '<div style="display:flex;gap:8px">'+
+     '<button data-act="export" style="flex:1;padding:12px;border-radius:12px;background:var(--ink);color:#fff;font-weight:700;font-size:13px">バックアップを書き出す</button>'+
+     '<button data-act="import" style="flex:1;padding:12px;border-radius:12px;background:#fff;border:1.5px solid var(--line);font-weight:700;font-size:13px">ファイルから読み込む</button>'+
+   '</div></div>';
+  h+='<button class="danger" data-act="reset">入力内容をすべて消去する</button><div style="height:8px"></div></div>';
+  return h;
+}
+
+function roadmap(showBuddy){
+  const cg=currentGrade(), st=stage(), dn=done(cg), tt=total(cg);
+  const pos=Math.max(0,Math.min(100,((cg-1)+dn/tt)/9*100));
+  let nodes='';
+  GRADES.forEach(g=>{
+    const t=tierOf(g.n), dd=isDone(g.n), cur=g.n===cg, lk=isLocked(g.n);
+    const edge = g.n<=2?' edgeL':(g.n>=9?' edgeR':'');
+    nodes+='<div class="rn'+(dd?' done':'')+(cur?' cur':'')+'">'+
+      (cur&&showBuddy?'<div class="rn-you'+edge+'"><div class="rn-pod">'+creature(st,34,'')+'</div><b>いまここ</b></div>':
+       (cur?'<div class="rn-you tag'+edge+'"><b>いまここ</b></div>':''))+
+      '<button class="rn-dot" data-act="openGrade" data-g="'+g.n+'" title="Grade '+g.n+' '+t.name+'" '+
+        'style="'+(dd?'background:'+t.hex+';border-color:'+t.hex+';color:#fff':(cur?'border-color:'+t.hex+';color:'+t.hex+';box-shadow:0 0 0 4px '+t.hex+'22':(lk?'color:#B7B2CE':'color:'+t.hex)))+'">'+
+        (dd?'✓':g.n)+'</button>'+
+    '</div>';
+  });
+  const tiers=[['スターター',2],['プレイヤー',2],['プロフェッショナル',2],['リーダー',2],['エグゼクティブ',2]]
+    .map(x=>'<span style="flex:'+x[1]+'">'+x[0]+'</span>').join('');
+  return '<div class="road">'+
+    '<div class="road-inner"><div class="road-bar"><i style="width:'+pos.toFixed(1)+'%"></i></div>'+
+    '<div class="road-nodes">'+nodes+'</div></div>'+
+    '<div class="road-tiers">'+tiers+'</div></div>';
+}
+
+function vMap(){
+  const cg=currentGrade();
+  let h='<div class="sec-label">現在地</div><div class="card roadcard">'+roadmap(true)+'</div>'+
+   '<div class="sec-label">ステップ一覧</div>'+
+   '<div class="note" style="background:var(--violet-soft)">いま埋めている項目が、次のグレードでどう発展するかを横に並べています。セルを押すとそのグレードの詳細に飛べます。</div>'+
+   '<div class="maprail"><div class="mapgrid">';
+  h+='<div class="mh mh-cat">カテゴリ</div>';
+  GRADES.forEach(g=>{
+    const t=tierOf(g.n), dd=isDone(g.n), lk=isLocked(g.n);
+    h+='<div class="mh'+(g.n===cg?' now':'')+'">'+
+      '<span class="mh-g" style="color:'+(lk?'#A5A0C0':t.hex)+'">G'+g.n+(dd?' ✓':'')+'</span>'+
+      '<span class="mh-t">'+t.name+'</span>'+
+      (g.n===cg?'<span class="mh-now">挑戦中</span>':'')+
+    '</div>';
+  });
+  CATS.forEach(c=>{
+    h+='<div class="mc-cat">'+c.n+'</div>';
+    GRADES.forEach(g=>{
+      const lk=isLocked(g.n);
+      let cells=[], dn=0, tt=0;
+      if(c.k==='vision'){
+        const st=visStats(g.n); dn=st.d; tt=st.t;
+        if(tt) cells.push(g.vision.join(' / '));
+      }else{
+        g.sections.forEach((sec,si)=>{
+          if(sec.title.indexOf(c.k)!==0) return;
+          const st=secStats(g.n,si); dn+=st.d; tt+=st.t;
+          cells.push(subLabel(sec.title,c.k));
+        });
+      }
+      if(!tt){ h+='<div class="mc empty'+(g.n===cg?' now':'')+'">–</div>'; return; }
+      const full=dn===tt, cls=(full?' full':(dn>0?' part':''))+(lk?' lk':'')+(g.n===cg?' now':'');
+      h+='<button class="mc'+cls+'" data-act="openGrade" data-g="'+g.n+'" title="'+esc(cells.join(' / '))+'">'+
+        '<span class="mc-txt">'+esc(cells.join('｜'))+'</span>'+
+        '<span class="mc-num">'+(full?'✓ ':'')+dn+'/'+tt+'</span>'+
+      '</button>';
+    });
+  });
+  h+='</div></div>';
+  h+='<div class="maplegend tiny muted"><span><i class="lg full"></i>達成</span><span><i class="lg part"></i>進行中</span><span><i class="lg"></i>未着手</span><span><i class="lg lk"></i>ロック中</span></div>';
+  return h;
+}
+
+function vDex(){
+  const st=stage(), nm=D.buddy?esc(D.buddy):'相棒';
+  let h='<div class="sec-label">進化ずかん</div>'+
+    '<div class="note" style="background:var(--mint-soft)">グレードをひとつ達成するたびに、'+nm+'のすがたが変わっていきます。いまは <b>第'+st+'形態 / 10</b>。</div><div class="dex">';
+  STAGES.forEach((c,i)=>{
+    const s2=i+1, un=s2<=st;
+    h+='<div class="dcard'+(un?'':' lock')+(s2===st?' now':'')+'">'+
+      '<span class="stage-no">'+String(s2).padStart(2,'0')+'</span>'+
+      '<div class="pod">'+creature(s2,92,'')+'</div>'+
+      '<div class="nm">'+(un?esc(c.t):'？？？')+'</div>'+
+      '<div class="dsc">'+(un?esc(c.dsc):'Grade '+(s2-1)+' を達成すると解放')+'</div>'+
+    '</div>';
+  });
+  return h+'</div>';
+}
+
+/* ============================================================
+   RENDER + EVENTS
+   ============================================================ */
+const TABS=[
+  {k:'home',n:'ホーム',i:'<path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
+  {k:'map',n:'<span class="lbl-full">ステップ一覧</span><span class="lbl-short">マップ</span>',i:'<path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
+  {k:'grades',n:'グレード',i:'<path d="M4 18h4v3H4zM10 12h4v9h-4zM16 6h4v15h-4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
+  {k:'dex',n:'ずかん',i:'<path d="M12 3l2.2 5.2 5.8.5-4.4 3.8 1.3 5.6L12 15.2 7.1 18.1l1.3-5.6L4 8.7l5.8-.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>'},
+  {k:'sheet',n:'マイシート',i:'<circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4.5 20c1.2-3.7 4-5.6 7.5-5.6S18.3 16.3 19.5 20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'}
+];
+function renderTabs(){
+  const st=stage(), cg=currentGrade(), dn=done(cg), tt=total(cg), tc=tierOf(cg);
+  document.getElementById('tabbar').innerHTML=
+   '<div class="side-buddy">'+
+     '<div class="pod" style="width:96px;height:96px;margin:0 auto">'+creature(st,84,'float')+'</div>'+
+     '<div class="sb-name">'+(D.buddy?esc(D.buddy):'なまえ未設定')+'</div>'+
+     '<div class="sb-meta">Grade '+cg+'／'+tc.name+' ・ 第'+st+'形態</div>'+
+     '<div class="bar" style="margin-top:9px"><i style="width:'+Math.round(dn/tt*100)+'%;background:'+tc.hex+'"></i></div>'+
+     '<div class="sb-meta" style="margin-top:6px">'+dn+' / '+tt+' 項目</div>'+
+   '</div>'+
+   TABS.map(t=>
+    '<button data-act="tab" data-tab="'+t.k+'" class="'+(view===t.k&&openG===null?'on':'')+'">'+
+    '<svg viewBox="0 0 24 24">'+t.i+'</svg>'+t.n+'</button>').join('');
+}
+function render(keepScroll){
+  const y=window.scrollY;
+  const v=document.getElementById('view');
+  if(openG) v.innerHTML=vDetail(openG);
+  else if(view==='home') v.innerHTML=vHome();
+  else if(view==='grades') v.innerHTML=vGrades();
+  else if(view==='map') v.innerHTML=vMap();
+  else if(view==='dex') v.innerHTML=vDex();
+  else v.innerHTML=vSheet();
+  renderTabs();
+  if(keepScroll) window.scrollTo(0,y); else window.scrollTo(0,0);
+}
+
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const a=el.dataset.act;
+  if(a==='tab'){ view=el.dataset.tab; openG=null; render(); }
+  else if(a==='openGrade'){ openG=+el.dataset.g; view='grades'; render(); }
+  else if(a==='back'){ openG=null; render(); }
+  else if(a==='toggle'){ toggle(el.dataset.id); }
+  else if(a==='creed'){ const i=+el.dataset.i,v=+el.dataset.v; D.creed[i].s=(D.creed[i].s===v?0:v); save(); render(true); }
+  else if(a==='atari'){ const k=el.dataset.k,v=el.dataset.v; D.atarimae[k]=(D.atarimae[k]===v?null:v); save(); render(true); }
+  else if(a==='sfx'){
+    D.sound=!D.sound; save();
+    if(el.dataset.icon){ el.innerHTML=D.sound?SPK_ON:SPK_OFF; if(D.sound) blip(.7); }
+    else { if(D.sound) blip(.7); render(true); }
+  }
+  else if(a==='export'){ exportData(); }
+  else if(a==='import'){ document.getElementById('importFile').click(); }
+  else if(a==='reset'){
+    if(confirm('チェック・入力内容をすべて消去します。よろしいですか？')){
+      D=JSON.parse(JSON.stringify(DEFAULT)); save(); render(); toast('リセットしました');
+    }
+  }
+  else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='importFile'&&e.target.files[0]){ importData(e.target.files[0]); e.target.value=''; }
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset.field){
+    const k=t.dataset.field.split('.');
+    if(k.length===1) D[k[0]]=t.value; else D[k[0]][k[1]]=t.value;
+    save();
+    if(k[0]==='buddy'){ const ht=document.querySelector('.hero-title'); if(ht) ht.textContent=t.value||'なまえ未設定'; }
+  }else if(t.dataset.creed!=null){ D.creed[+t.dataset.creed].t=t.value; save(); }
+  else if(t.dataset.custom){ D.custom[t.dataset.custom]=t.value; save(); }
+});
+
+function toggle(id){
+  const gn=gradeOf(id);
+  if(!D.checks[id] && isLocked(gn)){
+    toast('Grade '+(gn-1)+' を埋めると開きます');
+    return;
+  }
+  const before=GRADES.filter(g=>isDone(g.n)).map(g=>g.n), st0=stage();
+  const now=!D.checks[id];
+  if(now){ D.checks[id]=true; D.log.push(Date.now()); if(D.log.length>400) D.log=D.log.slice(-400); }
+  else delete D.checks[id];
+  save();
+  const after=GRADES.filter(g=>isDone(g.n)).map(g=>g.n);
+  const newly=after.filter(n=>!before.includes(n)&&!D.seen.includes(n));
+  render(true);
+  if(newly.length){ newly.forEach(n=>D.seen.push(n)); save(); evolve(Math.max.apply(null,newly),st0,stage()); }
+  else if(now){ blip(done(gn)/total(gn)); toast('+10 XP','xp'); }
+}
+
+function evolve(gradeN,oldSt,newSt){
+  const t=tierOf(gradeN), sg=STAGES[newSt-1], nm=D.buddy?esc(D.buddy):'相棒';
+  const fin = (gradeN===10 || oldSt===newSt);
+  const box=document.getElementById('evo');
+  const COL=['#5B3DF5','#17B98A','#FFC44D','#F2536A','#2E8FE0','#FF9F45'];
+  let conf='';
+  for(let i=0;i<46;i++){
+    const round=i%4===0;
+    conf+='<span class="conf'+(round?' r':'')+'" style="left:'+(Math.random()*100).toFixed(1)+'%;'+
+      'background:'+COL[i%COL.length]+';animation-delay:'+(0.66+Math.random()*0.7).toFixed(2)+'s;'+
+      'animation-duration:'+(2.2+Math.random()*1.6).toFixed(2)+'s;'+
+      'width:'+(round?7+Math.random()*5:6+Math.random()*4).toFixed(0)+'px;'+
+      'height:'+(round?7+Math.random()*5:10+Math.random()*8).toFixed(0)+'px"></span>';
+  }
+  box.innerHTML=conf+
+   '<div class="evo-card">'+
+     '<button class="sfx-btn" data-act="sfx" data-icon="1" aria-label="効果音">'+(D.sound?SPK_ON:SPK_OFF)+'</button>'+
+     '<div class="evo-stage">'+
+       '<span class="rays"></span><span class="glow"></span><span class="shock"></span><span class="shock s2"></span>'+
+       (fin?'':'<span class="fig old">'+creature(oldSt,150,'')+'</span>')+
+       '<span class="fig new'+(fin?' solo':'')+'">'+creature(newSt,150,'float')+'</span>'+
+     '</div>'+
+     '<div class="kick">'+(fin?'ALL GRADE CLEAR':'GRADE '+gradeN+' CLEAR')+'</div>'+
+     '<h2 class="disp">'+(fin?nm+' 完成！':nm+' が進化！')+'</h2>'+
+     '<p class="cap">第'+newSt+'形態「'+esc(sg.t)+'」<br>'+esc(sg.dsc)+
+       '<br><span style="color:'+t.hex+';font-weight:700">'+(fin?'全'+totalItems()+'項目、走り切りました':t.name+'として次のステップへ')+'</span></p>'+
+     '<button class="evo-btn" data-act="closeEvo">'+(fin?'やりきった':'よし、次へ')+'</button>'+
+   '</div>';
+  box.classList.add('on');
+  fanfare(fin);
+}
+
+/* boot */
+(async()=>{ await load(); render(); })();
+</script>
+</body>
+</html>
