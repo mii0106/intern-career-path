@@ -24,21 +24,31 @@ window.STEP_CONFIG = {
   SUPABASE_URL: 'https://obunqfhalsqnzhdhacvr.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_NPEAWWLvL4IPcEKPtgwgWg_6hLcrgvt',
 
-  /* ログインに使う内部的なメールアドレスのドメイン。
-     氏名ではなく m-xxxxxx のようなランダムな内部IDと組み合わせて使うだけで、
-     実際にメールを送ることはありません（Supabase側でメール確認をオフにします）。
+  /* ログインの内部IDに使う、全員共通の固定ドメイン。
+     ここは「本人のメールアドレス」ではありません。
+     メンバーが自分のメールアドレスを入力する画面は1つもなく、
+     インターン生が使っているメールの種類（Gmail・大学・キャリア等）は
+     登録にもログインにも一切関係しません。
 
-     ここは「実在するTLDのドメイン」でなければなりません。
-     step-app.local のような架空のTLDは Supabase Auth が
-       Email address "m-xxxxxx@step-app.local" is invalid
-     として弾きます（.local / .test / .internal などは実在しないTLDのため）。
+       田中さん → m-6x1oi8dcgp@intern-career-path.vercel.app
+       佐藤さん → m-k2p9wq3lzx@intern-career-path.vercel.app
 
-     そのため自社ドメインを使っています。このドメイン宛にメールが飛ぶことは
-     ありませんが、気になる場合は自社で持っている別のドメインに変えてください。
+     @ の前はランダムな内部IDで、氏名とも本人のアドレスとも無関係です。
 
+     このアプリはメールを1通も送りません（送りうるのは登録時の signUp だけで、
+     Supabase側で Confirm email をオフにすれば送信は発生しません。
+     パスワード再設定もマジックリンクも使っていません）。
+
+     そのうえで、万一 Confirm email が誤ってオンに戻された場合でも
+     誰の受信箱にも届かないよう、メールを受け取る仕組みを持たない
+     このアプリ自身のドメインを使っています。
+     自社ドメインを使うと、その場合に社内へ配信が試みられてしまいます。
+
+     ※架空のTLD（.local / .test / .internal など）は Supabase Auth が
+       「Email address ... is invalid」として弾くので使えません。
      ※すでに登録した人がいる状態でここを変えると、その人のログインは
        繋がらなくなります（管理画面の「ログインをリセットする」で復旧できます）。 */
-  AUTH_EMAIL_DOMAIN: 'sho-san.co.jp',
+  AUTH_EMAIL_DOMAIN: 'intern-career-path.vercel.app',
 
   /* 何日チェックが動いていなければ「停滞」として管理者画面で拾うか */
   STALE_DAYS: 14,

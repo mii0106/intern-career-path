@@ -72,7 +72,7 @@ const Store = (() => {
     }
     return res ? res.data : null;
   }
-  const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'sho-san.co.jp');
+  const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'intern-career-path.vercel.app');
   const newSlug  = () => 'm-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
   const todayISO = () => new Date().toISOString().slice(0,10);
 
