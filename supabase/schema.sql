@@ -13,7 +13,7 @@
 --   ・ロール昇格や他人のULコメント書き換えを防ぐため、
 --     本人側からの書き込みだけは関数（RPC）経由に絞っている
 --   ・ログインのパスワードは1人1つ（Supabase Auth が持つ）。
---     共通パスコードは「登録していい人かどうか」の入口の合言葉であって、
+--     共通パスコードは「登録していい人かどうか」を確かめるためのもので、
 --     ログインのパスワードではない。ここを分けておかないと、
 --     共通パスコードを知っている人が名簿からULの名前を選ぶだけで
 --     管理者になれてしまう
@@ -173,8 +173,8 @@ grant select on public.member_roster to anon, authenticated;
 
 -- ============================================================
 -- 3.5 パスコードの保管
---     部署共通パスコード（登録するときの合言葉）と、
---     管理者キー（ULが自分を管理者に昇格させるための合言葉）を
+--     部署共通パスコード（登録するときに入れるもの）と、
+--     管理者キー（ULが自分を管理者に昇格させるときに入れるもの）を
 --     ハッシュにして持つ。クライアントからは一切読めない。
 --     設定のしかたは SETUP.md 手順5を参照。
 -- ============================================================
@@ -185,8 +185,8 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.app_config (
   id             int primary key default 1,
-  team_passcode  text,          -- bcryptハッシュ。新規登録のときの合言葉
-  admin_passcode text,          -- bcryptハッシュ。管理者になるための合言葉
+  team_passcode  text,          -- bcryptハッシュ。新規登録のときの共通パスコード
+  admin_passcode text,          -- bcryptハッシュ。管理者になるための管理者キー
   updated_at     timestamptz not null default now()
 );
 do $$ begin
@@ -216,7 +216,7 @@ alter table public.app_config enable row level security;
 -- 古い版で関数を作ってしまっていた場合は、ここで確実に落とす。
 drop function if exists public.set_passcodes(text, text);
 
--- 合言葉があっているかだけを返す。未設定のあいだは true（誰でも登録できる）。
+-- 共通パスコードが合っているかだけを返す。未設定のあいだは true（誰でも登録できる）。
 create or replace function public.check_team_passcode(p_code text)
 returns boolean language sql stable security definer set search_path = public, extensions as $$
   select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), true)
