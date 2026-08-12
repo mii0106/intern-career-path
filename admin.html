@@ -255,6 +255,7 @@ const DELAY_ALERT = CFG.DELAY_ALERT_MONTHS != null ? CFG.DELAY_ALERT_MONTHS : 1;
 
 /* 生データ */
 let A = { members:[], progress:{}, states:{}, notes:[], scores:[], reviews:[] };
+let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済みか */
 /* メンバーごとに計算済みの行 */
 let ROWS = [], BY_ID = {};
 /* 画面の状態 */
@@ -297,6 +298,7 @@ async function doLogin(){
 async function loadAll(){
   A = await Store.adminLoad();
   compute();
+  if(CONFIG_STATUS===null) CONFIG_STATUS = await Store.configStatus();
 }
 function compute(){
   const now=new Date();
@@ -332,6 +334,7 @@ function compute(){
       months: outlook.elapsedMonths,
       delay: outlook.delayMonths,
       lastCheck:last, stale: last? daysAgo(last) : null,
+      registeredAt:m.created_at||null, regDays: m.created_at? daysAgo(m.created_at) : null,
       stuck: stuckItems(checks),
       notes:notes, lastNote:notes[0]||null,
       noteCount:notes.length,
@@ -379,7 +382,8 @@ function sorted(list){
     name:r.name, unit:r.unit, months:r.months==null?-1:r.months, certified:r.certified||0,
     cleared:r.cleared, cg:r.cg, pct:r.pct, overall:r.overall,
     delay:r.delay==null?-99:r.delay, stale:r.stale==null?9999:r.stale,
-    target:r.outlook.targetDate||'9999', notes:r.noteCount, quiz:r.quizAvg==null?-1:r.quizAvg
+    target:r.outlook.targetDate||'9999', notes:r.noteCount, quiz:r.quizAvg==null?-1:r.quizAvg,
+    registered:r.registeredAt||''
   })[k];
   return list.slice().sort((a,b)=>{
     const x=val(a), y=val(b);
@@ -504,7 +508,16 @@ function vDash(){
   let h='<h1 class="h1 disp">ダッシュボード</h1>'+
     '<p class="lead">'+(F.unit?esc(F.unit)+'の':'部署全体の')+'いまの状態。数字を押すとその人だけに絞り込みます。</p>';
   if(Store.mode==='local') h+='<div class="banner"><span>⚠️</span><div><b>デモデータを表示しています</b><br>'+
-    'shared/config.js に Supabase の情報を入れると、実際の60名のデータに切り替わります（SETUP.md）。</div></div>';
+    'shared/config.js に Supabase の情報を入れると、実際のデータに切り替わります（SETUP.md）。</div></div>';
+  if(CONFIG_STATUS && CONFIG_STATUS.team===false) h+='<div class="banner" style="background:var(--coral-soft);border-color:#F5CBD3">'+
+    '<span>🔓</span><div><b>共通パスコードが未設定です</b><br>'+
+    'いまはURLを知っている人が誰でも登録できる状態です。SETUP.md 手順5のSQLを1回実行してください。</div></div>';
+  if(!ROWS.length) return h+'<div class="card"><div style="text-align:center;padding:34px 16px">'+
+    '<b style="font-size:16px">まだ誰も登録していません</b>'+
+    '<p class="tiny muted" style="margin:8px 0 0;line-height:1.9">'+
+    'メンバーがアプリを開いて自分の情報を登録すると、ここに順に増えていきます。<br>'+
+    'アプリのURLと共通パスコードをメンバーに共有してください。<br>'+
+    '事前に一括で入力する必要はありません。</p></div></div>';
   h+=barFilters({alert:false});
 
   h+='<div class="grid g4" style="margin-bottom:14px">'+
@@ -556,6 +569,33 @@ function vDash(){
       '<td class="num">'+cnt(l.filter(r=>!r.ywtDone).length,'a')+'</td></tr>';
   });
   h+='</tbody></table></div></div></div>';
+
+  /* 登録状況 — 一括投入ではなく、使い始めた人から順に増えていく */
+  const newest=ROWS.filter(r=>r.registeredAt).sort((a,b)=>String(b.registeredAt).localeCompare(String(a.registeredAt)));
+  const last7=newest.filter(r=>r.regDays!=null&&r.regDays<=7).length;
+  const noProfile=all.filter(r=>!r.m.join_date||!r.m.unit);
+  h+='<div class="card"><h2>登録状況 <span class="cnt">メンバーが自分で登録した分だけ集まります</span></h2>'+
+    '<div class="grid g3" style="margin-bottom:12px">'+
+      kpi('登録済み',ROWS.length,'人','UL・管理者を含む','')+
+      kpi('直近7日の新規登録',last7,'人','','')+
+      kpi('情報が足りない人',noProfile.length,'人','Unitか入社日が未入力','')+
+    '</div>';
+  if(noProfile.length){
+    h+='<p class="tiny muted" style="margin:0 0 8px">入社日が空の人は昇格予定を計算できません。'+
+      '名前を押して<b>設定</b>タブから補ってください（本人にマイシートで入れてもらってもOK）。</p>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
+      noProfile.slice(0,18).map(r=>'<span class="chip a">'+esc(r.name)+
+        (!r.m.unit?'（Unit）':'')+(!r.m.join_date?'（入社日）':'')+'</span>').join('')+
+      (noProfile.length>18?'<span class="tiny muted">ほか'+(noProfile.length-18)+'名</span>':'')+'</div>';
+  }
+  h+='<div class="tiny muted" style="font-weight:700;margin-bottom:4px">最近登録した人</div>'+
+    '<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">名前</th><th class="nos">Unit</th><th class="nos">UL</th>'+
+    '<th class="nos">入社日</th><th class="nos">登録日</th></tr></thead><tbody>'+
+    newest.slice(0,6).map(r=>'<tr><td class="nm">'+memberLink(r)+'</td><td>'+esc(r.unit)+'</td>'+
+      '<td>'+esc(r.m.ul||'—')+'</td><td>'+(r.m.join_date?fmtDateFull(r.m.join_date):'<span class="chip a">未入力</span>')+'</td>'+
+      '<td>'+fmtDateFull(r.registeredAt)+'<span class="tiny muted"> ・'+relDays(r.registeredAt)+'</span></td></tr>').join('')+
+    '</tbody></table></div></div>';
 
   /* いま見るべき人 */
   const focus=all.map(r=>({r:r,a:alertsOf(r)}))
@@ -612,9 +652,9 @@ function vRoster(){
     '<th class="nos">Grade 1 → 10</th>'+
     th('cg','挑戦中')+th('pct','挑戦中の進捗','num')+th('overall','全体','num')+
     th('target','昇格予定')+th('delay','標準比','num')+th('stale','最終更新','num')+
-    th('quiz','テスト','num')+th('notes','申し送り','num')+
+    th('quiz','テスト','num')+th('notes','申し送り','num')+th('registered','登録日')+
     '<th class="nos st">状況</th></tr></thead><tbody>';
-  if(!list.length) h+='<tr><td colspan="15"><div class="empty">条件に合うメンバーがいません。</div></td></tr>';
+  if(!list.length) h+='<tr><td colspan="16"><div class="empty">条件に合うメンバーがいません。</div></td></tr>';
   list.forEach(r=>{
     h+='<tr><td class="nm">'+memberLink(r)+
         (r.role!=='member'?' <span class="chip g">'+(r.role==='admin'?'管理':'UL')+'</span>':'')+'</td>'+
@@ -633,6 +673,7 @@ function vRoster(){
       '<td class="num">'+staleChip(r)+'</td>'+
       '<td class="num">'+(r.quizAvg==null?'<span class="muted">—</span>':r.quizAvg+'%')+'</td>'+
       '<td class="num">'+(r.noteCount||'<span class="muted">0</span>')+'</td>'+
+      '<td>'+(r.registeredAt?fmtDateFull(r.registeredAt):'<span class="muted">—</span>')+'</td>'+
       '<td class="st">'+(alertsOf(r).filter(a=>a!=='ywt'&&a!=='monthly').map(alertChip).join(' ')||'<span class="muted">—</span>')+'</td></tr>';
   });
   h+='</tbody></table></div>';
@@ -644,13 +685,14 @@ function vRoster(){
 }
 function csvRoster(){
   const rows=[['名前','Unit','UL','メンター','入社日','在籍月数','認定グレード','完了グレード数','挑戦中グレード',
-    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標']];
+    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標','登録日']];
   sorted(filtered()).forEach(r=>rows.push([r.name,r.unit,r.m.ul||'',r.m.mentor||'',r.m.join_date||'',
     r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pct,r.overall,
     r.outlook.targetDate||'',r.delay==null?'':r.delay,r.lastCheck?String(r.lastCheck).slice(0,10):'',
     r.quizAvg==null?'':r.quizAvg,r.noteCount,r.ywtDone?'提出済':'未提出',r.monthlyDone?'提出済':'未提出',
     r.ngAtarimae.length?r.ngAtarimae.join(' / '):'',
-    r.stuck[0]?r.stuck[0].cat+'：'+r.stuck[0].t:'', r.stuck[1]?r.stuck[1].cat+'：'+r.stuck[1].t:'', r.nextGoal]));
+    r.stuck[0]?r.stuck[0].cat+'：'+r.stuck[0].t:'', r.stuck[1]?r.stuck[1].cat+'：'+r.stuck[1].t:'', r.nextGoal,
+    r.registeredAt?String(r.registeredAt).slice(0,10):'']));
   downloadCSV('キャリアステップ現状一覧_'+todayStr()+'.csv',rows);
   toast('CSVを書き出しました');
 }

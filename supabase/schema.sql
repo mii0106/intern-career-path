@@ -148,14 +148,76 @@ $$;
 -- ============================================================
 -- 3. ログイン画面に出す名簿
 --    ログイン前（anon）でも名前を選べるようにするための最小限のビュー。
---    出るのは 表示名・Unit・内部ID だけで、入社日や進捗は出ない。
+--    出るのは 表示名・Unit・UL・内部ID だけで、入社日や進捗は出ない。
+--    Unit と UL は、新しく登録する人の選択肢としても使う
+--    （すでに誰かが登録した表記がそのまま選べるので、表記が揃う）。
 --    ※名前の一覧はURLを知っていれば見えます。それも隠したい場合は
 --      SETUP.md の「名簿も隠したい場合」を参照。
 -- ============================================================
 drop view if exists public.member_roster;
 create view public.member_roster with (security_invoker = false) as
-  select id, name, unit, slug from public.members where active order by unit nulls last, name;
+  select id, name, unit, ul, slug from public.members where active order by unit nulls last, name;
 grant select on public.member_roster to anon, authenticated;
+
+-- ============================================================
+-- 3.5 パスコードの保管
+--     部署共通パスコード（登録するときの合言葉）と、
+--     管理者キー（ULが自分を管理者に昇格させるための合言葉）を
+--     ハッシュにして持つ。クライアントからは一切読めない。
+--     設定のしかたは SETUP.md 手順5を参照。
+-- ============================================================
+create extension if not exists pgcrypto;
+
+create table if not exists public.app_config (
+  id             int primary key default 1,
+  team_passcode  text,          -- bcryptハッシュ。新規登録のときの合言葉
+  admin_passcode text,          -- bcryptハッシュ。管理者になるための合言葉
+  updated_at     timestamptz not null default now()
+);
+do $$ begin
+  alter table public.app_config add constraint app_config_single check (id = 1);
+exception when duplicate_object then null; end $$;
+insert into public.app_config(id) values (1) on conflict (id) do nothing;
+
+-- ポリシーを1つも作らないので、クライアント（anon/authenticated）からは読めない。
+-- 下の security definer 関数の中からだけ参照される。
+alter table public.app_config enable row level security;
+
+-- パスコードの設定は、あえて関数にせず SQL Editor から直接 update します。
+-- PostgreSQL は作成した関数の実行権限を既定で PUBLIC に与えるため、
+-- 「設定用の関数」を置くとメンバーからも呼べてしまい、
+-- パスコードと管理者キーを書き換えられる隙になります。
+-- 設定するSQLは SETUP.md 手順5に書いてあります（下と同じ内容）。
+--
+--   update public.app_config
+--      set team_passcode  = crypt('チーム共通のパスコード', gen_salt('bf')),
+--          admin_passcode = crypt('管理者キー',             gen_salt('bf')),
+--          updated_at = now()
+--    where id = 1;
+--
+-- 万一この先で設定用の関数を足すときは、必ず
+--   revoke all on function <名前>(...) from public;
+-- まで書いてください（anon / authenticated からのrevokeだけでは足りません）。
+-- 古い版で関数を作ってしまっていた場合は、ここで確実に落とす。
+drop function if exists public.set_passcodes(text, text);
+
+-- 合言葉があっているかだけを返す。未設定のあいだは true（誰でも登録できる）。
+create or replace function public.check_team_passcode(p_code text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), true)
+    from public.app_config where id = 1
+$$;
+grant execute on function public.check_team_passcode(text) to anon, authenticated;
+
+-- パスコードが設定済みかどうか（管理者画面で注意を出すため）。中身は返さない。
+create or replace function public.config_status()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+           'team',  (select team_passcode  is not null from public.app_config where id=1),
+           'admin', (select admin_passcode is not null from public.app_config where id=1))
+  where public.is_manager()
+$$;
+grant execute on function public.config_status() to authenticated;
 
 -- ============================================================
 -- 4. 本人側からの書き込み（ロール昇格などを防ぐため関数に限定）
@@ -185,16 +247,76 @@ begin
   return v_id;
 end $$;
 
+-- 自分で名簿に登録する。
+-- 一括投入をしなくても、使い始めた人の情報が順に名簿へ積み上がっていく。
+-- 作れるのは自分の行だけで、role は必ず member 固定。
+-- 同じログインで2回呼んだ場合は、行を作り直さず内容を更新する。
+create or replace function public.register_me(
+  p_name text, p_unit text, p_ul text, p_mentor text,
+  p_join_date date, p_certified_grade int, p_code text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_slug text;
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  if not coalesce(public.check_team_passcode(p_code), true) then raise exception 'パスコードが違います'; end if;
+  if nullif(trim(p_name),'') is null then raise exception '氏名を入力してください'; end if;
+
+  v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));
+  if v_slug = '' then raise exception 'ログイン情報を確認できません'; end if;
+
+  select id into v_id from public.members where auth_id = auth.uid();
+  if v_id is not null then
+    /* すでに登録済み。押し間違いや再送信でも増えないように更新だけする */
+    update public.members
+       set name            = trim(p_name),
+           unit            = nullif(trim(p_unit),''),
+           ul              = nullif(trim(p_ul),''),
+           mentor          = nullif(trim(p_mentor),''),
+           join_date       = coalesce(p_join_date, join_date),
+           certified_grade = coalesce(p_certified_grade, certified_grade)
+     where id = v_id;
+    return v_id;
+  end if;
+
+  insert into public.members(name, slug, unit, ul, mentor, join_date, certified_grade, role, auth_id, active)
+  values (trim(p_name), v_slug, nullif(trim(p_unit),''), nullif(trim(p_ul),''),
+          nullif(trim(p_mentor),''), p_join_date, p_certified_grade, 'member', auth.uid(), true)
+  returning id into v_id;
+
+  insert into public.member_state(member_id) values (v_id) on conflict do nothing;
+  return v_id;
+end $$;
+
+-- 管理者キーを入れて、自分を UL に昇格させる。
+-- キーが未設定のあいだは昇格できない（誰でも全員分を見られてしまうため）。
+create or replace function public.claim_manager(p_code text)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_id uuid := public.current_member_id(); v_hash text;
+begin
+  if v_id is null then raise exception 'not linked'; end if;
+  select admin_passcode into v_hash from public.app_config where id = 1;
+  if v_hash is null then raise exception '管理者キーがまだ設定されていません（SETUP.md 手順5）'; end if;
+  if v_hash <> crypt(coalesce(p_code,''), v_hash) then raise exception '管理者キーが違います'; end if;
+
+  update public.members set role = 'ul' where id = v_id and role = 'member';
+  return (select role from public.members where id = v_id);
+end $$;
+
 -- マイシートの自己申告項目だけを更新する。role や auth_id には触れない。
-create or replace function public.update_my_profile(p_name text, p_join_date date, p_certified_grade int)
-returns void language plpgsql security definer set search_path = public as $$
+create or replace function public.update_my_profile(
+  p_name text, p_join_date date, p_certified_grade int,
+  p_unit text default null, p_ul text default null, p_mentor text default null
+) returns void language plpgsql security definer set search_path = public as $$
 declare v_id uuid := public.current_member_id();
 begin
   if v_id is null then raise exception 'not linked'; end if;
   update public.members
      set name            = coalesce(nullif(trim(p_name),''), name),
          join_date       = coalesce(p_join_date, join_date),
-         certified_grade = coalesce(p_certified_grade, certified_grade)
+         certified_grade = coalesce(p_certified_grade, certified_grade),
+         unit            = coalesce(nullif(trim(p_unit),''),   unit),
+         ul              = coalesce(nullif(trim(p_ul),''),     ul),
+         mentor          = coalesce(nullif(trim(p_mentor),''), mentor)
    where id = v_id;
 end $$;
 
@@ -230,9 +352,13 @@ begin
 end $$;
 
 grant execute on function public.claim_member(uuid)                                  to authenticated;
-grant execute on function public.update_my_profile(text, date, int)                  to authenticated;
+grant execute on function public.register_me(text,text,text,text,date,int,text)      to authenticated;
+grant execute on function public.claim_manager(text)                                 to authenticated;
+grant execute on function public.update_my_profile(text,date,int,text,text,text)     to authenticated;
 grant execute on function public.submit_review(text, text, text, text, text, text, text) to authenticated;
 grant execute on function public.set_ul_comment(uuid, text)                          to authenticated;
+/* 古い版から貼り直したときに、引数が違う旧関数が残らないように落とす */
+drop function if exists public.update_my_profile(text, date, int);
 
 -- ============================================================
 -- 5. RLS
@@ -330,12 +456,14 @@ create policy reviews_delete on public.reviews for delete to authenticated
   using (public.is_manager());
 
 -- ============================================================
--- 6. 名簿の投入例
---    slug は半角英数とハイフンのみ。ログイン用の内部IDになるので
---    一度決めたら変えないでください。
---    role は member / ul / admin の3つ。
+-- 6. 名簿について
+--    通常は投入작業は不要です。各メンバーが自分で登録すると
+--    members に行が増えていき、そのまま管理者画面の一覧に反映されます。
+--
+--    先に名簿を用意しておきたい場合（未登録者を把握したいときなど）は、
+--    下のように行だけ作っておけます。auth_id が空の行は、
+--    その名前を選んでパスコードを入れた人と紐付きます。
 -- ============================================================
 -- insert into public.members (name, slug, unit, ul, mentor, join_date, certified_grade, role) values
---   ('山田 太郎', 'yamada-taro', 'Unit A', '佐藤 花子', '鈴木 一郎', '2026-04-01', 2, 'member'),
---   ('佐藤 花子', 'sato-hanako', 'Unit A', null,        null,        '2025-04-01', 7, 'ul')
+--   ('山田 太郎', 'yamada-taro', 'Unit A', '佐藤 花子', '鈴木 一郎', '2026-04-01', 2, 'member')
 -- on conflict (slug) do nothing;

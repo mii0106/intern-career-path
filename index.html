@@ -149,7 +149,7 @@ main{padding:0 16px}
 /* ---------- sheet form ---------- */
 .field{margin-bottom:14px}
 .field label{display:block;font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:5px;letter-spacing:.04em}
-.field input[type=text],.field input[type=date],.field textarea,.field select{
+.field input[type=text],.field input[type=date],.field input[type=password],.field textarea,.field select{
   width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:12px;padding:11px 12px;font-size:14.5px;transition:.15s
 }
 .field textarea{min-height:78px;resize:vertical;line-height:1.7}
@@ -456,7 +456,7 @@ main{padding:0 16px}
      ・設定が空なら、いままでどおりこの端末のブラウザだけに保存する（ローカルモード）
    ============================================================ */
 const DEFAULT={
-  profile:{name:'',join:'',grade:''}, buddy:'', sound:true,
+  profile:{name:'',join:'',grade:'',unit:'',ul:'',mentor:''}, buddy:'', sound:true,
   goals:{basic:'',skill:''},
   creed:[{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0}],
   atarimae:{}, checks:{}, custom:{}, log:[], seen:[]
@@ -464,13 +464,15 @@ const DEFAULT={
 let D=JSON.parse(JSON.stringify(DEFAULT));
 let view='home', openG=null, ready=false, profileDirty=false;
 /* 記録タブ */
+let ROSTER=[];   /* 既存のUnit・UL・メンターを選択肢に出すために使う */
 let LOG={ seg:'notes', rkind:'ywt', notes:[], scores:[], reviews:[], loaded:false,
           ywtPeriod:ywtPeriod(), monthPeriod:monthlyPeriod(), draft:{}, saving:false };
 
 async function load(){
   const d=await Store.myData();
   D=JSON.parse(JSON.stringify(DEFAULT));
-  D.profile={ name:d.member.name||'', join:d.member.join_date||'', grade:d.member.certified_grade||'' };
+  D.profile={ name:d.member.name||'', join:d.member.join_date||'', grade:d.member.certified_grade||'',
+              unit:d.member.unit||'', ul:d.member.ul||'', mentor:d.member.mentor||'' };
   Object.keys(d.checks).forEach(k=>{ if(d.checks[k]) D.checks[k]=true; });
   const s=d.state||{};
   D.buddy=s.buddy||'';
@@ -491,7 +493,8 @@ function save(){
         atarimae:D.atarimae, custom:D.custom, seen:D.seen, sound:D.sound });
       if(profileDirty){
         await Store.saveProfile({ name:D.profile.name, join_date:D.profile.join||null,
-          certified_grade:D.profile.grade?+D.profile.grade:null });
+          certified_grade:D.profile.grade?+D.profile.grade:null,
+          unit:D.profile.unit||null, ul:D.profile.ul||null, mentor:D.profile.mentor||null });
         profileDirty=false;
       }
       flash('ok');
@@ -570,6 +573,12 @@ function fanfare(big){
    VIEWS
    ============================================================ */
 function cutTxt(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
+/* すでに登録されている表記を選択肢にする。表記ゆれを増やさないため */
+function uniqSorted(list){ return Array.from(new Set(list.filter(x=>x&&String(x).trim()))).sort((a,b)=>String(a).localeCompare(String(b),'ja')); }
+function rosterUnits(){ return uniqSorted(ROSTER.map(m=>m.unit)); }
+function rosterUls(){   return uniqSorted(ROSTER.map(m=>m.ul)); }
+function rosterNames(){ return uniqSorted(ROSTER.map(m=>m.name)); }
+function dl(id,items){ return '<datalist id="'+id+'">'+items.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>'; }
 function vHome(){
   const cg=currentGrade(), g=GRADES[cg-1], t=tierOf(cg);
   const dn=done(cg), tt=total(cg), pct=Math.round(dn/tt*100);
@@ -715,6 +724,9 @@ function vSheet(){
   h+='<div class="sec-label">マイシート</div>';
   h+='<div class="card">'+
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
+   '<div class="field"><label>所属Unit</label><input type="text" data-field="profile.unit" list="dlUnit" value="'+esc(D.profile.unit)+'" placeholder="例：Unit A">'+dl('dlUnit',rosterUnits())+'</div>'+
+   '<div class="field"><label>UL</label><input type="text" data-field="profile.ul" list="dlUl" value="'+esc(D.profile.ul)+'" placeholder="ユニットリーダーの名前">'+dl('dlUl',rosterUls())+'</div>'+
+   '<div class="field"><label>メンター</label><input type="text" data-field="profile.mentor" list="dlNames" value="'+esc(D.profile.mentor)+'" placeholder="メンターの名前">'+dl('dlNames',rosterNames())+'</div>'+
    '<div class="field"><label>入社日</label><input type="date" data-field="profile.join" value="'+esc(D.profile.join)+'"></div>'+
    '<div class="field" style="margin-bottom:0"><label>Grade（社内で認定されている現グレード）</label>'+
    '<select data-field="profile.grade"><option value="">未設定</option>'+
@@ -752,6 +764,18 @@ function vSheet(){
      '<span class="seg"><button class="ok'+(D.sound?' on':'')+'" data-act="sfx">ON</button>'+
      '<button class="ng'+(D.sound?'':' on')+'" data-act="sfx">OFF</button></span>'+
    '</div></div>';
+  if(Store.mode==='cloud' && !Store.isManager){
+    h+='<div class="sec-label">管理者の方へ</div><div class="card">'+
+     '<p class="tiny muted" style="margin:0 0 10px">UL・メンターの方は、管理者キーを入れると'+
+     'メンバー全員の状況を見られる管理画面が使えるようになります。キーはUL間で共有されているものです。</p>'+
+     '<div class="field" style="margin-bottom:8px"><input type="password" id="adminKey" placeholder="管理者キー"></div>'+
+     '<button class="savebtn" data-act="claimManager">管理者になる</button></div>';
+  }
+  if(Store.mode==='cloud' && Store.isManager){
+    h+='<div class="sec-label">管理画面</div><div class="card">'+
+     '<p class="tiny muted" style="margin:0 0 10px">あなたは管理者（'+(Store.me.member.role==='admin'?'admin':'UL')+'）です。</p>'+
+     '<a class="savebtn" href="admin.html" style="display:block;text-align:center;text-decoration:none">管理画面をひらく →</a></div>';
+  }
   if(Store.mode==='cloud'){
     h+='<div class="sec-label">ログイン</div><div class="card">'+
      '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
@@ -1107,6 +1131,17 @@ document.addEventListener('click',async e=>{
     if(!confirm('ログアウトします。よろしいですか？')) return;
     await Store.signOut(); location.reload();
   }
+  else if(a==='claimManager'){
+    const el2=document.getElementById('adminKey');
+    const key=(el2&&el2.value)||'';
+    if(!key){ toast('管理者キーを入力してください'); return; }
+    el.disabled=true; el.textContent='確認しています…';
+    try{
+      await Store.claimManager(key);
+      toast('管理者になりました','xp');
+      location.href='admin.html';
+    }catch(err){ el.disabled=false; el.textContent='管理者になる'; toast(err.message||'管理者キーが違います'); }
+  }
   else if(a==='reset'){
     if(confirm('チェック・入力内容をすべて消去します。よろしいですか？')){
       const ids=Object.keys(D.checks);
@@ -1210,61 +1245,140 @@ async function importData(file){
 /* ============================================================
    ログイン（共有モードのときだけ出る）
    ============================================================ */
-let GATE={ roster:[], picked:null, q:'', mode:'pick' };
+/* ------------------------------------------------------------
+   ログインの3画面
+     pick … すでに登録した人が自分の名前を選ぶ
+     pass … パスコードを入れる
+     reg  … はじめて使う人が自分の情報を登録する
+   名簿は事前に一括投入せず、登録した人から順に増えていく。
+   ------------------------------------------------------------ */
+let GATE={ roster:[], picked:null, q:'', mode:'pick',
+           reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
+function gUnits(){ return uniqSorted(GATE.roster.map(m=>m.unit)); }
+function gUls(){   return uniqSorted(GATE.roster.map(m=>m.ul)); }
+function gNames(){ return uniqSorted(GATE.roster.map(m=>m.name)); }
+
 function showGate(err){
   document.getElementById('app').style.display='none';
   document.getElementById('gate').classList.add('on');
   document.getElementById('gateErr').innerHTML = err? '<div class="gerr">'+esc(err)+'</div>' : '';
   const lead=document.getElementById('gateLead'), body=document.getElementById('gateBody');
+
+  if(GATE.mode==='reg'){
+    lead.textContent='はじめての人は、自分の情報を登録してください。';
+    const dup=GATE.roster.some(m=>String(m.name).replace(/[\s　]/g,'')===GATE.reg.name.replace(/[\s　]/g,'')&&GATE.reg.name.trim());
+    body.innerHTML=
+      (dup?'<div class="gerr" style="background:var(--amber-soft);color:#8A5606">同じ名前がすでに登録されています。'+
+        'もう登録した人は「登録した人はこちら」から入ってください。</div>':'')+
+      '<div class="field"><label>氏名<span style="color:var(--coral)"> ※必須</span></label>'+
+        '<input type="text" id="rName" value="'+esc(GATE.reg.name)+'" placeholder="山田 太郎"></div>'+
+      '<div class="field"><label>所属Unit</label>'+
+        '<input type="text" id="rUnit" list="rdUnit" value="'+esc(GATE.reg.unit)+'" placeholder="例：Unit A">'+
+        dl('rdUnit',gUnits())+
+        '<p class="tiny muted" style="margin:4px 0 0">'+(gUnits().length?'入力欄を押すと、登録済みのUnitから選べます。':'最初の人なので、そのまま入力してください。')+'</p></div>'+
+      '<div class="field"><label>UL（ユニットリーダー）</label>'+
+        '<input type="text" id="rUl" list="rdUl" value="'+esc(GATE.reg.ul)+'" placeholder="ULの名前">'+dl('rdUl',gUls())+'</div>'+
+      '<div class="field"><label>メンター</label>'+
+        '<input type="text" id="rMentor" list="rdName" value="'+esc(GATE.reg.mentor)+'" placeholder="メンターの名前">'+dl('rdName',gNames())+'</div>'+
+      '<div class="field"><label>入社日<span class="muted" style="font-weight:400">（昇格予定の計算に使います）</span></label>'+
+        '<input type="date" id="rJoin" value="'+esc(GATE.reg.join)+'"></div>'+
+      '<div class="field"><label>いま認定されているGrade</label>'+
+        '<select id="rGrade"><option value="">まだ決まっていない／わからない</option>'+
+        GRADES.map(g=>'<option value="'+g.n+'"'+(String(GATE.reg.grade)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
+        '</select></div>'+
+      '<div class="field"><label>部署共通のパスコード<span style="color:var(--coral)"> ※必須</span></label>'+
+        '<input type="password" id="rPass" autocomplete="new-password" placeholder="ULから共有されたパスコード"></div>'+
+      '<button class="gbtn" data-act="register">登録してはじめる</button>'+
+      '<button class="gbtn alt" data-act="toPick">登録した人はこちら</button>'+
+      '<p class="tiny muted" style="margin:12px 0 0">あとから「マイシート」で直せます。'+
+      '次回からは自分の名前を選んで、同じパスコードでログインします。</p>';
+    const n=document.getElementById('rName');
+    n.oninput=e=>{ GATE.reg.name=e.target.value; };
+    ['Unit','Ul','Mentor','Join','Grade'].forEach(k=>{
+      const el=document.getElementById('r'+k);
+      el.oninput=el.onchange=ev=>{ GATE.reg[k.toLowerCase()]=ev.target.value; };
+    });
+    document.getElementById('rPass').onkeydown=ev=>{ if(ev.key==='Enter') doRegister(); };
+    return;
+  }
+
   if(GATE.mode==='pick'){
     lead.textContent='自分の名前を選んでください。';
     const q=GATE.q.trim();
     const list=GATE.roster.filter(m=>!q||String(m.name).indexOf(q)>=0||String(m.unit||'').indexOf(q)>=0);
-    let h='<input class="who" id="gq" placeholder="名前で絞り込む" value="'+esc(GATE.q)+'">';
-    h+='<div class="glist">';
-    if(!list.length) h+='<div style="padding:22px 12px;text-align:center" class="tiny muted">見つかりませんでした。<br>名簿に登録されていない場合はULに連絡してください。</div>';
-    let lastUnit='__';
-    list.forEach(m=>{
-      const u=m.unit||'（Unit未設定）';
-      if(u!==lastUnit){ lastUnit=u; h+='<div class="gunit">'+esc(u)+'</div>'; }
-      h+='<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b><span>選ぶ ›</span></button>';
-    });
-    h+='</div>';
+    let h='';
+    if(GATE.roster.length){
+      h+='<input class="who" id="gq" placeholder="名前で絞り込む" value="'+esc(GATE.q)+'">';
+      h+='<div class="glist">';
+      if(!list.length) h+='<div style="padding:22px 12px;text-align:center" class="tiny muted">見つかりませんでした。</div>';
+      let lastUnit='__';
+      list.forEach(m=>{
+        const u=m.unit||'（Unit未設定）';
+        if(u!==lastUnit){ lastUnit=u; h+='<div class="gunit">'+esc(u)+'</div>'; }
+        h+='<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b><span>選ぶ ›</span></button>';
+      });
+      h+='</div>';
+    }else{
+      h+='<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
+         'まだ誰も登録していません。あなたが最初の登録者です。</div>';
+    }
+    h+='<button class="gbtn'+(GATE.roster.length?' alt':'')+'" data-act="toReg">'+
+       (GATE.roster.length?'はじめて使う（新規登録）':'はじめる（新規登録）')+'</button>';
     body.innerHTML=h;
     const gq=document.getElementById('gq');
-    gq.oninput=e=>{ GATE.q=e.target.value; const p=e.target.selectionStart; showGate();
+    if(gq) gq.oninput=e=>{ GATE.q=e.target.value; const p=e.target.selectionStart; showGate();
       const n=document.getElementById('gq'); n.focus(); try{ n.setSelectionRange(p,p); }catch(x){} };
-  }else{
-    lead.textContent='パスコードを入力してください。';
-    body.innerHTML='<div class="card" style="margin-bottom:12px;padding:13px 15px">'+
-        '<div class="tiny muted">選んだ名前</div><b style="font-size:16px">'+esc(GATE.picked.name)+'</b>'+
-        (GATE.picked.unit?'<span class="tiny muted"> ・ '+esc(GATE.picked.unit)+'</span>':'')+'</div>'+
-      '<input class="who" id="gpass" type="password" inputmode="text" autocomplete="current-password" placeholder="部署共通のパスコード">'+
-      '<button class="gbtn" data-act="signin">はじめる</button>'+
-      '<button class="gbtn alt" data-act="backPick">名前を選びなおす</button>'+
-      '<p class="tiny muted" style="margin:12px 0 0">パスコードがわからない場合はULに確認してください。'+
-      '初めてログインするときは、このパスコードがそのまま登録されます。</p>';
-    const gp=document.getElementById('gpass');
-    gp.focus();
-    gp.onkeydown=ev=>{ if(ev.key==='Enter') doSignIn(); };
+    return;
   }
+
+  lead.textContent='パスコードを入力してください。';
+  body.innerHTML='<div class="card" style="margin-bottom:12px;padding:13px 15px">'+
+      '<div class="tiny muted">選んだ名前</div><b style="font-size:16px">'+esc(GATE.picked.name)+'</b>'+
+      (GATE.picked.unit?'<span class="tiny muted"> ・ '+esc(GATE.picked.unit)+'</span>':'')+'</div>'+
+    '<input class="who" id="gpass" type="password" inputmode="text" autocomplete="current-password" placeholder="部署共通のパスコード">'+
+    '<button class="gbtn" data-act="signin">はじめる</button>'+
+    '<button class="gbtn alt" data-act="toPick">名前を選びなおす</button>'+
+    '<p class="tiny muted" style="margin:12px 0 0">パスコードがわからない場合はULに確認してください。</p>';
+  const gp=document.getElementById('gpass');
+  gp.focus();
+  gp.onkeydown=ev=>{ if(ev.key==='Enter') doSignIn(); };
+}
+function gateBusy(sel,label){
+  const b=document.querySelector(sel);
+  if(b){ b.disabled=true; b.textContent=label; }
 }
 async function doSignIn(){
   const pw=(document.getElementById('gpass')||{}).value||'';
   if(!pw){ showGate('パスコードを入力してください'); return; }
-  const btn=document.querySelector('[data-act="signin"]');
-  if(btn){ btn.disabled=true; btn.textContent='確認しています…'; }
+  gateBusy('[data-act="signin"]','確認しています…');
   try{
     await Store.signInMember(GATE.picked,pw);
     await boot();
+  }catch(e){ showGate(e.message||String(e)); }
+}
+async function doRegister(){
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const r={ name:g('rName').trim(), unit:g('rUnit').trim(), ul:g('rUl').trim(),
+            mentor:g('rMentor').trim(), join_date:g('rJoin')||null, certified_grade:g('rGrade')||null };
+  const pw=g('rPass');
+  Object.assign(GATE.reg,{name:r.name,unit:r.unit,ul:r.ul,mentor:r.mentor,join:r.join_date||'',grade:r.certified_grade||''});
+  if(!r.name){ showGate('氏名を入力してください'); return; }
+  if(!pw){ showGate('パスコードを入力してください'); return; }
+  gateBusy('[data-act="register"]','登録しています…');
+  try{
+    await Store.registerMember(r,pw);
+    await boot();
+    toast('登録しました','xp');
   }catch(e){ showGate(e.message||String(e)); }
 }
 document.addEventListener('click',async e=>{
   const el=e.target.closest('#gate [data-act]'); if(!el) return;
   const a=el.dataset.act;
   if(a==='pick'){ GATE.picked=GATE.roster.find(m=>String(m.id)===el.dataset.id); GATE.mode='pass'; showGate(); }
-  else if(a==='backPick'){ GATE.mode='pick'; showGate(); }
+  else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
+  else if(a==='toReg'){ GATE.mode='reg'; showGate(); }
   else if(a==='signin'){ await doSignIn(); }
+  else if(a==='register'){ await doRegister(); }
 });
 
 /* ============================================================
@@ -1277,6 +1391,8 @@ async function boot(){
   render();
   /* 共有事項とテスト結果は裏で読んで、記録タブを開いたときに待たせない */
   loadLog().then(()=>render(true)).catch(()=>{});
+  /* Unit・UL・メンターの選択肢に使う名簿。失敗しても画面は動く */
+  Store.roster().then(r=>{ ROSTER=r||[]; if(view==='sheet') render(true); }).catch(()=>{});
 }
 (async()=>{
   await Store.init();
