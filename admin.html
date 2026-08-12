@@ -288,13 +288,20 @@ let F = { unit:'', q:'', role:'member', alert:'' };
    共通パスコードではログインできない（それだと共通パスコードを知っている
    メンバー全員がULになりすませてしまうため）。
    ============================================================ */
-let GATE={ roster:[], picked:null, q:'', mode:'pick' };
+let GATE={ roster:[], picked:null, q:'', mode:'pick', offline:false };
 
 function gateHTML(){
   if(Store.mode!=='cloud'){
     return '<div class="banner"><span>⚠️</span><div><b>接続先が設定されていません</b><br>'+
       'shared/config.js に Supabase の情報を入れると、実際のデータで動きます。'+
       '手順はリポジトリの SETUP.md にあります。</div></div>';
+  }
+  /* 名簿が読めていない。「管理者が1人もいません」と出すと嘘になるので分ける */
+  if(GATE.offline){
+    return '<div class="banner"><span>⚠️</span><div><b>通信できませんでした</b><br>'+
+      'Supabaseに接続できていません。接続情報（shared/config.js）と回線を確認してください。'+
+      'データは消えていません。</div></div>'+
+      '<button class="btn vio" data-act="retry" style="width:100%;padding:12px">もう一度ためす</button>';
   }
 
   const mgr = GATE.roster.filter(m=>m.role==='ul'||m.role==='admin');
@@ -1600,6 +1607,7 @@ document.addEventListener('click',async e=>{
   else if(a==='pick'){ GATE.picked=GATE.roster.find(m=>String(m.id)===el.dataset.id); GATE.mode='pass'; showGate(); }
   else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
   else if(a==='toClaim'){ GATE.mode='claim'; showGate(); }
+  else if(a==='retry'){ location.reload(); }
 
   else if(a==='newNote'){ NF.open=true; NF.editing=null; NF.member_id=''; NF.body=''; NF.next_action=''; NF.kind='memo'; NF.grade=''; NF.occurred_on=todayStr(); render(); }
   else if(a==='openNote'){
@@ -1674,7 +1682,8 @@ document.addEventListener('keydown',e=>{
    ============================================================ */
 /* ログイン画面に出す名前の一覧。読めなくても画面は出す（エラーだけ見せる） */
 async function loadRoster(){
-  try{ GATE.roster=await Store.roster()||[]; }catch(e){ GATE.roster=[]; }
+  try{ GATE.roster=await Store.roster()||[]; GATE.offline=false; }
+  catch(e){ GATE.roster=[]; GATE.offline=true; }
 }
 async function boot(){
   const s=await Store.restore();
@@ -1693,7 +1702,7 @@ async function boot(){
     await Store.init();
     if(Store.mode!=='cloud'){ showGate(''); return; }
     await boot();
-  }catch(e){ await loadRoster(); showGate(e.message||String(e)); }
+  }catch(e){ GATE.offline=true; showGate(e.message||String(e)); }
 })();
 </script>
 </body>

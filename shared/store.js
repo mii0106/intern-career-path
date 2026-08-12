@@ -41,7 +41,7 @@ const Store = (() => {
   }
   async function client(){
     if(sb) return sb;
-    if(!window.supabase) await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js');
+    if(!window.supabase) await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/dist/umd/supabase.js');
     sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
       auth:{ persistSession:true, autoRefreshToken:true, storageKey:'careerstep:auth' }
     });

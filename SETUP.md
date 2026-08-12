@@ -98,21 +98,30 @@
 
 ## 4. 接続情報を貼る
 
-1. 左メニュー **Project Settings → Data API**
-2. **Project URL** と **anon public** のキーをコピー
+1. 左メニュー **Project Settings → API Keys / Data API**
+2. **Project URL** と **publishable**（旧 `anon public`）のキーをコピー
 3. `shared/config.js` を開いて貼る
 
 ```js
 window.STEP_CONFIG = {
   SUPABASE_URL: 'https://xxxxxxxxxxxx.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOi...',
+  SUPABASE_ANON_KEY: 'sb_publishable_xxxxxxxx',
   ...
 };
 ```
 
-`anon` キーはブラウザから見える前提の公開キーなので、ここに貼って問題ありません。
-実際の制御は手順2で入れた RLS がしています。
-**`service_role` のキーは絶対に貼らないでください。**（これは全権限のキーです）
+> **URLの末尾に `/rest/v1/` を付けないでください。**
+> 画面に出ている `https://xxxx.supabase.co/rest/v1/` をそのまま貼りたくなりますが、
+> SDKが自分で `/rest/v1/` や `/auth/v1/` を足すので、
+> `/rest/v1/rest/v1/...` になって全部404になります。貼るのは
+> `https://xxxx.supabase.co` までです。
+
+`publishable`（旧 `anon`）キーはブラウザから見える前提の公開キーなので、
+ここに貼って問題ありません。実際の制御は手順2で入れた RLS がしています。
+**`secret`（旧 `service_role`）のキーは絶対に貼らないでください。**（これは全権限のキーです）
+
+新形式の `sb_publishable_...` キーを使う場合、Supabase SDK は新しめの版が必要です。
+`shared/store.js` が読み込む版を上げてあるので、そのままで動きます。
 
 ---
 
@@ -128,12 +137,18 @@ window.STEP_CONFIG = {
 ログインのパスワードは、登録のときに**各自が自分で決めます**。ここでは決めません。
 
 ```sql
+set search_path = public, extensions;
+
 update public.app_config
    set team_passcode  = crypt('ここに共通パスコード', gen_salt('bf')),
        admin_passcode = crypt('ここに管理者キー',     gen_salt('bf')),
        updated_at = now()
  where id = 1;
 ```
+
+> 1行目の `set search_path` は消さないでください。`crypt()` と `gen_salt()` は
+> pgcrypto の関数で、Supabase では `extensions` スキーマに入っています。
+> これが無いと環境によっては `function crypt(...) does not exist` になります。
 
 - どちらも**ハッシュにして保存**されるので、あとから中身を見ることはできません。
   変えたいときは同じSQLをもう一度実行してください
@@ -377,6 +392,9 @@ on conflict (slug) do nothing;
 | 進捗の数字が本人と管理者でズレる | 計算は `shared/steps.js` の1か所だけです。ブラウザのキャッシュを消して再読み込みしてください |
 | 登録しようとすると `パスコードが違います` | 共通パスコードが手順5で設定したものと違います。SQLをもう一度実行して設定し直せます |
 | `パスワードは6文字以上にしてください` | Supabase の最小文字数です。短いものは使えません |
+| 何をしても404になる／名前が1件も出ない | `SUPABASE_URL` の末尾に `/rest/v1/` が付いていないか確認（手順4） |
+| 「通信できませんでした」と出る | 回線か、`shared/config.js` のURL・キーの写し間違いです。データは消えていません |
+| 手順5のSQLで `function crypt(...) does not exist` | 1行目の `set search_path = public, extensions;` ごとコピーして実行してください |
 | `Allow new users to sign up` 系のエラーで登録できない | 手順3でサインアップをオンにしてください |
 | 同じ人が2行できてしまった | 2回目の登録で別のログインを作った場合に起こります。管理者画面のメンバー詳細で使わない行の名前を変え、SQL Editor で `update public.members set active=false where id='...';` とすれば一覧から消えます |
 | 管理者になれない（キーが違うと出る） | 手順5の `admin_passcode` が未設定か、キーが違います。未設定の場合はその旨のメッセージが出ます |
