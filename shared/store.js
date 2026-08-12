@@ -67,7 +67,11 @@ const Store = (() => {
          このアプリはメールを一切使わないので、確認メールの設定が残っているということ。 */
       if(/email rate limit/i.test(m))
         throw new Error('Supabaseの「Confirm email」がオンのままです。オフにしてください（SETUP.md 手順3）。オンのあいだは登録のたびに確認メールが送られ、すぐ上限に達します');
-      if(/signups? not allowed|Signups not allowed/i.test(m)) throw new Error('Supabaseの「Allow new users to sign up」をオンにしてください（SETUP.md参照）');
+      /* 似たエラーが2種類あり、直す場所が違うので分ける */
+      if(/email.*signups.*disabled|email_provider_disabled|email provider.*disabled/i.test(m))
+        throw new Error('Supabaseの「Email」プロバイダがオフになっています。Authentication → Sign In / Providers → Email を開き、Email provider を「オン」、その中の Confirm email だけを「オフ」にしてください（SETUP.md 手順3）');
+      if(/signups? not allowed|Signups not allowed|signup_disabled/i.test(m))
+        throw new Error('Supabaseの「Allow new users to sign up」がオフになっています。オンにしてください（SETUP.md 手順3）');
       throw new Error(m||'通信に失敗しました');
     }
     return res ? res.data : null;

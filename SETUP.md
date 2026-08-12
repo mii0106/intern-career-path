@@ -103,9 +103,17 @@
 > 誰の受信箱にも届きません。自社ドメインにすると、その場合に社内へ
 > 配信が試みられてしまうため避けています。
 
-1. 左メニュー **Authentication → Sign In / Providers → Email**
-2. **Confirm email** を **オフ**
-3. **Save**
+左メニュー **Authentication → Sign In / Providers** を開き、
+次の3つを**この状態**にして **Save** してください。
+
+| 設定 | 場所 | 状態 |
+|---|---|---|
+| **Allow new users to sign up** | ページ上部の User Signups | **オン** |
+| **Enable Email provider** | Auth Providers → Email（親トグル） | **オン** |
+| **Confirm email** | Auth Providers → Email を開いた中 | **オフ** |
+
+**オフにするのは Confirm email だけ**です。Email の親トグルまで切ると、
+`Email signups are disabled` になって誰も登録できません。
 
 > **ここは必ずやってください。飛ばすと登録できません。**
 > オンのままだと、登録のたびに Supabase が確認メールを送ろうとします。
@@ -418,6 +426,8 @@ on conflict (slug) do nothing;
 | 登録しようとすると `パスコードが違います` | 共通パスコードが手順5で設定したものと違います。SQLをもう一度実行して設定し直せます |
 | `パスワードは6文字以上にしてください` | Supabase の最小文字数です。短いものは使えません |
 | `email rate limit exceeded` と出る | **手順3の「Confirm email」がオンのままです。** オフにすればメールを送らなくなり、上限にも達しません。1時間ほど待つと解除されますが、オフにしない限り再発します |
+| `Email signups are disabled` と出る | **Email プロバイダの親トグルがオフ**です。Confirm email と間違えやすいところです。手順3の表のとおり、Email provider は**オン**、その中の Confirm email だけ**オフ**にしてください |
+| `Signups not allowed` と出る | **Allow new users to sign up** がオフです。オンにしてください（手順3） |
 | `Email address "m-xxxx@..." is invalid` と出て誰も登録できない | `shared/config.js` の `AUTH_EMAIL_DOMAIN` が架空のTLDになっています。`.local` `.test` `.internal` などは Supabase Auth が実在しないTLDとして弾きます。**実在するドメイン**（自社ドメインなど）に変えてください |
 | 何をしても404になる／名前が1件も出ない | `SUPABASE_URL` の末尾に `/rest/v1/` が付いていないか確認（手順4） |
 | 「通信できませんでした」と出る | 回線か、`shared/config.js` のURL・キーの写し間違いです。データは消えていません |
