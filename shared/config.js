@@ -6,19 +6,23 @@
    自分の端末だけに保存する「ローカルモード」で動きます。
 
    入れる値は Supabase の
-     Project Settings → Data API（旧 API）
+     Project Settings → API Keys / Data API
    にある2つです。
-     ・Project URL          → SUPABASE_URL
-     ・anon public のキー    → SUPABASE_ANON_KEY
+     ・Project URL                → SUPABASE_URL
+     ・publishable（旧 anon public）のキー → SUPABASE_ANON_KEY
 
-   anon キーはブラウザから見える前提の公開キーです。
+   SUPABASE_URL は末尾に /rest/v1/ を付けないでください。
+   SDKが自分で /rest/v1/ や /auth/v1/ を足すので、付けると
+   /rest/v1/rest/v1/... になって全部404になります。
+
+   publishable キーはブラウザから見える前提の公開キーです。
    実際のアクセス制御は Supabase 側の RLS（supabase/schema.sql）で
    かけているので、ここに貼って問題ありません。
-   service_role のキーは絶対に貼らないでください。
+   secret（旧 service_role）のキーは絶対に貼らないでください。
    ============================================================ */
 window.STEP_CONFIG = {
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: '',
+  SUPABASE_URL: 'https://obunqfhalsqnzhdhacvr.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_NPEAWWLvL4IPcEKPtgwgWg_6hLcrgvt',
 
   /* インターン本人のログインに使う内部的なメールアドレスのドメイン。
      実際にメールを送ることはありません（Supabase側でメール確認をオフにします）。

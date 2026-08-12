@@ -1246,7 +1246,7 @@ async function importData(file){
    共通パスコードは「登録していい人か」の入口の合言葉で、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
-let GATE={ roster:[], picked:null, q:'', mode:'pick',
+let GATE={ roster:[], picked:null, q:'', mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 function gUnits(){ return uniqSorted(GATE.roster.map(m=>m.unit)); }
 function gUls(){   return uniqSorted(GATE.roster.map(m=>m.ul)); }
@@ -1260,6 +1260,16 @@ function showGate(err){
   document.getElementById('gate').classList.add('on');
   document.getElementById('gateErr').innerHTML = err? '<div class="gerr">'+esc(err)+'</div>' : '';
   const lead=document.getElementById('gateLead'), body=document.getElementById('gateBody');
+
+  /* 名簿が読めていない。「まだ誰も登録していません」と出すと嘘になるので分ける */
+  if(GATE.offline){
+    lead.textContent='通信できませんでした。';
+    body.innerHTML='<div class="note" style="background:var(--amber-soft)">'+
+      '電波の良いところで、もう一度お試しください。'+
+      'これまでの記録は消えていません。</div>'+
+      '<button class="gbtn" data-act="retry">もう一度ためす</button>';
+    return;
+  }
 
   /* 接続先が未設定。架空のデータで動かさず、やることだけ出す */
   if(Store.mode!=='cloud'){
@@ -1442,6 +1452,7 @@ document.addEventListener('click',async e=>{
     GATE.mode = GATE.picked && GATE.picked.linked ? 'pass' : 'setpw';
     showGate();
   }
+  else if(a==='retry'){ location.reload(); }
   else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
   else if(a==='toReg'){ GATE.mode='reg'; showGate(); }
   else if(a==='signin'){ await doSignIn(); }
@@ -1463,12 +1474,19 @@ async function boot(){
   Store.roster().then(r=>{ ROSTER=r||[]; if(view==='sheet') render(true); }).catch(()=>{});
 }
 (async()=>{
-  await Store.init();
-  if(Store.mode!=='cloud'){ showGate(''); return; }
-  const me=await Store.restore();
-  if(me){ await boot(); return; }   /* 前回のログインが残っている */
-  try{ GATE.roster=await Store.roster(); }catch(e){ showGate(e.message); return; }
-  showGate('');
+  /* 電波が悪くてSDKやサーバーに届かないことは普通に起きる。
+     ここで例外を素通しすると真っ白な画面になってしまうので、必ず受け止める。 */
+  try{
+    await Store.init();
+    if(Store.mode!=='cloud'){ showGate(''); return; }
+    const me=await Store.restore();
+    if(me){ await boot(); return; }   /* 前回のログインが残っている */
+    GATE.roster=await Store.roster();
+    showGate('');
+  }catch(e){
+    GATE.offline=true;
+    showGate(String((e&&e.message)||e));
+  }
 })();
 
 </script>
