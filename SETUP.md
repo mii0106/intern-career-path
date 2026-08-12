@@ -128,12 +128,18 @@ window.STEP_CONFIG = {
 ログインのパスワードは、登録のときに**各自が自分で決めます**。ここでは決めません。
 
 ```sql
+set search_path = public, extensions;
+
 update public.app_config
    set team_passcode  = crypt('ここに共通パスコード', gen_salt('bf')),
        admin_passcode = crypt('ここに管理者キー',     gen_salt('bf')),
        updated_at = now()
  where id = 1;
 ```
+
+> 1行目の `set search_path` は消さないでください。`crypt()` と `gen_salt()` は
+> pgcrypto の関数で、Supabase では `extensions` スキーマに入っています。
+> これが無いと環境によっては `function crypt(...) does not exist` になります。
 
 - どちらも**ハッシュにして保存**されるので、あとから中身を見ることはできません。
   変えたいときは同じSQLをもう一度実行してください
@@ -377,6 +383,7 @@ on conflict (slug) do nothing;
 | 進捗の数字が本人と管理者でズレる | 計算は `shared/steps.js` の1か所だけです。ブラウザのキャッシュを消して再読み込みしてください |
 | 登録しようとすると `パスコードが違います` | 共通パスコードが手順5で設定したものと違います。SQLをもう一度実行して設定し直せます |
 | `パスワードは6文字以上にしてください` | Supabase の最小文字数です。短いものは使えません |
+| 手順5のSQLで `function crypt(...) does not exist` | 1行目の `set search_path = public, extensions;` ごとコピーして実行してください |
 | `Allow new users to sign up` 系のエラーで登録できない | 手順3でサインアップをオンにしてください |
 | 同じ人が2行できてしまった | 2回目の登録で別のログインを作った場合に起こります。管理者画面のメンバー詳細で使わない行の名前を変え、SQL Editor で `update public.members set active=false where id='...';` とすれば一覧から消えます |
 | 管理者になれない（キーが違うと出る） | 手順5の `admin_passcode` が未設定か、キーが違います。未設定の場合はその旨のメッセージが出ます |
