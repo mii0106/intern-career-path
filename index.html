@@ -356,9 +356,78 @@ main{padding:0 16px}
   #toasts{bottom:28px}
 }
 @media (min-width:1400px){ #app{max-width:1340px} }
+/* ---------- tabbar：タブが6つになったので幅を詰める ---------- */
+.tabbar{grid-template-columns:repeat(6,1fr)}
+.tabbar button{font-size:9.5px;gap:2px;padding:0 2px}
+.tabbar svg{width:20px;height:20px}
+
+/* ---------- ログイン ---------- */
+#gate{min-height:100vh;display:none;place-items:center;padding:22px}
+#gate.on{display:grid}
+.gbox{background:var(--surface);border-radius:26px;box-shadow:var(--shadow);padding:24px 22px;max-width:420px;width:100%}
+.gbox h1{font-size:22px;margin:10px 0 4px}
+.gerr{background:var(--coral-soft);color:#C9273D;border-radius:12px;padding:10px 13px;font-size:12.5px;margin-bottom:12px}
+.gbox .who{width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:12px;padding:12px;font-size:15px;margin-bottom:10px}
+.gbtn{width:100%;padding:14px;border-radius:16px;background:var(--violet);color:#fff;font-weight:700;font-size:15px;margin-top:4px}
+.gbtn.alt{background:#fff;color:var(--ink);border:1.5px solid var(--line);font-size:13px;padding:11px;margin-top:8px}
+.glist{max-height:46vh;overflow-y:auto;border:1.5px solid var(--line);border-radius:14px;margin-bottom:10px}
+.gitem{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}
+.gitem:last-child{border-bottom:0}
+.gitem.on{background:var(--violet-soft)}
+.gitem b{font-size:14px}
+.gitem span{font-size:11px;color:var(--ink2);margin-left:auto}
+.gunit{font-size:10.5px;font-weight:700;color:var(--ink2);letter-spacing:.1em;background:#F6F5FB;padding:5px 13px;position:sticky;top:0}
+
+/* ---------- 記録タブ ---------- */
+.segs{display:flex;background:#E5E3F2;border-radius:13px;padding:3px;gap:3px;margin-bottom:14px}
+.segs button{flex:1;padding:9px 4px;border-radius:10px;font-weight:700;color:var(--ink2);font-size:12.5px}
+.segs button.on{background:#fff;color:var(--violet);box-shadow:0 1px 2px rgba(24,18,64,.1)}
+.nt{border-top:1px solid var(--line);padding:12px 0}
+.nt:first-of-type{border-top:0}
+.nt .top{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:5px}
+.nt .bd{font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.nt .na{margin-top:7px;font-size:12px;background:var(--amber-soft);border-radius:10px;padding:8px 11px;white-space:pre-wrap}
+.nt .ul{margin-top:7px;font-size:12px;background:var(--violet-soft);border-radius:10px;padding:8px 11px;white-space:pre-wrap}
+.sc{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+.sc:first-of-type{border-top:0}
+.sc .nm{flex:1;min-width:0;font-size:13px;font-weight:700}
+.sc .nm small{display:block;font-weight:400;font-size:11px;color:var(--ink2)}
+.sc .pt{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+.sc .pt small{font-size:11px;color:var(--ink2);font-weight:600}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px}
+.pill.m{background:var(--mint-soft);color:#0E8F69}
+.pill.a{background:var(--amber-soft);color:#B0700A}
+.pill.c{background:var(--coral-soft);color:#C9273D}
+.pill.v{background:var(--violet-soft);color:var(--violet)}
+.pill.s{background:var(--sky-soft);color:#1B6FB4}
+.pill.g{background:#EDECF6;color:var(--ink2)}
+.savebtn{width:100%;padding:13px;border-radius:14px;background:var(--violet);color:#fff;font-weight:700;font-size:14px;margin-top:2px}
+.savebtn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+.savebtn:disabled{opacity:.5}
+.pgrid{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.pgrid button{padding:7px 12px;border-radius:10px;background:#F3F1FC;font-weight:700;font-size:12px;color:var(--ink2)}
+.pgrid button.on{background:var(--ink);color:#fff}
+@media (min-width:900px){
+  .tabbar{grid-template-columns:none}
+  .tabbar button{font-size:13.5px;gap:11px;padding:11px 13px}
+  .tabbar svg{width:19px;height:19px}
+  .logwrap{max-width:760px}
+}
 </style>
 </head>
 <body>
+<div id="gate">
+  <div class="gbox">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span class="disp" style="font-size:18px;letter-spacing:.06em">STEP</span>
+      <span class="tiny muted" style="letter-spacing:.14em">CAREER LOG</span>
+    </div>
+    <h1 class="disp">はじめに</h1>
+    <p class="tiny muted" style="margin:0 0 16px" id="gateLead">自分の名前を選んでください。</p>
+    <div id="gateErr"></div>
+    <div id="gateBody"></div>
+  </div>
+</div>
 <div id="app">
   <div class="top">
     <div class="brand">
@@ -373,350 +442,19 @@ main{padding:0 16px}
 <input type="file" id="importFile" accept="application/json" style="display:none">
 <div id="toasts"></div>
 <div id="evo"></div>
+<script src="shared/config.js"></script>
+<script src="shared/steps.js"></script>
+<script src="shared/ui.js"></script>
+<script src="shared/store.js"></script>
 <script>
 /* ============================================================
-   DATA — Notionのキャリアステップシートをそのまま格納
+   STATE
+   ------------------------------------------------------------
+   D は画面が読み書きする手元の状態。中身の形はこれまでと同じ。
+   保存先は shared/store.js が面倒を見る。
+     ・Supabaseの情報が設定されていれば、全員ぶんが1か所に集まる（共有モード）
+     ・設定が空なら、いままでどおりこの端末のブラウザだけに保存する（ローカルモード）
    ============================================================ */
-const TIERS = {
-  starter:{name:'スターター', c:'--violet', soft:'--violet-soft', hex:'#5B3DF5'},
-  player:{name:'プレイヤー', c:'--mint', soft:'--mint-soft', hex:'#17B98A'},
-  pro:{name:'プロフェッショナル', c:'--sky', soft:'--sky-soft', hex:'#2E8FE0'},
-  leader:{name:'リーダー', c:'--amber', soft:'--amber-soft', hex:'#F59E17'},
-  exec:{name:'エグゼクティブ', c:'--coral', soft:'--coral-soft', hex:'#F2536A'}
-};
-
-const GRADES = [
-{n:1,tier:'starter',period:'1ヶ月',
- vision:['インプットの完了','スタンダードアカウント運用ができる'],
- sections:[
-  {title:'スタンス｜アリエナイ基準を厳守して行動している',items:[
-    '2ヶ月連続フォロワー増加100以下になっていない（他人が手伝った場合も対象）',
-    '投稿ミス・漏れ（準備・ストーリー）が3ヶ月以内に3回未満',
-    '遅刻月2回が2ヶ月以上発生していない',
-    '改善策を自分から出せる・対応できる',
-    'その他スタンス面（クライアント様へご迷惑をかける行為等）が発生していない']},
-  {title:'コミュニケーション｜聞く力',items:[
-    '上司の指示を理解し実行に移せる',
-    '不明点をそのままにせず、周囲に確認して解消できる',
-    '業務上の報告・連絡・相談を適切なタイミングでできる']},
-  {title:'タスク管理｜ToDo管理',items:[
-    '日々のタスクを認識できている',
-    '日次・月次のスケジュールを立てられる',
-    '日報（attendance）で次回予定の記載、管理ができる']},
-  {title:'業務スキル｜知見（インプット）',items:[
-    'スキルアップリスト「アカウント運用開始」のシートまで完了',
-    'ラーニングボックススターター編読了',
-    'Notionで不明点を自己解決できる']},
-  {title:'業務スキル｜運用（基本運用）',items:[
-    '基本的な投稿作成・ストーリーズ投稿ができる',
-    'Instagramのアルゴリズムに適した画像選定ができる（高数値投稿の画像傾向を分析し、再現できる）',
-    'Social drive / AIproで適切な分析ができる（数値確認ができる／見方を理解しているレベル）',
-    'レポートの記載ができる',
-    'スタンダードアカウントの運用が、質を担保した状態で可能である',
-    '【Canva基礎】青空加工・ぼかし加工ができる／画像リールの作成ができる']}
- ]},
-
-{n:2,tier:'starter',period:'2ヶ月',
- vision:['2社のスタンダード運用が滞りなくできる'],
- sections:[
-  {title:'スタンス｜社内から信頼されて、アカウントを任せられる状態（池田塾10ヶ条）',items:[
-    'レスは最短【意思表示も合わせてする】',
-    'タスクの優先度を精査する',
-    '自分の前後の仕事に思いをはせる',
-    '相手の立場を慮る',
-    'ボールの持ち主を常に確認する',
-    '意図・目的を理解する',
-    'まずは一歩踏み出す',
-    '出来ない理由ではなく、出来る方法を考える',
-    '周囲からの期待を自覚する',
-    '周りに興味をもつ',
-    '自分事化ができている（自分が最終責任者）']},
-  {title:'コミュニケーション｜相互コミュニケーション',items:[
-    'ユニットメンバー同士でコミュニケーションが取れる',
-    'ユニット定例で適切な共有ができる',
-    '指揮系統を理解したうえでの報連相']},
-  {title:'タスク管理｜納期厳守（投稿作成）',items:['納期遅延・タスク履行漏れを起こさない']},
-  {title:'業務スキル｜知見（定着・実行）',items:[
-    'マニュアルに沿った運用ができる',
-    'インプットしたノウハウを確実に実行できる']},
-  {title:'業務スキル｜運用（プレイヤー基準のクリア）',items:[
-    'フォロワー200／月（フォロー制限時にも適切な対応ができる）',
-    '2アカウント以上の運用',
-    '商圏理解およびペルソナに基づいた運用ができている（ペルソナ分析実施済み）',
-    'メンバー予約投稿のWチェックができる（トリプルチェック必要）',
-    {t:'クライアントに提出できるレベルのレポートが一人で作成できる',sub:['数値の変化に対して自分なりの考察が書けている']}]},
-  {title:'AI活用｜AI基礎知識のインプット',ai:true,groups:[
-    {label:'なりたい姿',items:[
-      'AIを知って触れる',
-      'チャットにてAI使用ができる',
-      '質問をする前にAIに聞き、会話コストを減らせる',
-      '日常的にAIに触れる習慣がついている']},
-    {label:'スキル感｜定量・定性',items:[
-      'AIを用いてプロンプトの作成ができる（前提の定義／どの立場で分析するのか等）',
-      'AIツールの使い分けについての理解がある（Gemini、ChatGPT、Claudeの違いを認識）',
-      {t:'ノートブックLMにてAI基礎クイズを解く（9/10以上正解で達成）',link:'https://notebooklm.google.com/notebook/e188464f-8003-4b1f-889b-f6f2a103728e?authuser=2'}]}
-  ]}
- ]},
-
-{n:3,tier:'player',period:'3ヶ月',
- vision:['リーダーのチェックを受けながら、アドバンス運用の全工程（投稿・ストーリー・ハイライト・イベントスケジュール管理等）を実行できる'],
- sections:[
-  {title:'コミュニケーション｜メンバー交流',items:[
-    '他Unitのメンバーやリーダーとコミュニケーションが取れる',
-    '他Unitのメンバーやリーダー含めて、情報共有ができる']},
-  {title:'タスク管理｜質・スピード',items:['タスク消化の質を担保しながら、スピード感高く業務遂行ができる']},
-  {title:'業務スキル｜知見（アウトプット）',items:[
-    'マニュアルに対して鵜呑みでなく自分なりの解釈のアウトプットができる',
-    '既存のマニュアルなどに対して、改善提案ができる']},
-  {title:'業務スキル｜運用（アドバンス運用の対応）',items:[
-    'アドバンス投稿に必要な画像加工（背景修正・電線除去・家具の追加等）を、Canvaやnanobananaを活用して行える',
-    'リールのサムネイルを一人で作成できる',
-    'ハイライトの運用ができる',
-    'スタンダードの新規会社を受け入れることができる',
-    '自身の運用しているアカウントを新人メンバーに引き継ぎ対応できる',
-    '新人に渡した後でも、成果を継続できる引き継ぎができる',
-    {t:'デザイン',sub:['UnitDデザインレクチャー会_0515 インプット済み','上記の内容を理解したうえで、実際にAIを用いてデザイン作成ができる']}]}
- ]},
-
-{n:4,tier:'player',period:'4ヶ月',
- note:'⚠️ プロフェ昇格面談前に、改めて担当アカウントの理解度を高めましょう！面談時に内容を確認します。すでに担当アカウントについてまとまった資料（戦略メモ・運用設計など）がある人は、それを使ってもOKです。',
- vision:['担当アカウントの課題を究明したうえで、打ち手を考え実行に移すことができる','フロントとの円滑なコミュニケーションから必要な情報を集めることができる'],
- sections:[
-  {title:'スタンス',items:[
-    'リーダーフォローの下、クライアントがアドバンス運用を任せてよかったと思えるような運用ができる',
-    '担当業務の状況をチームに共有できている',
-    'メンバーが困っているときに声をかけられる状態にある',
-    'クレドを意識し、体現できている']},
-  {title:'コミュニケーション｜フロント・外部連携（基礎）',items:['フロントとコミュニケーションが取れる']},
-  {title:'タスク管理｜完全自走（PDCAを自分で回せる）',items:[
-    'タスクの実行を自走できる',
-    '自ら考え、能動的に課題解決できる']},
-  {title:'組織運営',items:[
-    'ユニット定例で自分の担当状況を報告できる',
-    '困っているメンバーを見つけたとき、リーダーに報告または直接声をかけられる']},
-  {title:'業務スキル｜知見（ナレッジ創出・発信）',items:[
-    '自発的に新しい情報を取りにいくことができる',
-    '自ら検証などを行うことができる',
-    'ナレッジ賞にノミネートされるレベルのナレッジの創出・発信ができる']},
-  {title:'業務スキル｜運用（運用成果創出）',items:[
-    '【主指標】フォロワー200以上／月を2ヶ月連続で達成、かつCV獲得1件以上',
-    '【副指標】担当アカウントの課題となる指標（リーチ、ENG、リンククリック、プロフアクセス等）の改善（任意記録）']},
-  {title:'AI活用｜アウトプットメイン（施策の壁打ち、運用で使う）',ai:true,groups:[
-    {label:'なりたい姿',items:[
-      'AIで精度の高い成果物を生成し業務で成果につなげることができる',
-      'AIユースケースインプット、実践画像生成・プロンプト作成ができる',
-      'Claude Codeの概要と危険性を理解することができる状態になる',
-      {t:'バイブコーディングの基礎がわかる（クイズ9/10以上正解で達成）',link:'https://notebooklm.google.com/notebook/6d195191-fcb5-4711-af7b-71f427fd0588'}]},
-    {label:'業務スキル｜定量・定性',items:[
-      'アドバンス定例でAIと壁打ちした施策を提案し、根拠を説明できる',
-      '業務内でのAI使用をしている（★投稿の画像生成 ★キャプション作成）']}
-  ]}
- ]},
-
-{n:5,tier:'pro',period:'5ヶ月',
- vision:['アカウント戦略を描き成果創出まで自立自走で可能','自分の担当アカウントで継続的に結果を出せる'],
- sections:[
-  {title:'スタンス',items:['集めた情報から戦略を自ら描き、自分の担当アカウントで成果を出すことにこだわれる']},
-  {title:'コミュニケーション｜フロント・外部連携（応用）',items:[
-    'フロントからクライアントのニーズを自ら引き出した上で、適切な運用改善ができる',
-    '自ら戦略を言語化し、伝えることができる']},
-  {title:'タスク管理｜自分のタスク',items:[
-    '期限を守る・約束を守る',
-    '細かいところまで気を配り、丁寧な仕事をする',
-    '周囲の期待を超えるアウトプットを意識する']},
-  {title:'組織運営｜メンバー協働',items:[
-    'メンバーへ納期の声かけができる',
-    'タスク漏れの指摘やサポートができる',
-    '他の人のボールを把握できる',
-    'リーダー不在時などのサポート対応ができる',
-    'メンバーの運用会社の動き理解、ミス発生時の把握']},
-  {title:'業務スキル｜知見（レクチャー）',items:[
-    '習得した知識・知見をメンバーにアウトプットできる（ユニット定例、ナレッジ）',
-    'インスタのアルゴリズムや運用方法を新人にアウトプットできる']},
-  {title:'業務スキル｜知見（インプット）',items:['最新のトレンドや業界の動向をリサーチし、業務に活かす']},
-  {title:'業務スキル｜運用（アドバンス運用の対応）',items:[
-    'アドバンスアカウント2社ともCVが出せる',
-    'アドバンスアカウントのチェック（投稿、レポート、ストーリー等）ができる',
-    '他のunit活動のために業務効率化できる状態',
-    '新規のアドバンスアカウントを受け入れることができる（戦略設計ができる）']}
- ]},
-
-{n:6,tier:'pro',period:'6ヶ月',
- vision:['自身の担当アカウントで成果を継続的に出せるうえで、困っているメンバーを助けることができる'],
- sections:[
-  {title:'スタンス',items:[
-    '運用アカウントに対し、集めた情報から貢献（主にCV出し）する為の戦略を自ら描くことができる',
-    'ユニットがよりよい方向に向かう為の施策を自ら考え、行動できる']},
-  {title:'コミュニケーション｜フロント・外部連携（応用）',items:[
-    'フロントからクライアントのニーズを自ら引き出した上で、適切な運用改善ができる',
-    '自ら戦略を言語化し、伝えることができる']},
-  {title:'タスク管理｜アカウント運用でのタスク意識',items:['周囲の期待を超えるアウトプットを意識する']},
-  {title:'タスク管理｜ユニットでのタスク意識',items:[
-    '納期の声かけができる',
-    'タスク履行漏れの指摘やサポートができる',
-    '他の人のボールを把握できる',
-    '自分のボールを少しでも進められる']},
-  {title:'組織運営｜メンバー協働（育成応用）',items:[
-    '個人ではなく「組織の成果」を最優先に考える',
-    'チームの成長を促す行動を取る（知識の共有、仕組み化など）']},
-  {title:'業務スキル｜知見（レクチャー）',items:[
-    '習得した知識・知見をメンバーにアウトプットできる（ユニット定例、ナレッジ）',
-    'インスタのアルゴリズムや運用方法を新人にアウトプットできる']},
-  {title:'業務スキル｜運用（圧倒的な成果へのこだわり）',items:[
-    '「頑張った」ではなく、「価値を提供できたか？」を意識する',
-    '「早くて質が高い」仕事を目指す（どちらか一方ではなく、両方）']},
-  {title:'業務スキル｜運用（他のメンバーの成果創出フォロー）',items:[
-    'アドバンス定例において、担当アカウントの状況を過不足なく説明できる',
-    'ユニットメンバーの運用面での補助ができる']},
-  {title:'AI活用',ai:true,groups:[
-    {label:'なりたい姿',items:[
-      'AIで新しい価値を生み出す＋unit内に広め始める',
-      '最新AI情報を自分でキャッチアップ・発信、組織でAI推進ができる',
-      'AI活用で生まれた余白を次の業務に活用できている']},
-    {label:'業務スキル｜定量・定性',items:[
-      '業務の中でAIを使って何か試した経験がある（アカウント設計、投稿作成、工数削減、業務管理などで具体的な課題に対するアプローチとして）',
-      '日常の業務の中でスターター・プレイヤーのAI活用をサポートしている']}
-  ]}
- ]},
-
-{n:7,tier:'leader',period:'8ヶ月',
- vision:['リーダーと一緒に組織運営ができる'],
- sections:[
-  {title:'スタンス',items:[
-    '圧倒的な当事者意識を持っている',
-    '成長マインドセットを持っている',
-    '単にスキルがある人ではなく、成果を出し続ける人である']},
-  {title:'コミュニケーション｜改善方針の起案（社内）',items:['指示された内容以外でも、運用面での改善提案ができる（対フロント）']},
-  {title:'コミュニケーション｜対外的な役割',items:[
-    '社員・リーダーとの橋渡しを行う',
-    '他のUnitなどと協働する',
-    'チームの代表として成果や問題点を報告できる']},
-  {title:'タスク管理｜ユニットメンバー管理',items:['ユニット全体の納期管理ができる']},
-  {title:'組織運営｜UL業務（基礎）',items:[
-    'メンバーのエスカレ処理ができる',
-    'メンバーの面談ができる',
-    'アカウント差配ができる',
-    '勤務時間・スキル・アカウント数字・求められていることの理解などを鑑みる']},
-  {title:'業務スキル｜知見（ユニット横断）',items:[
-    '習得した知識・知見をメンバーにレクチャーできる',
-    'インスタのアルゴリズムや運用方法を新人にレクチャーできる',
-    'ナレッジ箱の中に成果を格納する']},
-  {title:'業務スキル｜運用（メンバーディレクション）',items:[
-    '運用レポートのチェックができる',
-    'アドバンスの企画・投稿予約チェックができる',
-    'アドバンス会議への参加・ファシリができる',
-    {t:'アポ同行（1回以上参加）',sub:['レポート自分で報告（任意、アカウントによる）']}]}
- ]},
-
-{n:8,tier:'leader',period:'9ヶ月',
- vision:['一人でメンバーマネジメントができる','リーダー育成ができる'],
- sections:[
-  {title:'スタンス',items:[
-    'メンバーの成長を促し喜べる',
-    '高いコミュニケーション能力がある',
-    '信頼を積み重ねている']},
-  {title:'コミュニケーション｜改善方針の起案（社外）',items:[
-    '指示された内容以外でも、運用面での改善提案ができる（対クライアント）',
-    'クライアントへの振り返りプレゼンなどが任せられる']},
-  {title:'コミュニケーション｜対外的な役割',items:['他部署の社員ともコミュニケーションが問題なく行える']},
-  {title:'タスク管理｜ユニット管理',items:['取りこぼしがあったタスクを全て自分ごとにし、対応しようとする状態']},
-  {title:'組織運営｜UL業務（応用）',items:[
-    '適切な目標設定、行動マネジメント、モチベーション管理ができる',
-    'Unit内でのスタンス・方針を発信し、チーム感を作り扇動できる']},
-  {title:'業務スキル｜知見（外からの情報収集と展開）',items:[
-    '社外（YouTube、記事、セミナーなど）からの積極的な情報収集とトレンドキャッチ',
-    '最新情報の全体に向けた展開']},
-  {title:'業務スキル｜運用（運用企画）',items:[
-    '成果を上げるための新たな運用方法を企画できる',
-    '効率の良い運用フローを企画できる']},
-  {title:'AI活用',ai:true,groups:[
-    {label:'なりたい姿',items:[
-      'AIを用いた突破力：AIを中心に業務を設計・実行できる',
-      'AI活用の横展開：Claude Codeを用いて業務上の課題を解決するツールを開発・実装できる',
-      'リーダー業務として業務改善にClaude Codeの使用ができる']},
-    {label:'業務スキル｜定量・定性',items:[
-      'ナレッジ共有・勉強会・ツール整備などを通じてAI活用が広まる仕組みを自ら作り、組織に還元できている']}
-  ]}
- ]},
-
-{n:9,tier:'exec',period:'12ヶ月',
- vision:['事業責任者になれる'],
- sections:[
-  {title:'スタンス｜6SENSEの体現',items:['6SENSEを体現している']},
-  {title:'個別設定',custom:true,note:'各項目は面談時に本人とすり合わせて設定する。社会人としての即戦力レベルであることが基準。',items:[
-    '社会人基礎｜コミュニケーション','社会人基礎｜タスク管理','社会人基礎｜組織運営',
-    '業務スキル｜知見','業務スキル｜運用','専属Unit業務']},
-  {title:'AI活用',ai:true,groups:[
-    {label:'なりたい姿',items:['AIを用いた新規事業の創出','全ての業務でAIの使用']},
-    {label:'業務スキル｜定量・定性',items:[
-      'AIを用いた新規事業を創出・運営ができている',
-      '全ての業務においてのAI活用をしており、それが周囲から見て明らかである']}
-  ]}
- ]},
-
-{n:10,tier:'exec',period:'—',
- vision:['事業責任者として組織を牽引できる'],
- sections:[
-  {title:'個別設定',custom:true,note:'各項目は面談時に本人とすり合わせて設定する。社会人としての即戦力レベルであることが基準。',items:[
-    '社会人基礎｜コミュニケーション','社会人基礎｜タスク管理','社会人基礎｜組織運営',
-    '業務スキル｜知見','業務スキル｜運用','専属Unit業務']},
-  {title:'AI活用',ai:true,groups:[
-    {label:'なりたい姿',items:['AIを用いた新規事業の創出','全ての業務でAIの使用']},
-    {label:'業務スキル｜定量・定性',items:[
-      'AIを用いた新規事業を創出・運営ができている',
-      '全ての業務においてのAI活用をしており、それが周囲から見て明らかである']}
-  ]}
- ]}
-];
-
-const ATARIMAE = [
-  {k:'late',n:'遅刻数',d:'前日報告以外の遅刻（朝のattendance含む）は月2回以下であること。2ヶ月以上あった場合は除籍対象'},
-  {k:'kintai',n:'勤怠管理',d:'連絡なくシフトの修正を行わない'},
-  {k:'taido',n:'勤務態度',d:'正当な理由がなく上司に事前承認のない出勤中の不稼働や欠勤、明らかな規律・モラルの欠如と取れる行動があった場合✕'},
-  {k:'horenso',n:'報連相',d:'報連相の欠如により会社やメンバーに著しい損害や迷惑がかかった事案があった場合✕'},
-  {k:'rule',n:'ルール遵守',d:'社内で広報されているルールが遵守できず、会社やメンバーに著しい損害や迷惑がかかった事案があった場合✕（就業規定や経費規定、オペレーションルール等）'}
-];
-
-const STAGES = [
-  {t:'ちいさな光',    dsc:'まだ小さな光。ここから全部はじまる。'},
-  {t:'ひかる',        dsc:'自分の力で光りはじめた。'},
-  {t:'衛星がひとつ',  dsc:'まわりに人がついてきた。'},
-  {t:'リング',        dsc:'自分の軌道ができた。'},
-  {t:'ふたつめの衛星',dsc:'任せてもらえる範囲が広がった。'},
-  {t:'二重のリング',  dsc:'自分の型を持ちはじめた。'},
-  {t:'みっつめの衛星',dsc:'まわりを巻き込んで動かせる。'},
-  {t:'光をまとう',    dsc:'いるだけで場が明るくなる。'},
-  {t:'きらめく',      dsc:'遠くからでも見つけてもらえる。'},
-  {t:'まんまるの惑星',dsc:'ひとつの世界をつくった。'}
-];
-</script>
-<script>
-/* ============================================================
-   STATE + STORAGE
-   ============================================================ */
-const KEY='careerstep:v1';
-/* 保存先：Claudeのアーティファクト内では window.storage、
-   Vercel等の通常のWebでは localStorage、どちらも使えなければメモリのみ */
-const STORE=(()=>{
-  let api=false;
-  try{ api = !!(window.storage && typeof window.storage.get==='function'); }catch(e){ api=false; }
-  let ls=false;
-  try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); ls=true; }catch(e){ ls=false; }
-  const mem={};
-  return {
-    mode: api?'app':(ls?'local':'none'),
-    async get(k){
-      if(api){ try{ const r=await window.storage.get(k); return (r&&r.value)||null; }catch(e){} }
-      if(ls){ try{ return localStorage.getItem(k); }catch(e){} }
-      return mem[k]||null;
-    },
-    async set(k,v){
-      if(api){ try{ await window.storage.set(k,v); return 'app'; }catch(e){} }
-      if(ls){ try{ localStorage.setItem(k,v); return 'local'; }catch(e){} }
-      mem[k]=v; return 'none';
-    }
-  };
-})();
 const DEFAULT={
   profile:{name:'',join:'',grade:''}, buddy:'', sound:true,
   goals:{basic:'',skill:''},
@@ -724,194 +462,68 @@ const DEFAULT={
   atarimae:{}, checks:{}, custom:{}, log:[], seen:[]
 };
 let D=JSON.parse(JSON.stringify(DEFAULT));
-let view='home', openG=null, ready=false;
+let view='home', openG=null, ready=false, profileDirty=false;
+/* 記録タブ */
+let LOG={ seg:'notes', rkind:'ywt', notes:[], scores:[], reviews:[], loaded:false,
+          ywtPeriod:ywtPeriod(), monthPeriod:monthlyPeriod(), draft:{}, saving:false };
 
 async function load(){
-  try{
-    const v=await STORE.get(KEY);
-    if(v) D=Object.assign(JSON.parse(JSON.stringify(DEFAULT)),JSON.parse(v));
-  }catch(e){ /* 初回 */ }
+  const d=await Store.myData();
+  D=JSON.parse(JSON.stringify(DEFAULT));
+  D.profile={ name:d.member.name||'', join:d.member.join_date||'', grade:d.member.certified_grade||'' };
+  Object.keys(d.checks).forEach(k=>{ if(d.checks[k]) D.checks[k]=true; });
+  const s=d.state||{};
+  D.buddy=s.buddy||'';
+  D.goals=Object.assign({basic:'',skill:''},s.goals||{});
+  if(Array.isArray(s.creed)&&s.creed.length) D.creed=s.creed.concat(DEFAULT.creed.slice(s.creed.length)).slice(0,5);
+  D.atarimae=s.atarimae||{}; D.custom=s.custom||{}; D.seen=s.seen||[];
+  D.sound=s.sound!==false; D.log=s.log||[];
   ready=true;
 }
+
 let saveT=null;
+/* 入力は少し待ってからまとめて保存する（打っている途中で毎回通信しない） */
 function save(){
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{
-    const m=await STORE.set(KEY,JSON.stringify(D));
-    flash(m);
-  },400);
+    try{
+      await Store.saveState({ buddy:D.buddy, goals:D.goals, creed:D.creed,
+        atarimae:D.atarimae, custom:D.custom, seen:D.seen, sound:D.sound });
+      if(profileDirty){
+        await Store.saveProfile({ name:D.profile.name, join_date:D.profile.join||null,
+          certified_grade:D.profile.grade?+D.profile.grade:null });
+        profileDirty=false;
+      }
+      flash('ok');
+    }catch(e){ flash('err',e.message); }
+  },450);
 }
-function flash(m){
+function flash(kind,msg){
   const el=document.getElementById('saved');
-  if(m==='none'){ el.textContent='保存できません'; el.style.color='var(--coral)'; el.classList.add('on'); return; }
-  el.textContent = m==='local' ? 'この端末に保存しました' : '保存しました';
+  if(kind==='err'){ el.textContent=msg||'保存できませんでした'; el.style.color='var(--coral)'; el.classList.add('on');
+    setTimeout(()=>el.classList.remove('on'),3000); return; }
+  el.style.color='';
+  el.textContent = Store.mode==='cloud' ? '保存しました' : 'この端末に保存しました';
   el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),1200);
 }
 
 /* ============================================================
    MODEL HELPERS
+   計算式は shared/steps.js にひとつだけ置いて、管理者画面と共通にしている。
    ============================================================ */
-function gradeItems(g){
-  const out=[];
-  const gi=GRADES.findIndex(x=>x.n===g.n);
-  g.vision.forEach((t,i)=>out.push({id:'g'+g.n+'.v.'+i,t:t,cat:'なりたい姿',vision:true}));
-  g.sections.forEach((s,si)=>{
-    const push=(list,gl)=>list.forEach((it,ii)=>{
-      const base='g'+g.n+'.'+si+'.'+(gl!=null?gl+'-':'')+ii;
-      if(typeof it==='string'){ out.push({id:base,t:it,cat:s.title,custom:!!s.custom}); }
-      else{
-        out.push({id:base,t:it.t,cat:s.title,link:it.link,custom:!!s.custom});
-        (it.sub||[]).forEach((st,k)=>out.push({id:base+'.'+k,t:st,cat:s.title,sub:true}));
-      }
-    });
-    if(s.groups) s.groups.forEach((gr,gl)=>push(gr.items,gl));
-    else push(s.items,null);
-  });
-  return out;
-}
-const ITEMS={}; GRADES.forEach(g=>ITEMS[g.n]=gradeItems(g));
-function done(g){return ITEMS[g].filter(i=>D.checks[i.id]).length;}
-function total(g){return ITEMS[g].length;}
-function isDone(g){return done(g)===total(g);}
-function gradeOf(id){return +id.slice(1).split('.')[0];}
-function isLocked(n){return n>currentGrade();}
-function currentGrade(){for(const g of GRADES){if(!isDone(g.n))return g.n;}return 10;}
-function stage(){let c=0;GRADES.forEach(g=>{if(isDone(g.n))c++;});return Math.min(c+1,10);}
-function totalChecked(){return Object.values(D.checks).filter(Boolean).length;}
-function totalItems(){return GRADES.reduce((a,g)=>a+total(g.n),0);}
+function done(g){return gDone(D.checks,g);}
+function total(g){return gTotal(g);}
+function isDone(g){return gIsDone(D.checks,g);}
+function isLocked(n){return gIsLocked(D.checks,n);}
+function currentGrade(){return gCurrentGrade(D.checks);}
+function stage(){return gStage(D.checks);}
+function totalChecked(){return gTotalChecked(D.checks);}
+function totalItems(){return TOTAL_ITEMS;}
 function weekCount(){const wk=Date.now()-6048e5;return D.log.filter(t=>t>wk).length;}
-function tierOf(n){return TIERS[GRADES[n-1].tier];}
 
 /* ============================================================
-   CREATURE — 段階でパーツが増えるSVG
+   SOUND
    ============================================================ */
-function star(cx,cy,r,f){
-  return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
-}
-/* 相棒：まるい光。育つほど大きくなり、リングと衛星が増えていく */
-function creature(st,size,cls){
-  const W='#FAF8FF', E='#2C2748', A='#FFC44D', A2='#FF9F45';
-  const cx=60, cy=62, r=17+st*1.8;
-  const p=[];
-  const sp=(x,y,q,f)=>'<path d="M'+x+' '+(y-q)+' Q'+x+' '+y+' '+(x+q)+' '+y+' Q'+x+' '+y+' '+x+' '+(y+q)+' Q'+x+' '+y+' '+(x-q)+' '+y+' Q'+x+' '+y+' '+x+' '+(y-q)+' Z" fill="'+f+'"/>';
-  const moon=(deg,rad,mr)=>{const t=deg*Math.PI/180;
-    return '<circle cx="'+(cx+Math.cos(t)*rad).toFixed(1)+'" cy="'+(cy+Math.sin(t)*rad).toFixed(1)+'" r="'+mr+'" fill="'+A+'"/>';};
-
-  if(st>=10) p.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(r+22)+'" fill="'+A+'" opacity=".10"/>');
-  if(st>=8)  p.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+(r+11)+'" fill="'+A+'" opacity=".13"/>');
-
-  if(st>=6) p.push('<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+(r+19)+'" ry="'+((r+19)*0.3).toFixed(1)+'" fill="none" stroke="'+A2+'" stroke-width="2.6" opacity=".8" transform="rotate(24 '+cx+' '+cy+')"/>');
-  if(st>=4) p.push('<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+(r+14)+'" ry="'+((r+14)*0.3).toFixed(1)+'" fill="none" stroke="'+A+'" stroke-width="3" transform="rotate(-16 '+cx+' '+cy+')"/>');
-
-  p.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+W+'"/>');
-  p.push('<circle cx="'+(cx-r*0.34).toFixed(1)+'" cy="'+(cy-r*0.3).toFixed(1)+'" r="'+(r*0.3).toFixed(1)+'" fill="#fff" opacity=".7"/>');
-
-  const er=2.5+st*0.14, ex=r*0.33, ey=cy-r*0.05;
-  p.push('<g class="eyes"><circle cx="'+(cx-ex).toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="'+er.toFixed(1)+'" fill="'+E+'"/>'+
-         '<circle cx="'+(cx+ex).toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="'+er.toFixed(1)+'" fill="'+E+'"/></g>');
-  if(st>=2) p.push('<path d="M'+(cx-r*0.2).toFixed(1)+' '+(ey+r*0.32).toFixed(1)+' q'+(r*0.2).toFixed(1)+' '+(r*0.22).toFixed(1)+' '+(r*0.4).toFixed(1)+' 0" stroke="'+E+'" stroke-width="2.1" fill="none" stroke-linecap="round"/>');
-
-  const ms=[];
-  if(st>=3) ms.push(moon(-25,r+17,4.2));
-  if(st>=5) ms.push(moon(150,r+17,3.6));
-  if(st>=7) ms.push(moon(75,r+17,3));
-  if(ms.length) p.push('<g class="orbit">'+ms.join('')+'</g>');
-
-  if(st>=9) p.push(sp(104,26,5,A)+sp(18,44,3.6,A)+sp(96,102,3.2,A));
-
-  return '<svg class="art '+(cls||'')+'" viewBox="0 0 120 120" width="'+size+'" height="'+size+'" aria-hidden="true">'+
-    '<g class="mochi">'+p.join('')+'</g></svg>';
-}
-
-/* 丸窓：月に向かって相棒が進んでいく。進捗＝月までの距離 */
-function porthole(st,pct,accent){
-  const cx=110, cy=100, R=78;
-  const P0=[88,132], C=[60,100], P1=[132,68];
-  const at=t=>[Math.pow(1-t,2)*P0[0]+2*(1-t)*t*C[0]+t*t*P1[0], Math.pow(1-t,2)*P0[1]+2*(1-t)*t*C[1]+t*t*P1[1]];
-  const poly=n=>{let d='';for(let i=0;i<=n;i++){const q=at(i/n);d+=(i?' L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1);}return d;};
-  const t=Math.min(1,Math.max(0,pct/100)), pos=at(t);
-  const stars=[[52,58,1.6],[70,38,1.2],[96,30,1.8],[128,34,1.2],[160,84,1.5],[168,116,1.2],[62,120,1.4],[46,96,1.2],[92,150,1.6],[128,158,1.2],[150,138,1.5],[84,66,1.1],[112,50,1.3],[176,66,1.2],[58,140,1.2]]
-    .map(v=>'<circle cx="'+v[0]+'" cy="'+v[1]+'" r="'+v[2]+'" fill="#fff" opacity=".75"/>').join('');
-  const bolts=[0,45,90,135,180,225,270,315].map(a=>{
-    const r=(a-90)*Math.PI/180;
-    return '<circle cx="'+(cx+Math.cos(r)*84).toFixed(1)+'" cy="'+(cy+Math.sin(r)*84).toFixed(1)+'" r="2.6" fill="#D9D6EB"/>';}).join('');
-  const arc=2*Math.PI*88;
-  return '<svg viewBox="0 0 220 200" width="212" height="193" aria-hidden="true">'+
-   '<defs><radialGradient id="ph_sky" cx="35%" cy="25%"><stop offset="0" stop-color="#33405F"/><stop offset="1" stop-color="#131A2B"/></radialGradient>'+
-   '<clipPath id="ph_c"><circle cx="'+cx+'" cy="'+cy+'" r="'+R+'"/></clipPath></defs>'+
-   '<circle cx="'+cx+'" cy="'+cy+'" r="84" fill="#F5F4FB"/>'+bolts+
-   '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="url(#ph_sky)"/>'+
-   '<g clip-path="url(#ph_c)">'+stars+
-     '<circle cx="152" cy="52" r="30" fill="#fff" opacity=".08"/>'+
-     '<circle cx="152" cy="52" r="20" fill="#EFEDE2"/>'+
-     '<circle cx="146" cy="46" r="4" fill="#DAD7C7"/><circle cx="158" cy="58" r="3" fill="#DAD7C7"/><circle cx="157" cy="43" r="2.2" fill="#DAD7C7"/>'+
-     '<path d="M40 44 l16 -12" stroke="#fff" stroke-width="1.6" opacity=".5" stroke-linecap="round"/>'+
-     '<path d="M74 152 l14 -11" stroke="#fff" stroke-width="1.4" opacity=".35" stroke-linecap="round"/>'+
-     '<path d="'+poly(24)+'" stroke="#fff" stroke-width="1.6" fill="none" opacity=".25" stroke-dasharray="3 5"/>'+
-     (t>0.02?'<path d="'+poly(Math.max(2,Math.round(24*t)))+'" stroke="'+accent+'" stroke-width="2.4" fill="none" opacity=".9" stroke-linecap="round"/>':'')+
-     '<g transform="translate('+(pos[0]-41).toFixed(1)+','+(pos[1]-41).toFixed(1)+') scale(.68)">'+creature(st,120,'float')+'</g>'+
-   '</g>'+
-   '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="#E4E2F2" stroke-width="4"/>'+
-   '<circle cx="'+cx+'" cy="'+cy+'" r="88" fill="none" stroke="#EDEBF7" stroke-width="5"/>'+
-   '<circle cx="'+cx+'" cy="'+cy+'" r="88" fill="none" stroke="'+accent+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+arc+'" stroke-dashoffset="'+(arc*(1-t))+'" transform="rotate(-90 '+cx+' '+cy+')"/>'+
-   '</svg>';
-}
-
-/* ============================================================
-   SMALL UI PARTS
-   ============================================================ */
-const SPK_ON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 9.5h3.6L12.5 5v14L7.6 14.5H4z" fill="currentColor"/><path d="M16 9.2a4 4 0 0 1 0 5.6M18.7 6.6a7.6 7.6 0 0 1 0 10.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
-const SPK_OFF='<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 9.5h3.6L12.5 5v14L7.6 14.5H4z" fill="currentColor"/><path d="M16.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
-const LOCK='<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M7 10V7a5 5 0 0 1 10 0v3" stroke="#B9B4D0" stroke-width="2.6" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="10.5" rx="3" fill="#B9B4D0"/></svg>';
-const CHECK='<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 12.5 L9.5 18 L20 6.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-function ring(pct,color,label){
-  const r=19,c=2*Math.PI*r;
-  return '<div class="ring"><svg width="46" height="46" viewBox="0 0 46 46">'+
-   '<circle cx="23" cy="23" r="'+r+'" fill="none" stroke="#EFEDF9" stroke-width="5"/>'+
-   '<circle cx="23" cy="23" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+(c*(1-pct/100))+'" transform="rotate(-90 23 23)"/>'+
-   '</svg><b style="color:'+color+'">'+(label!=null?label:pct)+'</b></div>';
-}
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function toast(msg,cls){
-  const t=document.createElement('div');t.className='toast '+(cls||'');t.textContent=msg;
-  document.getElementById('toasts').appendChild(t);
-  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),320);},1500);
-}
-</script>
-<script>
-/* ============================================================
-   カテゴリ（ステップ一覧の行）
-   ============================================================ */
-const CATS=[
-  {k:'vision',            n:'なりたい姿'},
-  {k:'スタンス',           n:'スタンス'},
-  {k:'コミュニケーション',   n:'コミュニケーション'},
-  {k:'タスク管理',         n:'タスク管理'},
-  {k:'組織運営',           n:'組織運営'},
-  {k:'業務スキル｜知見',    n:'業務スキル・知見'},
-  {k:'業務スキル｜運用',    n:'業務スキル・運用'},
-  {k:'AI活用',            n:'AI活用'},
-  {k:'個別設定',           n:'個別設定'}
-];
-function secStats(gn,si){
-  const its=ITEMS[gn].filter(i=>i.id.split('.')[1]===String(si));
-  return {t:its.length, d:its.filter(i=>D.checks[i.id]).length};
-}
-function visStats(gn){
-  const its=ITEMS[gn].filter(i=>i.id.split('.')[1]==='v');
-  return {t:its.length, d:its.filter(i=>D.checks[i.id]).length};
-}
-function subLabel(title,cat){
-  let r=title.slice(cat.length);
-  if(r.charAt(0)==='｜') r=r.slice(1);
-  if(r.charAt(0)==='（'&&r.charAt(r.length-1)==='）') r=r.slice(1,-1);
-  return r||title;
-}
-
-/* ============================================================
-   SOUND — 音源ファイルなし、Web Audioで生成
-   ============================================================ */
-let AC=null;
 function actx(){
   try{
     if(!AC){ const C=window.AudioContext||window.webkitAudioContext; if(!C) return null; AC=new C(); }
@@ -957,6 +569,7 @@ function fanfare(big){
 /* ============================================================
    VIEWS
    ============================================================ */
+function cutTxt(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 function vHome(){
   const cg=currentGrade(), g=GRADES[cg-1], t=tierOf(cg);
   const dn=done(cg), tt=total(cg), pct=Math.round(dn/tt*100);
@@ -996,6 +609,20 @@ function vHome(){
     h+='<button class="next-item" data-act="openGrade" data-g="'+cg+'" style="border-top:1px solid var(--line);color:var(--violet);font-weight:700;font-size:13px;justify-content:center;padding-top:14px">Grade '+cg+' の項目をすべて見る →</button>';
   }
   h+='</div>';
+
+  /* ULやメンターからの共有事項。あれば新しいものを2件だけ出す */
+  const sn=(LOG.notes||[]).slice(0,2);
+  if(sn.length){
+    h+='<div class="sec-label">ULからの共有</div><div class="card">';
+    sn.forEach(n=>{
+      const k=NOTE_KIND[n.kind]||NOTE_KIND.memo;
+      h+='<div class="nt"><div class="top"><b style="font-size:12.5px">'+fmtDateFull(n.occurred_on)+'</b>'+
+        '<span class="pill '+k.c+'">'+k.n+'</span>'+
+        (n.author_name?'<span class="tiny muted" style="margin-left:auto">'+esc(n.author_name)+'</span>':'')+
+        '</div><div class="bd">'+esc(cutTxt(n.body,110))+'</div></div>';
+    });
+    h+='<button class="next-item" data-act="tab" data-tab="log" style="border-top:1px solid var(--line);color:var(--violet);font-weight:700;font-size:13px;justify-content:center;padding-top:14px">共有事項をすべて見る →</button></div>';
+  }
 
   const cleared=GRADES.filter(x=>isDone(x.n)).length;
   h+='<div class="sec-label">全体の歩み</div><div class="card roadcard">'+roadmap(false)+
@@ -1125,18 +752,20 @@ function vSheet(){
      '<span class="seg"><button class="ok'+(D.sound?' on':'')+'" data-act="sfx">ON</button>'+
      '<button class="ng'+(D.sound?'':' on')+'" data-act="sfx">OFF</button></span>'+
    '</div></div>';
-  h+='<div class="sec-label">データの保管</div><div class="card">'+
-   '<p class="tiny muted" style="margin:0 0 12px">'+
-     (STORE.mode==='local'
-       ? '入力内容は<b>この端末のこのブラウザ</b>だけに保存されます。別の端末やシークレットウィンドウでは引き継がれません。機種変更の前にバックアップを書き出してください。'
-       : STORE.mode==='app'
-         ? '入力内容は自動保存されます。'
-         : 'このブラウザでは保存ができない設定になっています。閉じると入力が消えるので、バックアップを書き出してください。')+
-   '</p>'+
-   '<div style="display:flex;gap:8px">'+
-     '<button data-act="export" style="flex:1;padding:12px;border-radius:12px;background:var(--ink);color:#fff;font-weight:700;font-size:13px">バックアップを書き出す</button>'+
-     '<button data-act="import" style="flex:1;padding:12px;border-radius:12px;background:#fff;border:1.5px solid var(--line);font-weight:700;font-size:13px">ファイルから読み込む</button>'+
-   '</div></div>';
+  if(Store.mode==='cloud'){
+    h+='<div class="sec-label">ログイン</div><div class="card">'+
+     '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
+     '共有された申し送りや面談メモは「記録」タブから見られます。</p>'+
+     '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
+  }else{
+    h+='<div class="sec-label">データの保管</div><div class="card">'+
+     '<p class="tiny muted" style="margin:0 0 12px">入力内容は<b>この端末のこのブラウザ</b>だけに保存されます。'+
+     '別の端末やシークレットウィンドウでは引き継がれません。機種変更の前にバックアップを書き出してください。</p>'+
+     '<div style="display:flex;gap:8px">'+
+       '<button data-act="export" style="flex:1;padding:12px;border-radius:12px;background:var(--ink);color:#fff;font-weight:700;font-size:13px">バックアップを書き出す</button>'+
+       '<button data-act="import" style="flex:1;padding:12px;border-radius:12px;background:#fff;border:1.5px solid var(--line);font-weight:700;font-size:13px">ファイルから読み込む</button>'+
+     '</div></div>';
+  }
   h+='<button class="danger" data-act="reset">入力内容をすべて消去する</button><div style="height:8px"></div></div>';
   return h;
 }
@@ -1185,12 +814,12 @@ function vMap(){
       const lk=isLocked(g.n);
       let cells=[], dn=0, tt=0;
       if(c.k==='vision'){
-        const st=visStats(g.n); dn=st.d; tt=st.t;
+        const st=visStats(D.checks,g.n); dn=st.d; tt=st.t;
         if(tt) cells.push(g.vision.join(' / '));
       }else{
         g.sections.forEach((sec,si)=>{
           if(sec.title.indexOf(c.k)!==0) return;
-          const st=secStats(g.n,si); dn+=st.d; tt+=st.t;
+          const st=secStats(D.checks,g.n,si); dn+=st.d; tt+=st.t;
           cells.push(subLabel(sec.title,c.k));
         });
       }
@@ -1222,16 +851,203 @@ function vDex(){
   });
   return h+'</div>';
 }
+/* ============================================================
+   記録タブ — ULからの共有事項・テスト点数・振り返り
+   ============================================================ */
+const NOTE_KIND={
+  memo:{n:'メモ',c:'g'}, handover:{n:'申し送り',c:'s'}, interview:{n:'面談',c:'v'},
+  promotion:{n:'昇格面談',c:'a'}, escalation:{n:'エスカレ',c:'c'}, praise:{n:'称賛',c:'m'}
+};
+async function loadLog(){
+  if(LOG.loaded) return;
+  const [n,s,r]=await Promise.all([Store.myNotes(),Store.myScores(),Store.myReviews()]);
+  LOG.notes=n||[]; LOG.scores=s||[]; LOG.reviews=r||[]; LOG.loaded=true;
+}
+function reviewOf(kind,period){ return LOG.reviews.find(r=>r.kind===kind&&r.period===period)||null; }
+
+function vLog(){
+  let h='<div class="logwrap"><div class="segs">'+
+    [['notes','共有事項'],['scores','テスト'],['reviews','振り返り']].map(x=>
+      '<button data-act="seg" data-s="'+x[0]+'" class="'+(LOG.seg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+
+    '</div>';
+  if(!LOG.loaded) return h+'<div class="card"><div style="text-align:center;padding:24px 0" class="tiny muted">読み込んでいます…</div></div></div>';
+  if(LOG.seg==='notes')   h+=logNotes();
+  else if(LOG.seg==='scores') h+=logScores();
+  else h+=logReviews();
+  return h+'</div>';
+}
+
+/* ---------- 共有事項 ---------- */
+function logNotes(){
+  let h='<div class="note" style="background:var(--sky-soft)">ULやメンターが、あなたとのやりとりを残した記録です。'+
+    '面談で決めたことや申し送りをあとから見返せます。</div>';
+  if(!LOG.notes.length) return h+'<div class="card"><div style="text-align:center;padding:26px 0" class="tiny muted">'+
+    (Store.mode==='cloud'
+      ? 'まだ共有事項はありません。<br>面談や定例のあとにここへ追加されます。'
+      : 'この機能はまだ準備中です。<br>チーム共有の設定が終わると、ULやメンターからの<br>申し送り・面談メモがここに届きます。')+
+    '</div></div>';
+  h+='<div class="card">';
+  LOG.notes.forEach(n=>{
+    const k=NOTE_KIND[n.kind]||NOTE_KIND.memo;
+    h+='<div class="nt"><div class="top">'+
+      '<b style="font-size:13px">'+fmtDateFull(n.occurred_on)+'</b>'+
+      '<span class="pill '+k.c+'">'+k.n+'</span>'+
+      (n.grade?'<span class="pill g">Grade '+n.grade+'</span>':'')+
+      (n.author_name?'<span class="tiny muted" style="margin-left:auto">'+esc(n.author_name)+'</span>':'')+
+    '</div><div class="bd">'+esc(n.body)+'</div>'+
+    (n.next_action?'<div class="na">→ 次にやること：'+esc(n.next_action)+'</div>':'')+
+    '</div>';
+  });
+  return h+'</div>';
+}
+
+/* ---------- テスト点数 ---------- */
+function logScores(){
+  let h='<div class="note" style="background:var(--mint-soft)">ラーニングボックスなどのテスト結果です。'+
+    '<a href="https://orient-quiz.vercel.app/" target="_blank" rel="noopener">クイズを開く →</a></div>';
+  if(!LOG.scores.length) return h+'<div class="card"><div style="text-align:center;padding:26px 0" class="tiny muted">'+
+    (Store.mode==='cloud'
+      ? 'まだ結果が登録されていません。<br>受験するとここに点数がたまっていきます。'
+      : 'この機能はまだ準備中です。<br>チーム共有の設定が終わると、受験した点数が<br>ここにたまっていきます。')+
+    '</div></div>';
+
+  /* テストごとに最新の結果でまとめる */
+  const byQuiz={};
+  LOG.scores.forEach(s=>{ (byQuiz[s.quiz_name]=byQuiz[s.quiz_name]||[]).push(s); });
+  const names=Object.keys(byQuiz);
+  const rates=[];
+  names.forEach(q=>{ byQuiz[q].sort((a,b)=>String(b.taken_on).localeCompare(String(a.taken_on)));
+    const s=byQuiz[q][0]; if(s.max_score) rates.push(Math.round(+s.score/+s.max_score*100)); });
+  const avg=rates.length?Math.round(rates.reduce((a,b)=>a+b,0)/rates.length):null;
+
+  h+='<div class="stats">'+
+    '<div class="stat"><b>'+names.length+'</b><span>受けたテスト</span></div>'+
+    '<div class="stat"><b style="color:var(--mint)">'+(avg==null?'—':avg+'%')+'</b><span>平均正答率</span></div>'+
+    '<div class="stat"><b style="color:var(--violet)">'+rates.filter(x=>x>=90).length+'</b><span>9割以上</span></div>'+
+  '</div>';
+
+  h+='<div class="sec-label">テストごとの最新の結果</div><div class="card">';
+  names.forEach(q=>{
+    const list=byQuiz[q], s=list[0];
+    const rate=s.max_score?Math.round(+s.score/+s.max_score*100):null;
+    const cls=(s.passed===true||(rate!=null&&rate>=90))?'m':(rate!=null&&rate>=70?'a':'c');
+    h+='<div class="sc"><div class="nm">'+esc(q)+
+      '<small>'+fmtDateFull(s.taken_on)+(list.length>1?'　'+list.length+'回受験':'')+'</small></div>'+
+      (rate!=null?'<span class="pill '+cls+'">'+rate+'%</span>':'')+
+      '<div class="pt">'+s.score+(s.max_score?'<small> / '+s.max_score+'</small>':'')+'</div></div>';
+    if(list.length>1){
+      h+='<div class="tiny muted" style="padding:0 0 8px 2px">過去：'+
+        list.slice(1).map(x=>fmtDate(x.taken_on)+' '+x.score+(x.max_score?'/'+x.max_score:'')).join('　')+'</div>';
+    }
+  });
+  return h+'</div>';
+}
+
+/* ---------- 振り返り ---------- */
+function logReviews(){
+  let h='<div class="segs" style="background:#EFEEF8">'+
+    [['ywt','隔週YWT'],['monthly','月次振り返り']].map(x=>
+      '<button data-act="rkind" data-k="'+x[0]+'" class="'+(LOG.rkind===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+'</div>';
+  return h+(LOG.rkind==='monthly'?logMonthly():logYwt());
+}
+function periodPicker(kind){
+  const cur=kind==='ywt'?LOG.ywtPeriod:LOG.monthPeriod;
+  const list=recentPeriods(kind,kind==='ywt'?6:6);
+  return '<div class="pgrid">'+list.map((p,i)=>{
+    const has=reviewOf(kind,p);
+    return '<button data-act="pick" data-kind="'+kind+'" data-p="'+p+'" class="'+(cur===p?'on':'')+'">'+
+      periodLabel(kind,p)+(i===0?'（今期）':'')+(has?' ✓':'')+'</button>';
+  }).join('')+'</div>';
+}
+function draftVal(kind,period,field,fallback){
+  const k=kind+':'+period+':'+field;
+  return (k in LOG.draft)? LOG.draft[k] : (fallback||'');
+}
+function logYwt(){
+  const p=LOG.ywtPeriod, rv=reviewOf('ywt',p);
+  let h='<div class="note" style="background:var(--violet-soft)">2週間ごとの振り返り。'+
+    'やったこと（Y）・わかったこと（W）・つぎにやること（T）を書いて提出すると、ULが見てコメントを返します。</div>';
+  h+=periodPicker('ywt');
+  h+='<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+
+    '<b style="font-size:15px">'+periodLabel('ywt',p)+'</b>'+
+    (rv&&rv.submitted_at?'<span class="pill m">提出済</span>':'<span class="pill a">未提出</span>')+
+    (rv&&rv.submitted_at?'<span class="tiny muted" style="margin-left:auto">'+fmtDateTime(rv.submitted_at)+'</span>':'')+'</div>'+
+    '<div class="field"><label>Y｜やったこと</label><textarea data-draft="ywt:'+p+':y" placeholder="この2週間で実際に手を動かしたこと">'+esc(draftVal('ywt',p,'y',rv&&rv.y))+'</textarea></div>'+
+    '<div class="field"><label>W｜わかったこと</label><textarea data-draft="ywt:'+p+':w" placeholder="やってみて気づいたこと・学びになったこと">'+esc(draftVal('ywt',p,'w',rv&&rv.w))+'</textarea></div>'+
+    '<div class="field"><label>T｜つぎにやること</label><textarea data-draft="ywt:'+p+':t" placeholder="次の2週間で試すこと">'+esc(draftVal('ywt',p,'t',rv&&rv.t))+'</textarea></div>'+
+    '<button class="savebtn" data-act="saveReview" data-kind="ywt" data-p="'+p+'"'+(LOG.saving?' disabled':'')+'>'+
+      (LOG.saving?'保存中…':(rv&&rv.submitted_at?'内容を更新する':'提出する'))+'</button>';
+  if(rv&&rv.ul_comment) h+='<div class="ul" style="margin-top:12px">ULからのコメント：'+esc(rv.ul_comment)+
+    (rv.ul_comment_by?'<span class="tiny muted">（'+esc(rv.ul_comment_by)+'）</span>':'')+'</div>';
+  h+='</div>';
+  h+=pastReviews('ywt',p);
+  return h;
+}
+function logMonthly(){
+  const p=LOG.monthPeriod, rv=reviewOf('monthly',p);
+  let h='<div class="note" style="background:var(--violet-soft)">1ヶ月の振り返りと、次の月の目標。'+
+    'ULとの月次定例の前に書いておくと、そのまま話のたたき台になります。</div>';
+  h+=periodPicker('monthly');
+  h+='<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+
+    '<b style="font-size:15px">'+p.replace('-','年')+'月</b>'+
+    (rv&&rv.submitted_at?'<span class="pill m">提出済</span>':'<span class="pill a">未提出</span>')+
+    (rv&&rv.submitted_at?'<span class="tiny muted" style="margin-left:auto">'+fmtDateTime(rv.submitted_at)+'</span>':'')+'</div>'+
+    '<div class="field"><label>今月の振り返り</label><textarea data-draft="monthly:'+p+':looking_back" placeholder="できたこと・できなかったこと。数値がどう動いたか" style="min-height:104px">'+esc(draftVal('monthly',p,'looking_back',rv&&rv.looking_back))+'</textarea></div>'+
+    '<div class="field"><label>次月の目標</label><textarea data-draft="monthly:'+p+':next_goal" placeholder="例）フォロワー+200とCV1件。ペルソナ分析を作り直す" style="min-height:88px">'+esc(draftVal('monthly',p,'next_goal',rv&&rv.next_goal))+'</textarea></div>'+
+    '<button class="savebtn" data-act="saveReview" data-kind="monthly" data-p="'+p+'"'+(LOG.saving?' disabled':'')+'>'+
+      (LOG.saving?'保存中…':(rv&&rv.submitted_at?'内容を更新する':'提出する'))+'</button>';
+  if(rv&&rv.ul_comment) h+='<div class="ul" style="margin-top:12px">ULからのコメント：'+esc(rv.ul_comment)+
+    (rv.ul_comment_by?'<span class="tiny muted">（'+esc(rv.ul_comment_by)+'）</span>':'')+'</div>';
+  h+='</div>';
+  h+=pastReviews('monthly',p);
+  return h;
+}
+function pastReviews(kind,skip){
+  const list=LOG.reviews.filter(r=>r.kind===kind&&r.period!==skip&&r.submitted_at)
+    .sort((a,b)=>String(b.period).localeCompare(String(a.period)));
+  if(!list.length) return '';
+  let h='<div class="sec-label">これまでの振り返り</div><div class="card">';
+  list.forEach(rv=>{
+    const rows = kind==='ywt'
+      ? [['Y',rv.y],['W',rv.w],['T',rv.t]]
+      : [['振り返り',rv.looking_back],['次月目標',rv.next_goal]];
+    h+='<div class="nt"><div class="top"><b style="font-size:13px">'+periodLabel(kind,rv.period)+'</b>'+
+      (rv.ul_comment?'<span class="pill v">ULコメントあり</span>':'')+
+      '<span class="tiny muted" style="margin-left:auto">'+relDays(rv.submitted_at)+'</span></div>'+
+      rows.filter(x=>x[1]).map(x=>'<div style="margin-bottom:5px"><span class="tiny" style="font-weight:700;color:var(--ink2)">'+x[0]+'</span>'+
+        '<div class="bd">'+esc(x[1])+'</div></div>').join('')+
+      (rv.ul_comment?'<div class="ul">UL：'+esc(rv.ul_comment)+'</div>':'')+
+    '</div>';
+  });
+  return h+'</div>';
+}
+async function saveReview(kind,period){
+  const g=f=>{ const el=document.querySelector('[data-draft="'+kind+':'+period+':'+f+'"]'); return el?el.value:''; };
+  const payload = kind==='ywt'
+    ? {kind:'ywt', period:period, y:g('y'), w:g('w'), t:g('t')}
+    : {kind:'monthly', period:period, looking_back:g('looking_back'), next_goal:g('next_goal')};
+  const filled=Object.keys(payload).filter(k=>k!=='kind'&&k!=='period').some(k=>String(payload[k]||'').trim());
+  if(!filled){ toast('内容を入力してください'); return; }
+  LOG.saving=true; render(true);
+  try{
+    await Store.submitReview(payload);
+    LOG.loaded=false; LOG.draft={};
+    await loadLog();
+    toast('提出しました','xp');
+  }catch(e){ toast(e.message||'保存に失敗しました'); }
+  LOG.saving=false; render(true);
+}
 
 /* ============================================================
    RENDER + EVENTS
    ============================================================ */
 const TABS=[
   {k:'home',n:'ホーム',i:'<path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
-  {k:'map',n:'<span class="lbl-full">ステップ一覧</span><span class="lbl-short">マップ</span>',i:'<path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
+  {k:'map',n:'<span class="lbl-full">ステップ一覧</span><span class="lbl-short">ステップ</span>',i:'<path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
   {k:'grades',n:'グレード',i:'<path d="M4 18h4v3H4zM10 12h4v9h-4zM16 6h4v15h-4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
+  {k:'log',n:'記録',i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
   {k:'dex',n:'ずかん',i:'<path d="M12 3l2.2 5.2 5.8.5-4.4 3.8 1.3 5.6L12 15.2 7.1 18.1l1.3-5.6L4 8.7l5.8-.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>'},
-  {k:'sheet',n:'マイシート',i:'<circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4.5 20c1.2-3.7 4-5.6 7.5-5.6S18.3 16.3 19.5 20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'}
+  {k:'sheet',n:'<span class="lbl-full">マイシート</span><span class="lbl-short">シート</span>',i:'<circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4.5 20c1.2-3.7 4-5.6 7.5-5.6S18.3 16.3 19.5 20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'}
 ];
 function renderTabs(){
   const st=stage(), cg=currentGrade(), dn=done(cg), tt=total(cg), tc=tierOf(cg);
@@ -1255,15 +1071,19 @@ function render(keepScroll){
   else if(view==='grades') v.innerHTML=vGrades();
   else if(view==='map') v.innerHTML=vMap();
   else if(view==='dex') v.innerHTML=vDex();
+  else if(view==='log') v.innerHTML=vLog();
   else v.innerHTML=vSheet();
   renderTabs();
   if(keepScroll) window.scrollTo(0,y); else window.scrollTo(0,0);
 }
 
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const el=e.target.closest('[data-act]'); if(!el) return;
   const a=el.dataset.act;
-  if(a==='tab'){ view=el.dataset.tab; openG=null; render(); }
+  if(a==='tab'){
+    view=el.dataset.tab; openG=null; render();
+    if(view==='log'&&!LOG.loaded){ await loadLog(); render(); }
+  }
   else if(a==='openGrade'){ openG=+el.dataset.g; view='grades'; render(); }
   else if(a==='back'){ openG=null; render(); }
   else if(a==='toggle'){ toggle(el.dataset.id); }
@@ -1274,11 +1094,24 @@ document.addEventListener('click',e=>{
     if(el.dataset.icon){ el.innerHTML=D.sound?SPK_ON:SPK_OFF; if(D.sound) blip(.7); }
     else { if(D.sound) blip(.7); render(true); }
   }
+  else if(a==='seg'){ LOG.seg=el.dataset.s; render(); }
+  else if(a==='rkind'){ LOG.rkind=el.dataset.k; render(); }
+  else if(a==='pick'){
+    if(el.dataset.kind==='ywt') LOG.ywtPeriod=el.dataset.p; else LOG.monthPeriod=el.dataset.p;
+    render(true);
+  }
+  else if(a==='saveReview'){ await saveReview(el.dataset.kind,el.dataset.p); }
   else if(a==='export'){ exportData(); }
   else if(a==='import'){ document.getElementById('importFile').click(); }
+  else if(a==='logout'){
+    if(!confirm('ログアウトします。よろしいですか？')) return;
+    await Store.signOut(); location.reload();
+  }
   else if(a==='reset'){
     if(confirm('チェック・入力内容をすべて消去します。よろしいですか？')){
-      D=JSON.parse(JSON.stringify(DEFAULT)); save(); render(); toast('リセットしました');
+      const ids=Object.keys(D.checks);
+      for(const id of ids) await Store.setCheck(id,false);
+      D=JSON.parse(JSON.stringify(DEFAULT)); profileDirty=true; save(); render(); toast('リセットしました');
     }
   }
   else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
@@ -1288,16 +1121,18 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.dataset.draft){ LOG.draft[t.dataset.draft]=t.value; return; }
   if(t.dataset.field){
     const k=t.dataset.field.split('.');
     if(k.length===1) D[k[0]]=t.value; else D[k[0]][k[1]]=t.value;
+    if(k[0]==='profile') profileDirty=true;
     save();
     if(k[0]==='buddy'){ const ht=document.querySelector('.hero-title'); if(ht) ht.textContent=t.value||'なまえ未設定'; }
   }else if(t.dataset.creed!=null){ D.creed[+t.dataset.creed].t=t.value; save(); }
   else if(t.dataset.custom){ D.custom[t.dataset.custom]=t.value; save(); }
 });
 
-function toggle(id){
+async function toggle(id){
   const gn=gradeOf(id);
   if(!D.checks[id] && isLocked(gn)){
     toast('Grade '+(gn-1)+' を埋めると開きます');
@@ -1307,12 +1142,17 @@ function toggle(id){
   const now=!D.checks[id];
   if(now){ D.checks[id]=true; D.log.push(Date.now()); if(D.log.length>400) D.log=D.log.slice(-400); }
   else delete D.checks[id];
-  save();
   const after=GRADES.filter(g=>isDone(g.n)).map(g=>g.n);
   const newly=after.filter(n=>!before.includes(n)&&!D.seen.includes(n));
   render(true);
   if(newly.length){ newly.forEach(n=>D.seen.push(n)); save(); evolve(Math.max.apply(null,newly),st0,stage()); }
   else if(now){ blip(done(gn)/total(gn)); toast('+10 XP','xp'); }
+  try{ await Store.setCheck(id,now); flash('ok'); }
+  catch(e){
+    /* 保存できなかったら画面も元に戻す（ズレたまま進まないように） */
+    if(now) delete D.checks[id]; else D.checks[id]=true;
+    render(true); flash('err',e.message);
+  }
 }
 
 function evolve(gradeN,oldSt,newSt){
@@ -1347,8 +1187,110 @@ function evolve(gradeN,oldSt,newSt){
   fanfare(fin);
 }
 
-/* boot */
-(async()=>{ await load(); render(); })();
+/* ============================================================
+   バックアップ（ローカルモードのため）
+   ============================================================ */
+function exportData(){
+  downloadBlob('careerstep-backup-'+todayStr()+'.json',JSON.stringify(D,null,2),'application/json');
+  toast('書き出しました');
+}
+async function importData(file){
+  try{
+    const txt=await file.text();
+    const j=JSON.parse(txt);
+    if(!j||typeof j!=='object') throw new Error('形式が違います');
+    if(!confirm('いまの入力内容をこのファイルの内容で置きかえます。よろしいですか？')) return;
+    D=Object.assign(JSON.parse(JSON.stringify(DEFAULT)),j);
+    profileDirty=true;
+    for(const id of Object.keys(D.checks)) if(D.checks[id]) await Store.setCheck(id,true);
+    save(); render(); toast('読み込みました');
+  }catch(e){ toast('読み込めませんでした'); }
+}
+
+/* ============================================================
+   ログイン（共有モードのときだけ出る）
+   ============================================================ */
+let GATE={ roster:[], picked:null, q:'', mode:'pick' };
+function showGate(err){
+  document.getElementById('app').style.display='none';
+  document.getElementById('gate').classList.add('on');
+  document.getElementById('gateErr').innerHTML = err? '<div class="gerr">'+esc(err)+'</div>' : '';
+  const lead=document.getElementById('gateLead'), body=document.getElementById('gateBody');
+  if(GATE.mode==='pick'){
+    lead.textContent='自分の名前を選んでください。';
+    const q=GATE.q.trim();
+    const list=GATE.roster.filter(m=>!q||String(m.name).indexOf(q)>=0||String(m.unit||'').indexOf(q)>=0);
+    let h='<input class="who" id="gq" placeholder="名前で絞り込む" value="'+esc(GATE.q)+'">';
+    h+='<div class="glist">';
+    if(!list.length) h+='<div style="padding:22px 12px;text-align:center" class="tiny muted">見つかりませんでした。<br>名簿に登録されていない場合はULに連絡してください。</div>';
+    let lastUnit='__';
+    list.forEach(m=>{
+      const u=m.unit||'（Unit未設定）';
+      if(u!==lastUnit){ lastUnit=u; h+='<div class="gunit">'+esc(u)+'</div>'; }
+      h+='<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b><span>選ぶ ›</span></button>';
+    });
+    h+='</div>';
+    body.innerHTML=h;
+    const gq=document.getElementById('gq');
+    gq.oninput=e=>{ GATE.q=e.target.value; const p=e.target.selectionStart; showGate();
+      const n=document.getElementById('gq'); n.focus(); try{ n.setSelectionRange(p,p); }catch(x){} };
+  }else{
+    lead.textContent='パスコードを入力してください。';
+    body.innerHTML='<div class="card" style="margin-bottom:12px;padding:13px 15px">'+
+        '<div class="tiny muted">選んだ名前</div><b style="font-size:16px">'+esc(GATE.picked.name)+'</b>'+
+        (GATE.picked.unit?'<span class="tiny muted"> ・ '+esc(GATE.picked.unit)+'</span>':'')+'</div>'+
+      '<input class="who" id="gpass" type="password" inputmode="text" autocomplete="current-password" placeholder="部署共通のパスコード">'+
+      '<button class="gbtn" data-act="signin">はじめる</button>'+
+      '<button class="gbtn alt" data-act="backPick">名前を選びなおす</button>'+
+      '<p class="tiny muted" style="margin:12px 0 0">パスコードがわからない場合はULに確認してください。'+
+      '初めてログインするときは、このパスコードがそのまま登録されます。</p>';
+    const gp=document.getElementById('gpass');
+    gp.focus();
+    gp.onkeydown=ev=>{ if(ev.key==='Enter') doSignIn(); };
+  }
+}
+async function doSignIn(){
+  const pw=(document.getElementById('gpass')||{}).value||'';
+  if(!pw){ showGate('パスコードを入力してください'); return; }
+  const btn=document.querySelector('[data-act="signin"]');
+  if(btn){ btn.disabled=true; btn.textContent='確認しています…'; }
+  try{
+    await Store.signInMember(GATE.picked,pw);
+    await boot();
+  }catch(e){ showGate(e.message||String(e)); }
+}
+document.addEventListener('click',async e=>{
+  const el=e.target.closest('#gate [data-act]'); if(!el) return;
+  const a=el.dataset.act;
+  if(a==='pick'){ GATE.picked=GATE.roster.find(m=>String(m.id)===el.dataset.id); GATE.mode='pass'; showGate(); }
+  else if(a==='backPick'){ GATE.mode='pick'; showGate(); }
+  else if(a==='signin'){ await doSignIn(); }
+});
+
+/* ============================================================
+   起動
+   ============================================================ */
+async function boot(){
+  document.getElementById('gate').classList.remove('on');
+  document.getElementById('app').style.display='';
+  await load();
+  render();
+  /* 共有事項とテスト結果は裏で読んで、記録タブを開いたときに待たせない */
+  loadLog().then(()=>render(true)).catch(()=>{});
+}
+(async()=>{
+  await Store.init();
+  if(Store.mode==='cloud'){
+    const me=await Store.restore();
+    if(me){ await boot(); return; }   /* 前回のログインが残っている */
+    try{ GATE.roster=await Store.roster(); }catch(e){ showGate(e.message); return; }
+    showGate('');
+    return;
+  }
+  await Store.restore();
+  await boot();
+})();
+
 </script>
 </body>
 </html>

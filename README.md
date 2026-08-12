@@ -1,0 +1,28 @@
+# STEP｜キャリアステップシート
+
+SNS部署のインターン生のキャリアステップを管理するアプリです。
+
+| URL | 誰が使う |
+|---|---|
+| `/` | インターン本人（スマホ想定） |
+| `/admin.html` | UL・メンター（PC想定） |
+
+セットアップと使い方は **[SETUP.md](SETUP.md)** にまとめています。
+
+## ファイル構成
+
+```
+index.html            インターン本人の画面
+admin.html            UL・メンターの管理コンソール
+shared/config.js      Supabaseの接続情報（ここだけ編集する）
+shared/steps.js       キャリアステップの定義（GRADES）と進捗の計算
+shared/ui.js          共通の見た目パーツ・日付やCSVの整形
+shared/store.js       データの読み書き（Supabase / この端末のみ）
+supabase/schema.sql   Supabaseに貼るSQL（テーブルとアクセス制御）
+```
+
+ビルドは不要です。静的ファイルのまま Vercel に置けば動きます。
+
+`shared/config.js` が空のあいだは、これまでどおり自分の端末だけに保存する
+ローカルモードで動きます。Supabase の情報を入れると、全員のデータが1か所に
+集まる共有モードになり、管理者画面が実データで使えるようになります。
