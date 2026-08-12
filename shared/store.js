@@ -62,7 +62,11 @@ const Store = (() => {
       if(/is invalid/i.test(m) && /@/.test(m))
         throw new Error('ログイン用のドメインがSupabaseに拒否されました。shared/config.js の AUTH_EMAIL_DOMAIN を実在するドメインに変えてください（SETUP.md 手順4）');
       if(/row-level security|permission denied/i.test(m)) throw new Error('この操作をする権限がありません');
-      if(/Email not confirmed/i.test(m)) throw new Error('Supabaseの「Confirm email」をオフにしてください（SETUP.md参照）');
+      if(/Email not confirmed/i.test(m)) throw new Error('Supabaseの「Confirm email」をオフにしてください（SETUP.md 手順3）');
+      /* このエラーが出る＝Supabaseが確認メールを送ろうとしている。
+         このアプリはメールを一切使わないので、確認メールの設定が残っているということ。 */
+      if(/email rate limit/i.test(m))
+        throw new Error('Supabaseの「Confirm email」がオンのままです。オフにしてください（SETUP.md 手順3）。オンのあいだは登録のたびに確認メールが送られ、すぐ上限に達します');
       if(/signups? not allowed|Signups not allowed/i.test(m)) throw new Error('Supabaseの「Allow new users to sign up」をオンにしてください（SETUP.md参照）');
       throw new Error(m||'通信に失敗しました');
     }
