@@ -12,6 +12,11 @@
 --     本人のブラウザからは物理的に取得できない
 --   ・ロール昇格や他人のULコメント書き換えを防ぐため、
 --     本人側からの書き込みだけは関数（RPC）経由に絞っている
+--   ・ログインのパスワードは1人1つ（Supabase Auth が持つ）。
+--     共通パスコードは「登録していい人かどうか」の入口の合言葉であって、
+--     ログインのパスワードではない。ここを分けておかないと、
+--     共通パスコードを知っている人が名簿からULの名前を選ぶだけで
+--     管理者になれてしまう
 -- ============================================================
 
 -- ============================================================
@@ -148,15 +153,22 @@ $$;
 -- ============================================================
 -- 3. ログイン画面に出す名簿
 --    ログイン前（anon）でも名前を選べるようにするための最小限のビュー。
---    出るのは 表示名・Unit・UL・内部ID だけで、入社日や進捗は出ない。
+--    出るのは 表示名・Unit・UL・内部ID・権限・パスワード設定済みかどうか
+--    だけで、入社日や進捗は出ない。
 --    Unit と UL は、新しく登録する人の選択肢としても使う
 --    （すでに誰かが登録した表記がそのまま選べるので、表記が揃う）。
+--
+--    role   … 管理者画面のログイン一覧で UL だけを出すために使う。
+--    linked … パスワードを設定済みか。false の行は「初回パスワード設定」に進む
+--             （新規登録の直後と、ULがログインをリセットした直後だけ false）。
+--
 --    ※名前の一覧はURLを知っていれば見えます。それも隠したい場合は
 --      SETUP.md の「名簿も隠したい場合」を参照。
 -- ============================================================
 drop view if exists public.member_roster;
 create view public.member_roster with (security_invoker = false) as
-  select id, name, unit, ul, slug from public.members where active order by unit nulls last, name;
+  select id, name, unit, ul, slug, role, (auth_id is not null) as linked
+    from public.members where active order by unit nulls last, name;
 grant select on public.member_roster to anon, authenticated;
 
 -- ============================================================
@@ -166,6 +178,9 @@ grant select on public.member_roster to anon, authenticated;
 --     ハッシュにして持つ。クライアントからは一切読めない。
 --     設定のしかたは SETUP.md 手順5を参照。
 -- ============================================================
+-- Supabase では pgcrypto が extensions スキーマに入っていることが多い。
+-- そのため crypt() を使う関数の search_path には extensions も入れてある。
+-- まだ入っていない環境ではここで public に作られるが、どちらでも動く。
 create extension if not exists pgcrypto;
 
 create table if not exists public.app_config (
@@ -203,7 +218,7 @@ drop function if exists public.set_passcodes(text, text);
 
 -- 合言葉があっているかだけを返す。未設定のあいだは true（誰でも登録できる）。
 create or replace function public.check_team_passcode(p_code text)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public, extensions as $$
   select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), true)
     from public.app_config where id = 1
 $$;
@@ -223,13 +238,23 @@ grant execute on function public.config_status() to authenticated;
 -- 4. 本人側からの書き込み（ロール昇格などを防ぐため関数に限定）
 -- ============================================================
 
--- 名前を選んでパスコードでログインした直後に、名簿の行と自分のログインを紐付ける。
--- 認証したメールのローカル部と slug が一致する行しか掴めない。
-create or replace function public.claim_member(p_member_id uuid)
+-- 名簿の行と、いま作ったログインを紐付ける。
+--
+-- 使うのは「ULがログインをリセットした人が、新しいパスワードを設定するとき」だけ。
+-- 通常の新規登録は register_me が行の作成と紐付けを同時にやる。
+--
+-- 掴めるのは
+--   ・まだ誰とも紐付いていない行（auth_id が空）で、かつ
+--   ・認証したメールのローカル部と slug が一致する行
+-- だけ。加えて共通パスコードの一致を必須にしているので、
+-- URLと名簿を見ただけの人が他人の行を掴むことはできない。
+drop function if exists public.claim_member(uuid);
+create or replace function public.claim_member(p_member_id uuid, p_code text)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare v_slug text; v_id uuid;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
+  if not coalesce(public.check_team_passcode(p_code), true) then raise exception 'パスコードが違います'; end if;
   v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));
 
   -- すでに紐付いているなら、それを返す
@@ -241,10 +266,33 @@ begin
    where id = p_member_id and auth_id is null and lower(slug) = v_slug and active
   returning id into v_id;
 
-  if v_id is null then raise exception 'この名前は使用できません（すでに登録済み、または名前とログイン情報が一致しません）'; end if;
+  if v_id is null then raise exception 'この名前は使用できません（すでにパスワード設定済み、または名前とログイン情報が一致しません）'; end if;
 
   insert into public.member_state(member_id) values (v_id) on conflict do nothing;
   return v_id;
+end $$;
+
+-- ログインのリセット（パスワードを忘れた人の救済）。
+-- 管理者だけが呼べる。行そのもの（進捗・申し送り・点数）は一切消さず、
+-- ログインとの紐付けだけを外し、slug を新しい値に振り直す。
+-- このあと本人が名前を選ぶと「初回パスワード設定」に進み、
+-- 共通パスコードと新しいパスワードを入れて claim_member で繋ぎ直す。
+--
+-- slug を振り直すのは、外したあとに古いログイン（元のパスワードを知っている人）が
+-- そのまま繋ぎ直せてしまうのを防ぐため。
+create or replace function public.admin_reset_login(p_member_id uuid)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_slug text;
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  if p_member_id = public.current_member_id() then
+    raise exception '自分のログインはリセットできません（他の管理者に依頼してください）';
+  end if;
+
+  v_slug := 'm-' || replace(gen_random_uuid()::text, '-', '');
+  update public.members set auth_id = null, slug = v_slug where id = p_member_id;
+  if not found then raise exception '対象が見つかりません'; end if;
+  return v_slug;
 end $$;
 
 -- 自分で名簿に登録する。
@@ -290,7 +338,7 @@ end $$;
 -- 管理者キーを入れて、自分を UL に昇格させる。
 -- キーが未設定のあいだは昇格できない（誰でも全員分を見られてしまうため）。
 create or replace function public.claim_manager(p_code text)
-returns text language plpgsql security definer set search_path = public as $$
+returns text language plpgsql security definer set search_path = public, extensions as $$
 declare v_id uuid := public.current_member_id(); v_hash text;
 begin
   if v_id is null then raise exception 'not linked'; end if;
@@ -351,7 +399,8 @@ begin
    where id = p_review_id;
 end $$;
 
-grant execute on function public.claim_member(uuid)                                  to authenticated;
+grant execute on function public.claim_member(uuid,text)                             to authenticated;
+grant execute on function public.admin_reset_login(uuid)                             to authenticated;
 grant execute on function public.register_me(text,text,text,text,date,int,text)      to authenticated;
 grant execute on function public.claim_manager(text)                                 to authenticated;
 grant execute on function public.update_my_profile(text,date,int,text,text,text)     to authenticated;
@@ -457,12 +506,15 @@ create policy reviews_delete on public.reviews for delete to authenticated
 
 -- ============================================================
 -- 6. 名簿について
---    通常は投入작業は不要です。各メンバーが自分で登録すると
---    members に行が増えていき、そのまま管理者画面の一覧に反映されます。
+--    投入作業は不要です。各メンバーが自分で登録すると members に行が増えていき、
+--    そのまま管理者画面の一覧に反映されます。
+--    このファイルはサンプルデータを1件も作りません。
+--    管理者画面に出るのは、実際に本人画面から登録した人だけです。
 --
 --    先に名簿を用意しておきたい場合（未登録者を把握したいときなど）は、
---    下のように行だけ作っておけます。auth_id が空の行は、
---    その名前を選んでパスコードを入れた人と紐付きます。
+--    下のように行だけ作っておけます。auth_id が空の行は「まだパスワード未設定」
+--    として扱われ、その名前を選んだ人が共通パスコードと新しいパスワードを
+--    入れて紐付きます。slug は他と重複しない任意の文字列にしてください。
 -- ============================================================
 -- insert into public.members (name, slug, unit, ul, mentor, join_date, certified_grade, role) values
 --   ('山田 太郎', 'yamada-taro', 'Unit A', '佐藤 花子', '鈴木 一郎', '2026-04-01', 2, 'member')
