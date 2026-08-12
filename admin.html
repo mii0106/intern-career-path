@@ -187,6 +187,17 @@ tbody tr:hover td.st{background:#FBFAFF}
 .err{background:var(--coral-soft);color:#C9273D;border-radius:10px;padding:9px 12px;font-size:12px;margin-bottom:10px}
 .banner{background:var(--amber-soft);border:1px solid #F2DFB8;border-radius:12px;padding:10px 14px;font-size:12px;margin-bottom:14px;display:flex;gap:9px;align-items:flex-start}
 .banner b{color:#8A5606}
+.gnote{background:var(--violet-soft);border-radius:12px;padding:10px 14px;font-size:12px;line-height:1.75;margin-bottom:14px}
+.glist{max-height:264px;overflow:auto;border:1.5px solid var(--line);border-radius:14px;margin-bottom:12px}
+.gunit{position:sticky;top:0;background:var(--base);font-size:10.5px;font-weight:700;color:var(--ink2);
+  letter-spacing:.08em;padding:6px 13px;border-bottom:1px solid var(--line2)}
+.gitem{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px 14px;background:var(--surface);border:0;border-top:1px solid var(--line2);
+  font-size:13.5px;text-align:left;cursor:pointer}
+.gitem:first-of-type{border-top:0}
+.gitem:hover{background:var(--violet-soft)}
+.gitem span{font-size:11px;color:var(--ink2);white-space:nowrap}
+.gempty{padding:24px 12px;text-align:center;font-size:12px;color:var(--ink2)}
 
 /* ---------- toast ---------- */
 #toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;z-index:80;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
@@ -264,31 +275,117 @@ let F = { unit:'', q:'', role:'member', alert:'' };
 
 /* ============================================================
    ログイン
+   ------------------------------------------------------------
+   デモ用の入口は持たない。実際に本人画面から登録した人だけが入れる。
+
+   画面は3つ。
+     pick  … 管理者として登録済みの人の一覧から自分を選ぶ
+     pass  … 自分のパスワードを入れる
+     claim … まだ管理者になっていない人が、
+             自分の名前・パスワード・管理者キーを入れて昇格する
+
+   パスワードは本人画面で登録したときに自分で決めたもの。
+   共通パスコードではログインできない（それだと共通パスコードを知っている
+   メンバー全員がULになりすませてしまうため）。
    ============================================================ */
+let GATE={ roster:[], picked:null, q:'', mode:'pick' };
+
 function gateHTML(){
-  if(Store.mode==='local'){
-    return '<div class="banner"><span>⚠️</span><div><b>いまはローカルモードです</b><br>'+
-      'shared/config.js に Supabase の情報が入っていないため、全員のデータは共有されていません。'+
-      'この画面はデモデータで動きます。実データにするには SETUP.md の手順を実施してください。</div></div>'+
-      '<button class="btn vio" data-act="demoLogin" style="width:100%;padding:12px">デモデータで管理者画面を見る</button>';
+  if(Store.mode!=='cloud'){
+    return '<div class="banner"><span>⚠️</span><div><b>接続先が設定されていません</b><br>'+
+      'shared/config.js に Supabase の情報を入れると、実際のデータで動きます。'+
+      '手順はリポジトリの SETUP.md にあります。</div></div>';
   }
-  return '<div class="f"><label>メールアドレス</label><input type="email" id="gEmail" autocomplete="username" placeholder="you@sho-san.co.jp"></div>'+
-    '<div class="f"><label>パスワード</label><input type="password" id="gPass" autocomplete="current-password"></div>'+
-    '<button class="btn vio" data-act="login" style="width:100%;padding:12px">ログイン</button>'+
-    '<p class="tiny muted" style="margin:12px 0 0">ログインできない場合は、Supabase の Authentication にアカウントがあるか、'+
-    'members テーブルの role が ul または admin になっているかを確認してください。</p>';
+
+  const mgr = GATE.roster.filter(m=>m.role==='ul'||m.role==='admin');
+
+  if(GATE.mode==='claim'){
+    return '<div class="gnote">まだ管理者になっていない方はこちらです。'+
+        '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて入ってください。'+
+        '一度入れば、次回からは名前とパスワードだけで開けます。</div>'+
+      '<div class="f"><label>自分の名前</label><select id="cName">'+
+        '<option value="">選んでください</option>'+
+        GATE.roster.map(m=>'<option value="'+m.id+'"'+(GATE.picked&&GATE.picked.id===m.id?' selected':'')+'>'+
+          esc(m.name)+(m.unit?'（'+esc(m.unit)+'）':'')+'</option>').join('')+
+      '</select></div>'+
+      '<div class="f"><label>パスワード</label><input type="password" id="cPass" autocomplete="current-password" placeholder="本人画面で決めたパスワード"></div>'+
+      '<div class="f"><label>管理者キー</label><input type="password" id="cKey" autocomplete="off" placeholder="UL間で共有されているキー"></div>'+
+      '<button class="btn vio" data-act="claim" style="width:100%;padding:12px">管理者になって入る</button>'+
+      '<button class="btn ghost" data-act="toPick" style="width:100%;padding:10px;margin-top:8px">戻る</button>';
+  }
+
+  if(GATE.mode==='pass'){
+    return '<div class="gnote"><b>'+esc(GATE.picked.name)+'</b>'+
+        (GATE.picked.unit?' ・ '+esc(GATE.picked.unit):'')+'</div>'+
+      '<div class="f"><label>パスワード</label><input type="password" id="gPass" autocomplete="current-password" placeholder="本人画面で決めたパスワード"></div>'+
+      '<button class="btn vio" data-act="login" style="width:100%;padding:12px">ログイン</button>'+
+      '<button class="btn ghost" data-act="toPick" style="width:100%;padding:10px;margin-top:8px">名前を選びなおす</button>'+
+      '<p class="tiny muted" style="margin:12px 0 0">パスワードを忘れたときは、他のULに「ログインのリセット」を頼んでください。</p>';
+  }
+
+  const q=GATE.q.trim();
+  const list=mgr.filter(m=>!q||String(m.name).indexOf(q)>=0||String(m.unit||'').indexOf(q)>=0);
+  let h='';
+  if(mgr.length){
+    if(mgr.length>8) h+='<div class="f"><input type="text" id="gq" placeholder="名前で絞り込む" value="'+esc(GATE.q)+'"></div>';
+    h+='<div class="glist">';
+    if(!list.length) h+='<div class="gempty">見つかりませんでした。</div>';
+    let lastUnit='__';
+    list.forEach(m=>{
+      const u=m.unit||'（Unit未設定）';
+      if(u!==lastUnit){ lastUnit=u; h+='<div class="gunit">'+esc(u)+'</div>'; }
+      h+='<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
+         '<span>'+(m.linked?'選ぶ ›':'パスワード未設定')+'</span></button>';
+    });
+    h+='</div>';
+  }else{
+    h+='<div class="gnote">まだ管理者が1人もいません。<br>'+
+       'まず本人画面（<a href="./">こちら</a>）で自分を登録し、そのあと下のボタンから'+
+       '管理者キーを入れてください。</div>';
+  }
+  h+='<button class="btn'+(mgr.length?' ghost':' vio')+'" data-act="toClaim" style="width:100%;padding:12px">'+
+     (mgr.length?'まだ管理者になっていない方はこちら':'管理者キーを入れて管理者になる')+'</button>';
+  return h;
 }
 function showGate(err){
   document.getElementById('shell').style.display='none';
   document.getElementById('gate').style.display='grid';
   document.getElementById('gateErr').innerHTML = err? '<div class="err">'+esc(err)+'</div>' : '';
   document.getElementById('gateBody').innerHTML = gateHTML();
+
+  const gq=document.getElementById('gq');
+  if(gq) gq.oninput=e=>{ GATE.q=e.target.value; const p=e.target.selectionStart; showGate();
+    const n=document.getElementById('gq'); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(x){} } };
+  const first=document.getElementById('gPass')||document.getElementById('cName');
+  if(first) first.focus();
+  const cn=document.getElementById('cName');
+  if(cn) cn.onchange=e=>{ GATE.picked=GATE.roster.find(m=>String(m.id)===e.target.value)||null; };
+}
+function gateBusy(sel,label){
+  const b=document.querySelector(sel);
+  if(b){ b.disabled=true; b.textContent=label; }
 }
 async function doLogin(){
-  const em=document.getElementById('gEmail'), pw=document.getElementById('gPass');
+  const pw=(document.getElementById('gPass')||{}).value||'';
+  if(!pw){ showGate('パスワードを入力してください'); return; }
+  gateBusy('[data-act="login"]','確認しています…');
   try{
-    await Store.signInManager(em.value, pw.value);
+    await Store.signInManager(GATE.picked, pw);
     await boot();
+  }catch(e){ showGate(e.message||String(e)); }
+}
+async function doClaim(){
+  const g=id=>(document.getElementById(id)||{}).value||'';
+  const who=GATE.roster.find(m=>String(m.id)===g('cName'));
+  if(!who){ showGate('自分の名前を選んでください'); return; }
+  GATE.picked=who;
+  if(!g('cPass')){ showGate('パスワードを入力してください'); return; }
+  if(!g('cKey')){  showGate('管理者キーを入力してください'); return; }
+  gateBusy('[data-act="claim"]','確認しています…');
+  try{
+    await Store.signInManager(who, g('cPass'), g('cKey'));
+    await boot();
+    toast('管理者になりました','xp');
   }catch(e){ showGate(e.message||String(e)); }
 }
 
@@ -415,7 +512,7 @@ function renderNav(){
   const me=Store.me&&Store.me.member;
   document.getElementById('asideFoot').innerHTML=
     '<b>'+esc(me?me.name:'—')+'</b>'+
-    (Store.mode==='local'?'デモデータ表示中':(me&&me.role==='admin'?'管理者':'UL'))+
+    (me&&me.role==='admin'?'管理者':'UL')+
     '<br><button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>';
 }
 /* 10グレードのヒートマップ */
@@ -507,8 +604,6 @@ function vDash(){
 
   let h='<h1 class="h1 disp">ダッシュボード</h1>'+
     '<p class="lead">'+(F.unit?esc(F.unit)+'の':'部署全体の')+'いまの状態。数字を押すとその人だけに絞り込みます。</p>';
-  if(Store.mode==='local') h+='<div class="banner"><span>⚠️</span><div><b>デモデータを表示しています</b><br>'+
-    'shared/config.js に Supabase の情報を入れると、実際のデータに切り替わります（SETUP.md）。</div></div>';
   if(CONFIG_STATUS && CONFIG_STATUS.team===false) h+='<div class="banner" style="background:var(--coral-soft);border-color:#F5CBD3">'+
     '<span>🔓</span><div><b>共通パスコードが未設定です</b><br>'+
     'いまはURLを知っている人が誰でも登録できる状態です。SETUP.md 手順5のSQLを1回実行してください。</div></div>';
@@ -1426,7 +1521,12 @@ function dwProfile(r){
       [['member','メンバー'],['ul','UL（全員を見られる）'],['admin','管理者（全員を見られる）']].map(o=>
         '<option value="'+o[0]+'"'+(r.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
     '<button class="btn vio" data-act="saveProfile" data-id="'+r.id+'">保存する</button>'+
-    (Store.mode==='local'?'<p class="tiny muted" style="margin:10px 0 0">ローカルモードではこの端末のデモデータだけが更新されます。</p>':'')+
+    '</div>'+
+    '<div class="card"><h2>ログイン</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">パスワードを忘れた人はここでリセットします。'+
+    'チェック・申し送り・テスト結果・振り返りは消えません。'+
+    'このあと本人が本人画面で自分の名前を選ぶと、共通パスコードを入れて新しいパスワードを決め直せます。</p>'+
+    '<button class="btn ghost" data-act="resetLogin" data-id="'+r.id+'">ログインをリセットする</button>'+
     '</div>';
 }
 async function saveProfileFor(id){
@@ -1438,6 +1538,18 @@ async function saveProfileFor(id){
     await Store.upsertMember(patch);
     await loadAll(); render(); renderDrawer(); toast('保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
+}
+/* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す */
+async function resetLoginFor(id){
+  const r=BY_ID[id];
+  if(!confirm((r?r.name:'この人')+' さんのログインをリセットします。\n\n'+
+    'これまでの記録は消えません。本人が本人画面で自分の名前を選ぶと、'+
+    '共通パスコードを入れて新しいパスワードを決められます。\n\nよろしいですか？')) return;
+  try{
+    await Store.resetLogin(id);
+    await loadAll(); render(); renderDrawer();
+    toast('リセットしました。本人に「本人画面から名前を選んでパスワードを設定して」と伝えてください','xp');
+  }catch(e){ toast(e.message||'リセットに失敗しました','bad'); }
 }
 
 /* ============================================================
@@ -1484,7 +1596,10 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='logout'){ await Store.signOut(); location.reload(); }
   else if(a==='login'){ await doLogin(); }
-  else if(a==='demoLogin'){ try{ await Store.signInManager('demo','demo'); await boot(); }catch(err){ showGate(err.message); } }
+  else if(a==='claim'){ await doClaim(); }
+  else if(a==='pick'){ GATE.picked=GATE.roster.find(m=>String(m.id)===el.dataset.id); GATE.mode='pass'; showGate(); }
+  else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
+  else if(a==='toClaim'){ GATE.mode='claim'; showGate(); }
 
   else if(a==='newNote'){ NF.open=true; NF.editing=null; NF.member_id=''; NF.body=''; NF.next_action=''; NF.kind='memo'; NF.grade=''; NF.occurred_on=todayStr(); render(); }
   else if(a==='openNote'){
@@ -1524,6 +1639,7 @@ document.addEventListener('click',async e=>{
   else if(a==='openReview'){ await openReview(el.dataset.id); }
 
   else if(a==='saveProfile'){ await saveProfileFor(el.dataset.id); }
+  else if(a==='resetLogin'){ await resetLoginFor(el.dataset.id); }
 
   else if(a==='csvRoster'){ csvRoster(); }
   else if(a==='csvStuck'){ csvStuck(); }
@@ -1549,16 +1665,24 @@ document.getElementById('csvFile').onchange=e=>{
 /* Enterでログイン */
 document.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&document.getElementById('gate').style.display!=='none'){
-    const b=document.querySelector('[data-act="login"]'); if(b) b.click();
+    const b=document.querySelector('[data-act="login"],[data-act="claim"]'); if(b) b.click();
   }
 });
 
 /* ============================================================
    起動
    ============================================================ */
+/* ログイン画面に出す名前の一覧。読めなくても画面は出す（エラーだけ見せる） */
+async function loadRoster(){
+  try{ GATE.roster=await Store.roster()||[]; }catch(e){ GATE.roster=[]; }
+}
 async function boot(){
   const s=await Store.restore();
-  if(!s || !Store.isManager){ showGate(s&&!Store.isManager?'このアカウントには管理者権限がありません':''); return; }
+  if(!s || !Store.isManager){
+    await loadRoster();
+    showGate(s&&!Store.isManager?'このアカウントには管理者権限がありません。管理者キーを入れて昇格してください':'');
+    return;
+  }
   document.getElementById('gate').style.display='none';
   document.getElementById('shell').style.display='grid';
   await loadAll();
@@ -1567,8 +1691,9 @@ async function boot(){
 (async()=>{
   try{
     await Store.init();
+    if(Store.mode!=='cloud'){ showGate(''); return; }
     await boot();
-  }catch(e){ showGate(e.message||String(e)); }
+  }catch(e){ await loadRoster(); showGate(e.message||String(e)); }
 })();
 </script>
 </body>
