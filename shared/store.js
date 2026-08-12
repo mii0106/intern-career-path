@@ -58,6 +58,9 @@ const Store = (() => {
       if(/Invalid login credentials/i.test(m)) throw new Error('パスワードが違います');
       if(/User already registered/i.test(m))   throw new Error('このログインはすでに使われています。ページを再読み込みしてやり直してください');
       if(/Password should be/i.test(m))        throw new Error('パスワードは6文字以上にしてください');
+      /* 架空のTLD（.local など）はSupabaseが弾く。設定を直さないと誰も登録できない */
+      if(/is invalid/i.test(m) && /@/.test(m))
+        throw new Error('ログイン用のドメインがSupabaseに拒否されました。shared/config.js の AUTH_EMAIL_DOMAIN を実在するドメインに変えてください（SETUP.md 手順4）');
       if(/row-level security|permission denied/i.test(m)) throw new Error('この操作をする権限がありません');
       if(/Email not confirmed/i.test(m)) throw new Error('Supabaseの「Confirm email」をオフにしてください（SETUP.md参照）');
       if(/signups? not allowed|Signups not allowed/i.test(m)) throw new Error('Supabaseの「Allow new users to sign up」をオンにしてください（SETUP.md参照）');
@@ -65,7 +68,7 @@ const Store = (() => {
     }
     return res ? res.data : null;
   }
-  const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'step-app.local');
+  const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'sho-san.co.jp');
   const newSlug  = () => 'm-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
   const todayISO = () => new Date().toISOString().slice(0,10);
 

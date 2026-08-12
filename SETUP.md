@@ -87,6 +87,12 @@
 内部的にはメールアドレスの形をしたIDを使いますが、実際にメールは送りません。
 そのため、確認メールを必須にする設定を切っておく必要があります。
 
+> **このIDに使うドメインは、実在するTLDのものにしてください。**
+> `shared/config.js` の `AUTH_EMAIL_DOMAIN` がそれです。
+> `step-app.local` のような架空のTLDだと、Supabase Auth が
+> `Email address "m-xxxx@step-app.local" is invalid` として弾き、**誰も登録できません**。
+> 既定では自社ドメインを入れてあります。このドメイン宛にメールが飛ぶことはありません。
+
 1. 左メニュー **Authentication → Sign In / Providers → Email**
 2. **Confirm email** を **オフ**
 3. **Save**
@@ -392,6 +398,7 @@ on conflict (slug) do nothing;
 | 進捗の数字が本人と管理者でズレる | 計算は `shared/steps.js` の1か所だけです。ブラウザのキャッシュを消して再読み込みしてください |
 | 登録しようとすると `パスコードが違います` | 共通パスコードが手順5で設定したものと違います。SQLをもう一度実行して設定し直せます |
 | `パスワードは6文字以上にしてください` | Supabase の最小文字数です。短いものは使えません |
+| `Email address "m-xxxx@..." is invalid` と出て誰も登録できない | `shared/config.js` の `AUTH_EMAIL_DOMAIN` が架空のTLDになっています。`.local` `.test` `.internal` などは Supabase Auth が実在しないTLDとして弾きます。**実在するドメイン**（自社ドメインなど）に変えてください |
 | 何をしても404になる／名前が1件も出ない | `SUPABASE_URL` の末尾に `/rest/v1/` が付いていないか確認（手順4） |
 | 「通信できませんでした」と出る | 回線か、`shared/config.js` のURL・キーの写し間違いです。データは消えていません |
 | 手順5のSQLで `function crypt(...) does not exist` | 1行目の `set search_path = public, extensions;` ごとコピーして実行してください |
