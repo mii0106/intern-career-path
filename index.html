@@ -1243,7 +1243,7 @@ async function importData(file){
      reg   … はじめて使う人が自分の情報を登録する
 
    名簿は事前に一括投入しない。登録した人から順に増えていく。
-   共通パスコードは「登録していい人か」の入口の合言葉で、
+   共通パスコードは「登録していい人か」を確かめるためのもので、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
 let GATE={ roster:[], picked:null, q:'', mode:'pick', offline:false,
@@ -1304,7 +1304,7 @@ function showGate(err){
         GRADES.map(g=>'<option value="'+g.n+'"'+(String(GATE.reg.grade)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
         '</select></div>'+
       '<div class="field"><label>部署共通のパスコード<span style="color:var(--coral)"> ※必須</span></label>'+
-        '<input type="password" id="rCode" autocomplete="off" placeholder="ULから共有された合言葉">'+
+        '<input type="password" id="rCode" autocomplete="off" placeholder="ULから共有されたパスコード">'+
         '<p class="tiny muted" style="margin:4px 0 0">全員で同じものを使います。登録のときだけ必要です。</p></div>'+
       '<div class="field"><label>自分のパスワード<span style="color:var(--coral)"> ※必須</span></label>'+
         '<input type="password" id="rPw" autocomplete="new-password" placeholder="自分で決めてください">'+PW_HINT+'</div>'+
@@ -1365,7 +1365,7 @@ function showGate(err){
         'この名前にはまだパスワードがありません。ここで決めたパスワードで、次回からログインします。'+
         'これまでの記録はそのまま残ります。</div>'+
       '<div class="field"><label>部署共通のパスコード</label>'+
-        '<input type="password" id="sCode" autocomplete="off" placeholder="ULから共有された合言葉"></div>'+
+        '<input type="password" id="sCode" autocomplete="off" placeholder="ULから共有されたパスコード"></div>'+
       '<div class="field"><label>新しいパスワード</label>'+
         '<input type="password" id="sPw" autocomplete="new-password" placeholder="自分で決めてください">'+PW_HINT+'</div>'+
       '<div class="field"><label>パスワード（確認）</label>'+
