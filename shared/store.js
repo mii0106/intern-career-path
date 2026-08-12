@@ -74,7 +74,7 @@ const Store = (() => {
 
   function buildDemo(){
     const saved=readJSON(DEMO_KEY,null);
-    if(saved && saved.v===3) return saved;
+    if(saved && saved.v===4) return saved;
     const r=rng(20260812);
     const sei='佐藤 鈴木 高橋 田中 伊藤 渡辺 山本 中村 小林 加藤 吉田 山田 佐々木 山口 松本 井上 木村 林 斎藤 清水 山崎 森 池田 橋本 石川 前田 藤田 後藤 岡田 長谷川'.split(' ');
     const mei='陽菜 蓮 結菜 湊 咲良 樹 芽依 悠真 莉子 大翔 凛 陽翔 花 颯真 美桜 律 心春 朝陽 結愛 碧 澪 新 杏 暖 楓 翔 葵 悠 詩 円'.split(' ');
@@ -86,7 +86,8 @@ const Store = (() => {
     /* UL 4名 ＋ メンバー56名。ULもキャリアステップの途中なので進捗を持たせる */
     const uls=units.map((u,i)=>({
       id:'ul'+i, name:sei[i]+' '+mei[i+10], slug:'ul'+i, unit:u, role:'ul',
-      join_date:iso(addM(today,-(20+i*3))), certified_grade:7+(i%2), active:true, ul:null, mentor:null
+      join_date:iso(addM(today,-(20+i*3))), certified_grade:7+(i%2), active:true, ul:null, mentor:null,
+      created_at:new Date(addD(today,-(60-i*2)).getTime()).toISOString()
     }));
     uls.forEach((m,i)=>{
       members.push(m);
@@ -110,8 +111,12 @@ const Store = (() => {
         mentor:members.length>4? members[4+((i*3)%Math.max(1,members.length-4))].name : null,
         join_date:iso(addM(today,-monthsIn)),
         certified_grade:null, promotion_target:null,
-        role:'member', active:true
+        role:'member', active:true,
+        /* 使い始めた順に登録されていく想定なので、登録日はばらつかせる */
+        created_at:new Date(addD(today,-Math.floor(r()*55)).getTime()).toISOString()
       };
+      if(r()<0.09) m.join_date=null;   /* 入社日を入れずに登録した人 */
+      if(r()<0.05) m.unit=null;        /* Unitを入れずに登録した人 */
       /* 在籍月数に応じた進捗。1〜2割は意図的に遅らせて「詰まっている人」を作る */
       const pace = r()<0.18 ? 0.45+r()*0.25 : 0.8+r()*0.5;
       const reachGrade = Math.max(1, Math.min(10, Math.round(gradeForMonths(monthsIn*pace))));
@@ -170,7 +175,7 @@ const Store = (() => {
           submitted_at:new Date(d.getTime()).toISOString() });
       }
     }
-    const d={ v:3, members, progress, states, notes, scores, reviews };
+    const d={ v:4, members, progress, states, notes, scores, reviews };
     writeJSON(DEMO_KEY,d);
     return d;
   }
@@ -192,7 +197,9 @@ const Store = (() => {
     const raw=readJSON(SELF_KEY,{})||{};
     return {
       member:{ id:'self', name:(raw.profile&&raw.profile.name)||'', slug:'self',
-        unit:null, ul:null, mentor:null,
+        unit:(raw.profile&&raw.profile.unit)||null,
+        ul:(raw.profile&&raw.profile.ul)||null,
+        mentor:(raw.profile&&raw.profile.mentor)||null,
         join_date:(raw.profile&&raw.profile.join)||null,
         certified_grade:(raw.profile&&raw.profile.grade)?+raw.profile.grade:null,
         promotion_target:null, role:'member', active:true },
@@ -240,9 +247,64 @@ const Store = (() => {
 
     /* ---------- 名簿（ログイン画面用） ---------- */
     async roster(){
-      if(!CLOUD) return demo.members.filter(m=>m.active).map(m=>({id:m.id,name:m.name,unit:m.unit,slug:m.slug}));
-      const r=await sb.from('member_roster').select('id,name,unit,slug');
+      if(!CLOUD) return demo.members.filter(m=>m.active).map(m=>({id:m.id,name:m.name,unit:m.unit,ul:m.ul,slug:m.slug}));
+      const r=await sb.from('member_roster').select('id,name,unit,ul,slug');
       return chk(r)||[];
+    },
+
+    /* ---------- 自分で登録する ----------
+       一括投入をしなくても、使い始めた人から順に名簿へ積み上がっていく。
+       内部IDはランダムに作る（氏名から作ると同姓同名でぶつかるため）。 */
+    async checkPasscode(code){
+      if(!CLOUD) return true;
+      const r=await sb.rpc('check_team_passcode',{p_code:code});
+      const v=chk(r);
+      return v===null||v===undefined? true : !!v;
+    },
+    async registerMember(p, passcode){
+      if(!CLOUD){
+        writeSelfLocal(r=>{
+          r.profile=Object.assign({},r.profile||{},{
+            name:p.name, join:p.join_date||'', grade:p.certified_grade||'',
+            unit:p.unit||'', ul:p.ul||'', mentor:p.mentor||'' });
+        });
+        const self=selfLocal();
+        me={member:self.member, role:'member', isManager:false};
+        return me;
+      }
+      if(!(await api.checkPasscode(passcode))) throw new Error('パスコードが違います');
+
+      const slug='m-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
+      const email=emailFor(slug);
+      let res=await sb.auth.signUp({email,password:passcode});
+      chk(res);
+      if(!res.data.session) chk(res=await sb.auth.signInWithPassword({email,password:passcode}));
+
+      chk(await sb.rpc('register_me',{
+        p_name:p.name, p_unit:p.unit||null, p_ul:p.ul||null, p_mentor:p.mentor||null,
+        p_join_date:p.join_date||null,
+        p_certified_grade:p.certified_grade?+p.certified_grade:null,
+        p_code:passcode }));
+      return await resolveMe();
+    },
+
+    /* 管理者キーを入れて自分をULに昇格させる */
+    async claimManager(code){
+      if(!CLOUD){
+        writeJSON(SESSION_KEY,{demoManager:true});
+        me={member:{id:'demo-ul',name:'（デモ）UL',role:'ul'},role:'ul',isManager:true};
+        return 'ul';
+      }
+      const role=chk(await sb.rpc('claim_manager',{p_code:code}));
+      await resolveMe();
+      return role;
+    },
+
+    /* パスコード・管理者キーが設定済みかどうか（管理者画面の注意表示用） */
+    async configStatus(){
+      if(!CLOUD) return {team:true,admin:true};
+      try{ return chk(await sb.rpc('config_status'))||{team:null,admin:null}; }
+      catch(e){ return {team:null,admin:null}; }
     },
 
     /* ---------- ログイン ---------- */
@@ -345,18 +407,22 @@ const Store = (() => {
     },
 
     async saveProfile(p){
+      const keep=(a,b)=>a!=null?a:b;
       if(!CLOUD){
-        writeSelfLocal(r=>{ r.profile=Object.assign({},r.profile||{},{
-          name:p.name!=null?p.name:(r.profile||{}).name,
-          join:p.join_date!=null?p.join_date:(r.profile||{}).join,
-          grade:p.certified_grade!=null?p.certified_grade:(r.profile||{}).grade }); });
-        Object.assign(me.member,{name:p.name,join_date:p.join_date,certified_grade:p.certified_grade});
-        return;
+        writeSelfLocal(r=>{ const o=r.profile||{}; r.profile=Object.assign({},o,{
+          name:keep(p.name,o.name), join:keep(p.join_date,o.join),
+          grade:keep(p.certified_grade,o.grade),
+          unit:keep(p.unit,o.unit), ul:keep(p.ul,o.ul), mentor:keep(p.mentor,o.mentor) }); });
+      }else{
+        chk(await sb.rpc('update_my_profile',{
+          p_name:p.name||null, p_join_date:p.join_date||null,
+          p_certified_grade:p.certified_grade?+p.certified_grade:null,
+          p_unit:p.unit||null, p_ul:p.ul||null, p_mentor:p.mentor||null }));
       }
-      chk(await sb.rpc('update_my_profile',{
-        p_name:p.name||null, p_join_date:p.join_date||null,
-        p_certified_grade:p.certified_grade?+p.certified_grade:null }));
-      Object.assign(me.member,{name:p.name,join_date:p.join_date,certified_grade:p.certified_grade});
+      Object.assign(me.member,{ name:p.name, join_date:p.join_date,
+        certified_grade:p.certified_grade,
+        unit:keep(p.unit,me.member.unit), ul:keep(p.ul,me.member.ul),
+        mentor:keep(p.mentor,me.member.mentor) });
     },
 
     /* 本人に公開された申し送りだけが返る（cloudではRLSが弾く） */
