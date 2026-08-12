@@ -58,14 +58,25 @@ const Store = (() => {
       if(/Invalid login credentials/i.test(m)) throw new Error('パスワードが違います');
       if(/User already registered/i.test(m))   throw new Error('このログインはすでに使われています。ページを再読み込みしてやり直してください');
       if(/Password should be/i.test(m))        throw new Error('パスワードは6文字以上にしてください');
+      /* 架空のTLD（.local など）はSupabaseが弾く。設定を直さないと誰も登録できない */
+      if(/is invalid/i.test(m) && /@/.test(m))
+        throw new Error('ログイン用のドメインがSupabaseに拒否されました。shared/config.js の AUTH_EMAIL_DOMAIN を実在するドメインに変えてください（SETUP.md 手順4）');
       if(/row-level security|permission denied/i.test(m)) throw new Error('この操作をする権限がありません');
-      if(/Email not confirmed/i.test(m)) throw new Error('Supabaseの「Confirm email」をオフにしてください（SETUP.md参照）');
-      if(/signups? not allowed|Signups not allowed/i.test(m)) throw new Error('Supabaseの「Allow new users to sign up」をオンにしてください（SETUP.md参照）');
+      if(/Email not confirmed/i.test(m)) throw new Error('Supabaseの「Confirm email」をオフにしてください（SETUP.md 手順3）');
+      /* このエラーが出る＝Supabaseが確認メールを送ろうとしている。
+         このアプリはメールを一切使わないので、確認メールの設定が残っているということ。 */
+      if(/email rate limit/i.test(m))
+        throw new Error('Supabaseの「Confirm email」がオンのままです。オフにしてください（SETUP.md 手順3）。オンのあいだは登録のたびに確認メールが送られ、すぐ上限に達します');
+      /* 似たエラーが2種類あり、直す場所が違うので分ける */
+      if(/email.*signups.*disabled|email_provider_disabled|email provider.*disabled/i.test(m))
+        throw new Error('Supabaseの「Email」プロバイダがオフになっています。Authentication → Sign In / Providers → Email を開き、Email provider を「オン」、その中の Confirm email だけを「オフ」にしてください（SETUP.md 手順3）');
+      if(/signups? not allowed|Signups not allowed|signup_disabled/i.test(m))
+        throw new Error('Supabaseの「Allow new users to sign up」がオフになっています。オンにしてください（SETUP.md 手順3）');
       throw new Error(m||'通信に失敗しました');
     }
     return res ? res.data : null;
   }
-  const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'step-app.local');
+  const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'intern-career-path.vercel.app');
   const newSlug  = () => 'm-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
   const todayISO = () => new Date().toISOString().slice(0,10);
 

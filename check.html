@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STEP セットアップ診断</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<style>
+:root{
+  --ink:#181240; --ink2:#615C88; --base:#F1F0F9; --surface:#fff;
+  --line:#E4E2F3; --line2:#EFEEF8; --violet:#5B3DF5; --violet-soft:#EEEAFF;
+  --mint:#17B98A; --mint-soft:#E1F8F0; --amber:#F59E17; --amber-soft:#FDF0DA;
+  --coral:#F2536A; --coral-soft:#FDE7EA;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px 16px 60px;background:var(--base);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+  font-size:14px;line-height:1.75}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:21px;margin:0 0 4px}
+.lead{color:var(--ink2);font-size:13px;margin:0 0 20px}
+.card{background:var(--surface);border-radius:16px;padding:0;margin-bottom:14px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(24,18,64,.04),0 8px 20px -12px rgba(24,18,64,.16)}
+.row{display:flex;gap:12px;padding:14px 16px;border-top:1px solid var(--line2);align-items:flex-start}
+.row:first-child{border-top:0}
+.mark{flex:0 0 auto;width:22px;height:22px;border-radius:99px;display:grid;place-items:center;
+  font-size:13px;font-weight:700;color:#fff;margin-top:1px}
+.ok  .mark{background:var(--mint)}
+.ng  .mark{background:var(--coral)}
+.warn .mark{background:var(--amber)}
+.run .mark{background:#C9C5DE}
+.body{flex:1;min-width:0}
+.ttl{font-weight:700;font-size:13.5px}
+.msg{font-size:12.5px;color:var(--ink2);margin-top:2px;word-break:break-word}
+.fix{margin-top:8px;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.8}
+.ng .fix{background:var(--coral-soft)}
+.warn .fix{background:var(--amber-soft)}
+code{background:var(--violet-soft);padding:1px 5px;border-radius:5px;font-size:11.5px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.sum{padding:16px;border-radius:14px;margin-bottom:16px;font-size:13.5px;font-weight:700}
+.sum.ok{background:var(--mint-soft);color:#0B7355}
+.sum.ng{background:var(--coral-soft);color:#C9273D}
+.sum.run{background:var(--violet-soft);color:var(--violet)}
+.foot{font-size:12px;color:var(--ink2);margin-top:20px}
+a{color:var(--violet)}
+button{font:inherit;cursor:pointer;border:0;background:var(--violet);color:#fff;
+  font-weight:700;padding:11px 18px;border-radius:11px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>セットアップ診断</h1>
+  <p class="lead">Supabase側の設定を読んで、登録できない原因を特定します。
+    ここでの確認は<b>登録を1件も作りません</b>（メールも送りません）。</p>
+  <div id="sum" class="sum run">確認しています…</div>
+  <div class="card" id="list"></div>
+  <p class="foot">
+    直したあとは、このページを再読み込みすれば再確認できます。<br>
+    <a href="./">本人画面</a> ・ <a href="admin.html">管理者画面</a>
+  </p>
+</div>
+
+<script src="shared/config.js"></script>
+<script>
+/* ============================================================
+   STEP セットアップ診断
+   ------------------------------------------------------------
+   何が原因で登録できないのかを、エラーを見て当てにいくのではなく
+   Supabase の設定を直接読んで判定する。
+
+   ・SDKは使わず fetch だけで叩く（CDNが落ちていても診断できる）
+   ・signUp は一切呼ばない（登録も送信もレート消費も起きない）
+   ============================================================ */
+const CFG = window.STEP_CONFIG || {};
+const URLBASE = String(CFG.SUPABASE_URL || '').replace(/\/+$/, '');
+const KEY = CFG.SUPABASE_ANON_KEY || '';
+const list = document.getElementById('list');
+const results = [];
+
+function add(state, ttl, msg, fix){
+  results.push(state);
+  const el = document.createElement('div');
+  el.className = 'row ' + state;
+  el.innerHTML =
+    '<div class="mark">' + (state==='ok'?'✓':state==='warn'?'!':'✕') + '</div>' +
+    '<div class="body"><div class="ttl">' + ttl + '</div>' +
+    (msg ? '<div class="msg">' + msg + '</div>' : '') +
+    (fix ? '<div class="fix">' + fix + '</div>' : '') + '</div>';
+  list.appendChild(el);
+}
+
+async function api(path, opts){
+  const r = await fetch(URLBASE + path, Object.assign({
+    headers: Object.assign({ apikey: KEY, Authorization: 'Bearer ' + KEY,
+      'Content-Type': 'application/json' }, (opts&&opts.headers)||{})
+  }, opts||{}));
+  let body = null;
+  try{ body = await r.json(); }catch(e){}
+  return { status: r.status, body: body };
+}
+
+(async () => {
+  /* ---------- 1. 接続設定 ---------- */
+  if(!URLBASE || !KEY){
+    add('ng','接続先が設定されていません','shared/config.js の SUPABASE_URL と SUPABASE_ANON_KEY が空です。',
+      'SETUP.md 手順4 のとおり、Supabase の Project URL と publishable キーを入れてください。');
+    return done();
+  }
+  if(/\/rest\/v1$/.test(String(CFG.SUPABASE_URL||'').replace(/\/+$/,''))){
+    add('ng','URLの末尾に /rest/v1/ が付いています', String(CFG.SUPABASE_URL),
+      'SDKが自分で <code>/rest/v1/</code> を足すため、二重になって全部404になります。' +
+      '<code>https://xxxx.supabase.co</code> までにしてください。');
+    return done();
+  }
+  add('ok','接続先の設定', URLBASE);
+
+  /* ---------- 2. 認証の設定（ここが今回の本丸） ---------- */
+  let st = null;
+  try{ st = await api('/auth/v1/settings'); }
+  catch(e){
+    add('ng','Supabaseに接続できません', String(e && e.message || e),
+      'URLとキーの写し間違い、または回線をご確認ください。');
+    return done();
+  }
+  if(st.status === 401 || st.status === 403){
+    add('ng','キーが受け付けられません','HTTP ' + st.status,
+      'shared/config.js の SUPABASE_ANON_KEY を、Supabase の <b>publishable</b>（旧 anon public）キーで入れ直してください。');
+    return done();
+  }
+  if(st.status !== 200 || !st.body){
+    add('ng','認証設定を読めません','HTTP ' + st.status,
+      'URLが正しいかご確認ください。');
+    return done();
+  }
+  const s = st.body;
+  const emailOn = !!(s.external && s.external.email);
+  const signupOff = !!s.disable_signup;
+  const autoconfirm = !!s.mailer_autoconfirm;   /* true = 確認メールを送らない */
+
+  add(emailOn ? 'ok' : 'ng',
+    'Email プロバイダ',
+    emailOn ? 'オン（正しい状態です）' : 'オフになっています',
+    emailOn ? '' :
+      'このままだと <code>Email signups are disabled</code> になり、誰も登録できません。<br>' +
+      '<b>Authentication → Sign In / Providers → Email</b> の親トグルを<b>オン</b>にしてください。');
+
+  add(!signupOff ? 'ok' : 'ng',
+    '新規登録の許可（Allow new users to sign up）',
+    !signupOff ? 'オン（正しい状態です）' : 'オフになっています',
+    !signupOff ? '' :
+      'このままだと <code>Signups not allowed</code> になります。<br>' +
+      '<b>Authentication → Sign In / Providers</b> 上部の <b>User Signups</b> をオンにしてください。');
+
+  add(autoconfirm ? 'ok' : 'ng',
+    '確認メール（Confirm email）',
+    autoconfirm ? 'オフ（正しい状態です）。メールは送信されません'
+                : '<b>オンのままです。これが登録できない原因です。</b>',
+    autoconfirm ? '' :
+      'オンのあいだは登録のたびに Supabase が確認メールを送ろうとし、' +
+      '無料プランの送信上限（1時間に数通）にすぐ達して ' +
+      '<code>email rate limit exceeded</code> になります。<br><br>' +
+      '<b>Authentication → Sign In / Providers → Email</b> を開き、' +
+      '<b>Confirm email だけ</b>をオフにして Save してください。' +
+      '親トグル（Enable Email provider）は<b>オンのまま</b>です。<br><br>' +
+      '※ プロバイダをオフ→オンし直すと、Confirm email は既定値（オン）に戻ります。' +
+      'いったんオフにした覚えがあっても、ここが「オン」と出ているならその戻りです。<br>' +
+      '※ すでに上限に達している場合、オフにしても<b>1時間ほど</b>は ' +
+      '<code>email rate limit exceeded</code> が続くことがあります。');
+
+  /* ---------- 3. 内部IDのドメイン ---------- */
+  const dom = String(CFG.AUTH_EMAIL_DOMAIN || '');
+  const badTld = /\.(local|test|internal|invalid|example|localhost)$/i.test(dom);
+  add(badTld ? 'ng' : 'ok',
+    'ログイン内部IDのドメイン',
+    dom + (badTld ? '（実在しないTLDです）' : ''),
+    badTld ?
+      '<code>Email address ... is invalid</code> で全員弾かれます。' +
+      'shared/config.js の <code>AUTH_EMAIL_DOMAIN</code> を実在するTLDのドメインにしてください。' : '');
+
+  /* ---------- 4. スキーマ ---------- */
+  const roster = await api('/rest/v1/member_roster?select=id,name,role,linked');
+  if(roster.status === 200 && Array.isArray(roster.body)){
+    add('ok','データベースの準備（schema.sql）',
+      '名簿ビューを読めました。登録済み ' + roster.body.length + ' 人');
+  }else if(roster.status === 404){
+    add('ng','データベースの準備（schema.sql）','member_roster が見つかりません',
+      'SETUP.md 手順2 の <code>supabase/schema.sql</code> を SQL Editor で実行してください。');
+  }else{
+    add('ng','データベースの準備（schema.sql）',
+      'HTTP ' + roster.status + ' ' + JSON.stringify(roster.body||''), '');
+  }
+
+  /* ---------- 5. 共通パスコード ---------- */
+  const pc = await api('/rest/v1/rpc/check_team_passcode',
+    { method:'POST', body: JSON.stringify({ p_code: '__diagnostic_probe__' }) });
+  if(pc.status === 404){
+    add('ng','共通パスコードの確認機能','check_team_passcode が見つかりません',
+      'SETUP.md 手順2 の schema.sql を実行してください。');
+  }else if(pc.status === 200 && pc.body === false){
+    add('ok','共通パスコード','設定済みです（誤ったコードは弾かれました）');
+  }else if(pc.status === 200 && pc.body === true){
+    add('warn','共通パスコード','まだ設定されていません',
+      'いまは<b>URLを知っている人なら誰でも登録できる状態</b>です。' +
+      'SETUP.md 手順5 のSQLを1回実行してください。');
+  }else{
+    add('warn','共通パスコード','判定できませんでした（HTTP ' + pc.status + '）','');
+  }
+
+  done();
+})().catch(e => {
+  add('ng','診断そのものが失敗しました', String(e && e.message || e),
+    'ネットワークをご確認のうえ、再読み込みしてください。');
+  done();
+});
+
+function done(){
+  const sum = document.getElementById('sum');
+  const ng = results.filter(r => r === 'ng').length;
+  const warn = results.filter(r => r === 'warn').length;
+  if(ng){
+    sum.className = 'sum ng';
+    sum.textContent = '✕ 登録できない原因が ' + ng + ' 件あります。下の赤い項目を直してください。';
+  }else if(warn){
+    sum.className = 'sum ok';
+    sum.textContent = '✓ 登録できる状態です（注意が ' + warn + ' 件あります）。';
+  }else{
+    sum.className = 'sum ok';
+    sum.textContent = '✓ すべて正常です。登録できる状態です。';
+  }
+}
+</script>
+</body>
+</html>
