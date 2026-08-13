@@ -230,7 +230,7 @@ tbody tr:hover td.st{background:#FBFAFF}
 .card .act{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)}
 .card .act:first-of-type{border-top:0}
 
-/* ---------- 承認待ちの行 ---------- */
+/* ---------- 項目の行 ---------- */
 .pitem{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--line2)}
 .pitem:first-of-type{border-top:0}
 .pitem .txt{flex:1;min-width:0;font-size:12.5px;line-height:1.55}
@@ -494,8 +494,6 @@ async function loadAll(){
     }
   }catch(e){}
 }
-/* 承認まわりが使えるサーバーか */
-function approvalOn(){ return !!(Store.caps&&Store.caps.approval); }
 function compute(){
   const now=new Date();
   /* 表示順はここで決める（cloudはSQLでも並べているが、モードによらず同じ順にする） */
@@ -514,10 +512,8 @@ function compute(){
     const mineUl     = !!(myName && normName(m.ul)===myName);
     const mineMentor = !!(myName && normName(m.mentor)===myName);
     const raw=A.progress[m.id]||{};
-    /* checks は「押されているか」、appr は「承認済みか」。
-       進捗の数字は承認済みだけで数える（押しただけの申請中は別に出す）。 */
-    const sp=splitChecks(raw);
-    const checks=sp.approved, all=sp.all, pending=sp.pending;
+    /* 承認はないので、チェックが入っていればそのまま達成として数える。 */
+    const checks=checksOf(raw);
     const cg=gCurrentGrade(checks), cleared=gClearedCount(checks);
     const st=A.states[m.id]||{};
     const notes=(notesBy[m.id]||[]).slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on)));
@@ -531,9 +527,7 @@ function compute(){
       m:m, id:m.id, name:m.name, unit:m.unit||'（未設定）', role:roleKey(m.role),
       mineUl:mineUl, mineMentor:mineMentor, mine:(mineUl||mineMentor),
       noCharge: !(String(m.ul||'').trim() || String(m.mentor||'').trim()),
-      checks:checks, all:all, raw:raw, pending:pending, pendingCount:pending.length,
-      /* 挑戦中グレードの承認待ち。ここが1件でもあれば面談で見る */
-      pendingNow:pending.filter(id=>gradeOf(id)===cg).length,
+      checks:checks, raw:raw,
       concern:(st.custom&&st.custom.__concern)||'',
       state:st,
       cg:cg, cleared:cleared, done:gDone(checks,cg), total:gTotal(cg), pct:gPct(checks,cg),
@@ -582,7 +576,6 @@ function mineTag(r){ return r.mine? ' <span class="chip v">自分の担当</span
 function units(){ return Array.from(new Set(ROWS.map(r=>r.unit))).sort(); }
 function alertsOf(r){
   const out=[];
-  if(r.pendingCount) out.push('pending');
   if(r.delay!=null && r.delay>=DELAY_ALERT) out.push('delay');
   if(r.stale==null || r.stale>=STALE_DAYS) out.push('stale');
   if(r.readyPromo) out.push('promo');
@@ -637,12 +630,10 @@ const TABS=[
 function renderNav(){
   const n=ROWS.filter(r=>r.role==='member').length;
   const alerts=ROWS.filter(r=>r.role==='member'&&(alertsOf(r).indexOf('delay')>=0||alertsOf(r).indexOf('stale')>=0)).length;
-  const pend=ROWS.filter(r=>r.role==='member').reduce((a,r)=>a+r.pendingCount,0);
   document.getElementById('nav').innerHTML=TABS.map(t=>
     '<button data-act="tab" data-tab="'+t.k+'" class="'+(V.tab===t.k?'on':'')+'"'+(V.tab===t.k?' aria-current="page"':'')+'>'+
     '<svg viewBox="0 0 24 24">'+t.i+'</svg><span>'+t.n+'</span>'+
     (t.k==='roster'?'<span class="n">'+n+'</span>':'')+
-    (t.k==='dash'&&pend?'<span class="n">'+pend+'</span>':'')+
     (t.k==='promo'&&alerts?'<span class="n">'+alerts+'</span>':'')+
     '</button>').join('');
   const me=Store.me&&Store.me.member;
@@ -702,7 +693,7 @@ function barFilters(opts){
        '<option value="'+o[0]+'"'+(F.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   if(opts.alert!==false){
     h+='<select id="falert"><option value="">アラートで絞らない</option>'+
-      [['pending','承認待ちがある'],['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
+      [['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
        ['ywt','今期のYWT未提出'],['monthly','今月の振り返り未提出'],['atarimae','アタリマエに✕']].map(o=>
        '<option value="'+o[0]+'"'+(F.alert===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   }
@@ -770,17 +761,12 @@ function vDash(){
      今日のアクション
      数字を眺めるためではなく、その場で1手打つための一覧。
      ------------------------------------------------------------ */
-  const pendPeople=all.filter(r=>r.pendingCount);
-  const pendTotal=pendPeople.reduce((a,r)=>a+r.pendingCount,0);
   const noReply=A.reviews.filter(rv=>rv.submitted_at&&!rv.ul_comment&&BY_ID[rv.member_id]&&
     (!F.unit||BY_ID[rv.member_id].unit===F.unit));
   /* 「自分がやらなきゃいけない分」＝その人のUL欄・メンター欄に自分が入っているもの。
      全員ぶん見えることは変えず、自分の担当だけ数えて横に添える。 */
   const mineOf=l=>l.filter(r=>r.mine).length;
   const acts=[];
-  if(approvalOn()&&pendTotal) acts.push({t:'チェックの承認待ち',n:pendTotal+'件',
-    s:pendPeople.length+'人ぶん。面談のときに一緒に確認して承認します',
-    m:mineOf(pendPeople),mu:'人',b:'対象の人を見る',act:'alert',v:'pending'});
   if(promo.length) acts.push({t:'昇格面談を組む',n:promo.length+'人',
     s:'認定グレードの項目を完了しています',
     m:mineOf(promo),mu:'人',b:'昇格タブを開く',act:'tab',v:'promo'});
@@ -820,12 +806,11 @@ function vDash(){
 
   h+='<div class="grid g4" style="margin-bottom:14px">'+
     kpi('メンバー数',all.length,'人',F.unit||'全Unit','')+
-    kpi('平均進捗',avg,'%','承認済みの項目で計算','')+
+    kpi('平均進捗',avg,'%','チェック済みの項目で計算','')+
     kpi('昇格面談の対象',promo.length,'人','認定グレードの項目を完了','promo')+
     kpi('標準期間より遅れ',delayed.length,'人',DELAY_ALERT+'ヶ月以上の超過','delay')+
   '</div>';
   h+='<div class="grid g4" style="margin-bottom:14px">'+
-    (approvalOn()?kpi('承認待ちがある人',pendPeople.length,'人',pendTotal+'件のチェック','pending'):'')+
     kpi('しばらく動きなし',stale.length,'人',STALE_DAYS+'日以上チェックなし','stale')+
     kpi('今期のYWT未提出',noYwt.length,'人',periodLabel('ywt',ywtPeriod()),'ywt')+
     kpi('今月の振り返り未提出',noMonthly.length,'人',periodLabel('monthly',monthlyPeriod()),'monthly')+
@@ -956,7 +941,7 @@ function remindText(kind){
   if(!list.length) return null;
   return head+'\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+body+'\n'+APP_URL;
 }
-const ALERT_LABEL={pending:['承認待ち','v'],delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],ywt:['YWT未提出','g'],monthly:['月次未提出','g'],atarimae:['アタリマエ✕','c']};
+const ALERT_LABEL={delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],ywt:['YWT未提出','g'],monthly:['月次未提出','g'],atarimae:['アタリマエ✕','c']};
 function alertChip(a){ const x=ALERT_LABEL[a]||[a,'g']; return '<span class="chip '+x[1]+'">'+x[0]+'</span>'; }
 function cut(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 
@@ -973,17 +958,15 @@ const COLDEF={
               cell:r=>r.months==null?'—':r.months.toFixed(1)+'ヶ月'},
   certified: {h:'認定G',   sort:'certified',cls:'num', tip:'社内で認定されている、いまのグレード',
               cell:r=>r.certified?'G'+r.certified:'—'},
-  cleared:   {h:'完了G',   sort:'cleared',cls:'num', tip:'全項目が承認済みになったグレードの数。認定G以上なら昇格面談の対象',
+  cleared:   {h:'完了G',   sort:'cleared',cls:'num', tip:'全項目にチェックが入ったグレードの数。認定G以上なら昇格面談の対象',
               cell:r=>r.cleared},
   heat:      {h:'Grade 1 → 10', cell:r=>heat(r)},
   cg:        {h:'挑戦中',  sort:'cg', cell:r=>gradeChip(r.cg)},
-  pct:       {h:'挑戦中の進捗', sort:'pct', cls:'num', tip:'挑戦中のグレードで承認済みの割合',
+  pct:       {h:'挑戦中の進捗', sort:'pct', cls:'num', tip:'挑戦中のグレードでチェック済みの割合',
               cell:r=>'<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
                 '<span class="mini"><i style="width:'+r.pct+'%;background:'+tierOf(r.cg).hex+'"></i></span>'+
                 '<b class="mono" style="font-size:11px">'+r.pct+'%</b></div>'},
-  pending:   {h:'承認待ち', cls:'num', tip:'本人が押したが、まだ承認していないチェックの数',
-              cell:r=>r.pendingCount?'<button class="chip v" data-act="open" data-id="'+r.id+'">'+r.pendingCount+'</button>':'<span class="muted">—</span>'},
-  overall:   {h:'全体',    sort:'overall',cls:'num', tip:'全'+TOTAL_ITEMS+'項目に対する承認済みの割合',
+  overall:   {h:'全体',    sort:'overall',cls:'num', tip:'全'+TOTAL_ITEMS+'項目に対するチェック済みの割合',
               cell:r=>'<span class="mono">'+r.overall+'%</span>'},
   target:    {h:'昇格予定', sort:'target', tip:'入社日＋標準期間。設定タブで手動の上書きもできます',
               cell:r=>fmtDateFull(r.outlook.targetDate)},
@@ -1000,9 +983,9 @@ const COLDEF={
               cell:r=>'<span class="wrap tiny">'+(r.stuck[0]?esc(r.stuck[0].cat.split('｜')[0])+'：'+esc(cut(r.stuck[0].t,42)):'—')+'</span>'}
 };
 const PRESETS={
-  meeting:{n:'面談用', cols:['unit','charge','cg','pct','pending','stuck','stale']},
+  meeting:{n:'面談用', cols:['unit','charge','cg','pct','stuck','stale']},
   promo:  {n:'昇格判定用', cols:['unit','charge','months','certified','cleared','heat','target','delay']},
-  all:    {n:'棚卸し用（全部）', cols:['unit','charge','months','certified','cleared','heat','cg','pct','pending','overall','target','delay','stale','quiz','notes','registered']}
+  all:    {n:'棚卸し用（全部）', cols:['unit','charge','months','certified','cleared','heat','cg','pct','overall','target','delay','stale','quiz','notes','registered']}
 };
 function colPreset(){
   if(!V.preset){ try{ V.preset=localStorage.getItem('careerstep:preset')||'meeting'; }catch(e){ V.preset='meeting'; } }
@@ -1061,16 +1044,16 @@ function vRoster(){
   });
   h+='</tbody></table></div>';
   h+='<p class="tiny muted" style="margin-top:10px">'+
-    '「完了G」は全項目が承認済みになったグレードの数、「認定G」は社内で認定されている現グレード。'+
+    '「完了G」は全項目にチェックが入ったグレードの数、「認定G」は社内で認定されている現グレード。'+
     '完了Gが認定G以上になっていれば、昇格面談の対象です。'+
     '見出しにカーソルを合わせると、その列の意味が出ます。</p>';
   return h;
 }
 function csvRoster(){
   const rows=[['名前','Unit','UL','メンター','入社日','在籍月数','認定グレード','完了グレード数','挑戦中グレード',
-    '承認待ち件数','挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標','登録日']];
+    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標','登録日']];
   sorted(filtered()).forEach(r=>rows.push([r.name,r.unit,r.m.ul||'',r.m.mentor||'',r.m.join_date||'',
-    r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pendingCount,r.pct,r.overall,
+    r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pct,r.overall,
     r.outlook.targetDate||'',r.delay==null?'':r.delay,r.lastCheck?String(r.lastCheck).slice(0,10):'',
     r.quizAvg==null?'':r.quizAvg,r.noteCount,r.ywtDone?'提出済':'未提出',r.monthlyDone?'提出済':'未提出',
     r.ngAtarimae.length?r.ngAtarimae.join(' / '):'',
@@ -1785,36 +1768,17 @@ function dwStep(r){
       '<span class="gn">'+dn+'/'+gTotal(g.n)+'</span></div>';
   });
   h+='</div>';
-  /* 本人が押して、承認を待っている項目。面談でいちばん先に見るところ */
-  const pend=ITEMS[r.cg].filter(i=>r.all[i.id]&&!r.checks[i.id]);
-  if(approvalOn()){
-    h+='<div class="card"><h2>承認待ち <span class="cnt">Grade '+r.cg+'・'+pend.length+'件</span>'+
-      (pend.length?'<span class="spacer"></span><button class="btn vio sm" data-act="approveAll" data-id="'+r.id+'">まとめて承認</button>':'')+'</h2>';
-    if(!pend.length) h+='<div class="empty">承認待ちはありません。</div>';
-    else{
-      h+='<p class="tiny muted" style="margin:-4px 0 8px">本人が「できた」と申告した項目です。'+
-        '内容を確認して承認すると、進捗として数えられます。</p>';
-      pend.forEach(it=>{
-        h+='<div class="pitem"><span class="txt">'+esc(it.t)+
-          '<span class="tiny muted"> ／ '+esc(it.cat.split('｜')[0])+'</span></span>'+
-          '<button class="btn vio sm" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="approved">承認</button>'+
-          '<button class="btn ghost sm" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="off">戻す</button></div>';
-      });
-    }
-    h+='</div>';
-  }
-
-  const notYet=ITEMS[r.cg].filter(i=>!r.all[i.id]);
-  h+='<div class="card"><h2>まだ手がついていない項目 <span class="cnt">Grade '+r.cg+'・'+notYet.length+'件</span></h2>'+
+  const notYet=ITEMS[r.cg].filter(i=>!r.checks[i.id]);
+  h+='<div class="card"><h2>まだチェックが入っていない項目 <span class="cnt">Grade '+r.cg+'・'+notYet.length+'件</span></h2>'+
     '<p class="tiny muted" style="margin:-4px 0 8px">面談しながらここでチェックを入れられます。'+
-    (approvalOn()?'ULが押したものは、その場で承認済みになります。':'本人の画面にもすぐ反映されます。')+'</p>';
+    '本人の画面にもすぐ反映されます。</p>';
   if(!notYet.length) h+='<div class="empty">Grade '+r.cg+' はすべて手がついています。</div>';
   else{
     let lastCat='';
     notYet.forEach(it=>{
       if(it.cat!==lastCat){ lastCat=it.cat;
         h+='<div class="tiny" style="font-weight:700;color:var(--ink2);margin:9px 0 1px">'+esc(it.cat)+'</div>'; }
-      h+='<button class="item" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="approved" role="checkbox" aria-checked="false">'+
+      h+='<button class="item" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="on" role="checkbox" aria-checked="false">'+
         '<span class="box">'+CHECK+'</span><span class="txt">'+esc(it.t)+'</span></button>';
     });
   }
@@ -1822,13 +1786,12 @@ function dwStep(r){
   /* 済みの項目もたためる形で見せる */
   const doneItems=ITEMS[r.cg].filter(i=>r.checks[i.id]);
   if(doneItems.length){
-    h+='<div class="card"><h2>Grade '+r.cg+' で承認済み <span class="cnt">'+doneItems.length+'件</span></h2>';
+    h+='<div class="card"><h2>Grade '+r.cg+' で達成済み <span class="cnt">'+doneItems.length+'件</span></h2>';
     doneItems.forEach(it=>{
-      const meta=r.raw[it.id];
-      const who=(meta&&meta.approvedBy&&BY_ID[meta.approvedBy])?BY_ID[meta.approvedBy].name:'';
+      const at=r.raw[it.id];
       h+='<button class="item on" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="off" role="checkbox" aria-checked="true">'+
         '<span class="box on">'+CHECK+'</span><span class="txt">'+esc(it.t)+
-        (meta&&meta.approvedAt?'<span class="tiny muted"> ／ '+fmtDate(meta.approvedAt)+(who?' '+esc(who):'')+'</span>':'')+
+        (at&&at!==true?'<span class="tiny muted"> ／ '+fmtDate(at)+'</span>':'')+
         '</span></button>';
     });
     h+='</div>';
@@ -1917,7 +1880,7 @@ function dwProfile(r){
        取り消せない操作なので、名前を打ってもらってから実行する。 */
     '<div class="card"><h2>チェックの消去</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px">'+esc(r.name)+' さんのチェックを全件（'+
-    Object.keys(r.all).length+'件）消します。<b>元に戻せません。</b>'+
+    Object.keys(r.checks).length+'件）消します。<b>元に戻せません。</b>'+
     '申し送り・テスト結果・振り返りは残ります。実行すると申し送りに記録が残ります。</p>'+
     '<div class="f"><label>確認のため、氏名を入力してください</label>'+
       '<input type="text" id="pfConfirm" placeholder="'+esc(r.name)+'"></div>'+
@@ -2029,7 +1992,7 @@ function vSettings(){
   /* サーバー側の対応状況 */
   const caps=Store.caps||{};
   h+='<div class="card"><h2>この環境で使える機能</h2><div class="tiny muted">'+
-    [['チェックの承認（申請中／承認済み）',caps.approval],
+    [['チェックの保存（関数経由）',caps.rpcCheck],
      ['ログイン画面の名前検索',caps.rosterSearch],
      ['しきい値の共有',caps.settings]]
     .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/schema.sql の貼り直しで有効になります）')+'</div>').join('')+
@@ -2073,25 +2036,14 @@ document.addEventListener('click',async e=>{
   else if(a==='closeDw'){ closeDrawer(); }
   else if(a==='dwTab'){ V.dwTab=el.dataset.t; renderDrawer(); }
   else if(a==='dwSet'){
-    const r=BY_ID[V.drawer]; const id=el.dataset.id; const state=el.dataset.s;
+    const r=BY_ID[V.drawer]; const id=el.dataset.id; const on=el.dataset.s!=='off';
     try{
-      await Store.setCheckFor(r.id,id,state);
+      await Store.setCheckFor(r.id,id,on);
       await loadAll();
       const nr=BY_ID[V.drawer];
       renderDrawer(); render();
-      if(state==='approved' && gCurrentGrade(nr.checks)>gCurrentGrade(r.checks)) toast('Grade '+r.cg+' が埋まりました','xp');
+      if(on && gCurrentGrade(nr.checks)>gCurrentGrade(r.checks)) toast('Grade '+r.cg+' が埋まりました','xp');
     }catch(err){ toast(err.message||'更新に失敗しました','bad'); }
-  }
-  else if(a==='approveAll'){
-    const r=BY_ID[el.dataset.id]; if(!r) return;
-    const ids=r.pending.filter(id=>gradeOf(id)===r.cg);
-    if(!ids.length) return;
-    if(!confirm(r.name+' さんの承認待ち '+ids.length+' 件をまとめて承認します。よろしいですか？')) return;
-    try{
-      const n=await Store.approveItems(r.id,ids);
-      await loadAll(); renderDrawer(); render();
-      toast(n+'件を承認しました','xp');
-    }catch(err){ toast(err.message||'承認に失敗しました','bad'); }
   }
   else if(a==='setAtari'){
     const r=BY_ID[el.dataset.id]; if(!r) return;

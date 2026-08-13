@@ -97,7 +97,7 @@ const Store = (() => {
     if(has && has.length){ LS.set(MIGRATED_KEY,'1'); return 0; }
 
     if(itemIds.length){
-      if(caps.approval){
+      if(caps.rpcCheck){
         /* 本人からの直接書き込みは閉じてあるので、1件ずつ関数を通す */
         for(const id of itemIds) chk(await sb.rpc('set_my_check',{p_item_id:id,p_on:true}));
       }else{
@@ -121,19 +121,19 @@ const Store = (() => {
   /* ============================================================
      サーバー側の機能検出
      ------------------------------------------------------------
-     supabase/schema.sql の追加分（承認・名前検索・設定など）を
+     supabase/schema.sql の追加分（チェックの関数・名前検索・設定など）を
      まだ流していない環境でも、画面がそのまま動くようにする。
      使える機能だけをオンにして、無い機能は従来のやり方に落とす。
      ============================================================ */
-  const caps = { approval:false, rosterSearch:false, settings:false };
+  const caps = { rpcCheck:false, rosterSearch:false, settings:false };
   let capsDone = false;   /* 一度でも通信できたか。電波が悪いだけの結果を信じない */
   async function detectCaps(){
     let ok=true;
     try{
       const r=await sb.from('progress').select('approved_at').limit(1);
-      /* 列が無い（42703）ならこの機能は無い。通信自体が失敗したなら判定しない */
+      /* 列が無い（42703）なら古いままのDB。通信自体が失敗したなら判定しない */
       if(r.error && !/column|does not exist|42703/i.test(String(r.error.message||''))) ok=false;
-      else caps.approval = !r.error;
+      else caps.rpcCheck = !r.error;
     }catch(e){ ok=false; }
     try{
       const r=await sb.rpc('roster_search',{p_q:'',p_managers:false});
@@ -179,14 +179,14 @@ const Store = (() => {
   }
   /* 本人のチェック1件を実際に送る */
   async function sendCheck(itemId,on){
-    if(caps.approval){ chk(await sb.rpc('set_my_check',{p_item_id:itemId,p_on:!!on})); return; }
+    if(caps.rpcCheck){ chk(await sb.rpc('set_my_check',{p_item_id:itemId,p_on:!!on})); return; }
     const r = on
       ? await sb.from('progress').upsert({member_id:me.member.id,item_id:itemId,checked_at:new Date().toISOString()})
       : await sb.from('progress').delete().eq('member_id',me.member.id).eq('item_id',itemId);
-    /* 直接書き込みが閉じられている＝承認のしくみが入っている。
-       判定を取り違えていただけなので、関数経由でやり直す。 */
+    /* 直接書き込みが閉じられている＝関数経由のDBだった。
+       判定を取り違えていただけなので、関数でやり直す。 */
     if(r.error && /row-level security|permission denied/i.test(String(r.error.message||''))){
-      caps.approval=true;
+      caps.rpcCheck=true;
       chk(await sb.rpc('set_my_check',{p_item_id:itemId,p_on:!!on}));
       return;
     }
@@ -392,17 +392,13 @@ const Store = (() => {
     async myData(){
       need();
       const mid=me.member.id;
-      const cols=caps.approval? 'item_id,checked_at,approved_at,approved_by' : 'item_id,checked_at';
+      const cols='item_id,checked_at';
       const [p,s]=await Promise.all([
         sb.from('progress').select(cols).eq('member_id',mid),
         sb.from('member_state').select('*').eq('member_id',mid).maybeSingle()
       ]);
       const checks={};
-      (chk(p)||[]).forEach(r=>{
-        checks[r.item_id] = caps.approval
-          ? { at:r.checked_at, approved:!!r.approved_at, approvedBy:r.approved_by||null, approvedAt:r.approved_at||null }
-          : r.checked_at;
-      });
+      (chk(p)||[]).forEach(r=>{ checks[r.item_id] = r.checked_at; });
       const st=chk(s)||{};
       return {
         member:me.member, checks,
@@ -426,28 +422,19 @@ const Store = (() => {
       }
     },
 
-    /* 管理者が他の人のチェックを操作する。
-       state: 'approved'（承認）/ 'pending'（申請中に戻す）/ 'off'（外す） */
-    async setCheckFor(memberId,itemId,state){
+    /* 管理者が他の人のチェックを付ける／外す（on=true で付ける） */
+    async setCheckFor(memberId,itemId,on){
       need();
-      if(state===true)  state='approved';
-      if(state===false) state='off';
-      if(caps.approval){ chk(await sb.rpc('set_check_for',{p_member_id:memberId,p_item_id:itemId,p_state:state})); return; }
+      const state = on? 'on' : 'off';
+      if(caps.rpcCheck){ chk(await sb.rpc('set_check_for',{p_member_id:memberId,p_item_id:itemId,p_state:state})); return; }
       if(state==='off') chk(await sb.from('progress').delete().eq('member_id',memberId).eq('item_id',itemId));
       else chk(await sb.from('progress').upsert({member_id:memberId,item_id:itemId,checked_at:new Date().toISOString()}));
-    },
-
-    /* 申請中のものをまとめて承認する（面談の最後に1回押す用） */
-    async approveItems(memberId,itemIds){
-      need();
-      if(!caps.approval) return 0;
-      return chk(await sb.rpc('approve_items',{p_member_id:memberId,p_item_ids:itemIds||null}))||0;
     },
 
     /* その人のチェックを全件消す（管理者のみ。申し送りに記録が残る） */
     async clearProgressFor(memberId){
       need();
-      if(caps.approval) return chk(await sb.rpc('admin_clear_progress',{p_member_id:memberId}))||0;
+      if(caps.rpcCheck) return chk(await sb.rpc('admin_clear_progress',{p_member_id:memberId}))||0;
       chk(await sb.from('progress').delete().eq('member_id',memberId));
       return 0;
     },
@@ -505,7 +492,7 @@ const Store = (() => {
     async adminLoad(){
       need();
       await detectManagerCaps();
-      const pcols=caps.approval? 'member_id,item_id,checked_at,approved_at,approved_by' : 'member_id,item_id,checked_at';
+      const pcols='member_id,item_id,checked_at';
       const [m,p,s,n,q,rv]=await Promise.all([
         sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name'),
         sb.from('progress').select(pcols),
@@ -516,9 +503,7 @@ const Store = (() => {
       ]);
       const progress={};
       (chk(p)||[]).forEach(r=>{
-        (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = caps.approval
-          ? { at:r.checked_at, approved:!!r.approved_at, approvedBy:r.approved_by||null, approvedAt:r.approved_at||null }
-          : r.checked_at;
+        (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
       });
       const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
       return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[], reviews:chk(rv)||[],
