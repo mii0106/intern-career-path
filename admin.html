@@ -205,14 +205,56 @@ tbody tr:hover td.st{background:#FBFAFF}
 .toast.xp{background:var(--violet)}
 .toast.bad{background:var(--coral)}
 
+/* ---------- 今日のアクション ---------- */
+.actions .act{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
+.actions .act:first-of-type{border-top:0}
+.act-n{flex:0 0 62px;font-size:17px;color:var(--violet)}
+.act-b{flex:1;min-width:0;display:flex;flex-direction:column}
+.act-b b{font-size:13px}
+.card .act{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)}
+.card .act:first-of-type{border-top:0}
+
+/* ---------- 承認待ちの行 ---------- */
+.pitem{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--line2)}
+.pitem:first-of-type{border-top:0}
+.pitem .txt{flex:1;min-width:0;font-size:12.5px;line-height:1.55}
+td .wrap,.wrap{white-space:normal;display:inline-block;max-width:320px}
+thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;
+  background:#E8E5F5;color:var(--ink2);font-size:9px;margin-left:4px;vertical-align:1px}
+.fetched{margin:8px 0 6px;font-size:10.5px}
+.fetched button{color:#C3C8D8;text-decoration:underline;margin:0}
+
+/* ---------- 振り返りへの返信パネル ---------- */
+#modal{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:20px}
+#modal.on{display:grid}
+.mdl{background:var(--surface);border-radius:18px;width:min(900px,96vw);max-height:88vh;display:flex;flex-direction:column;
+  box-shadow:0 30px 70px -30px rgba(24,18,64,.6);position:relative;overflow:hidden}
+.mdl-head{display:flex;align-items:center;gap:9px;padding:13px 52px 13px 16px;border-bottom:1px solid var(--line)}
+.mdl-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;overflow:hidden;flex:1}
+.mdl-src{overflow-y:auto;padding:14px 16px;background:var(--base);border-right:1px solid var(--line)}
+.mdl-blk{margin-bottom:12px}
+.mdl-reply{overflow-y:auto;padding:14px 16px}
+.mdl-reply .radios button{font-size:11px}
+@media (max-width:760px){ .mdl-body{grid-template-columns:1fr;overflow-y:auto} .mdl-src{border-right:0;border-bottom:1px solid var(--line)} }
+
 @media (max-width:900px){
   #shell{grid-template-columns:1fr}
   aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px}
   .logo{padding:2px 8px}
   aside nav{display:flex;flex-wrap:wrap;gap:2px;width:100%}
   aside nav button{width:auto}
-  .aside-foot{margin:0;border:0;padding:0 8px}
+  .aside-foot{margin:0;border:0;padding:0 8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .aside-foot b{display:inline}
+  .fetched{margin:0}
   main{padding:14px 12px 50px}
+  /* 面談モード：スマホでは、右から出るパネルを全画面にして1人分だけを見る。
+     1on1は会議室やカフェで、スマホ片手に行われるため。 */
+  #drawer{width:100vw}
+  .dw-head{padding:12px 46px 12px 14px}
+  .dw-body{padding:12px 14px 40px}
+  .bar{gap:6px}
+  .bar input[type=search]{min-width:0;flex:1}
+  .act-n{flex-basis:48px;font-size:15px}
 }
 @media print{aside,.bar,.dw-close{display:none}#shell{grid-template-columns:1fr}.tw{max-height:none}}
 </style>
@@ -245,7 +287,8 @@ tbody tr:hover td.st{background:#FBFAFF}
 
 <div id="scrim"></div>
 <div id="drawer"><div id="drawerInner"></div></div>
-<div id="toasts"></div>
+<div id="modal"></div>
+<div id="toasts" role="status" aria-live="polite"></div>
 <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
 
 <script src="shared/config.js"></script>
@@ -261,8 +304,18 @@ tbody tr:hover td.st{background:#FBFAFF}
    ============================================================ */
 
 const CFG = window.STEP_CONFIG || {};
-const STALE_DAYS = CFG.STALE_DAYS || 14;
-const DELAY_ALERT = CFG.DELAY_ALERT_MONTHS != null ? CFG.DELAY_ALERT_MONTHS : 1;
+/* しきい値は管理画面の「設定」から変えられる。
+   サーバーに保存できない環境では、この端末だけの設定として残る。 */
+let STALE_DAYS  = CFG.STALE_DAYS || 14;
+let DELAY_ALERT = CFG.DELAY_ALERT_MONTHS != null ? CFG.DELAY_ALERT_MONTHS : 1;
+function loadLocalSettings(){
+  try{
+    const s=JSON.parse(localStorage.getItem('careerstep:settings')||'{}');
+    if(s.stale_days)  STALE_DAYS=+s.stale_days;
+    if(s.delay_months!=null) DELAY_ALERT=+s.delay_months;
+  }catch(e){}
+}
+loadLocalSettings();
 
 /* 生データ */
 let A = { members:[], progress:{}, states:{}, notes:[], scores:[], reviews:[] };
@@ -288,7 +341,7 @@ let F = { unit:'', q:'', role:'member', alert:'' };
    共通パスコードではログインできない（それだと共通パスコードを知っている
    メンバー全員がULになりすませてしまうため）。
    ============================================================ */
-let GATE={ roster:[], picked:null, q:'', mode:'pick', offline:false };
+let GATE={ hits:[], picked:null, q:'', searching:false, mode:'pick', offline:false };
 
 function gateHTML(){
   if(Store.mode!=='cloud'){
@@ -304,17 +357,16 @@ function gateHTML(){
       '<button class="btn vio" data-act="retry" style="width:100%;padding:12px">もう一度ためす</button>';
   }
 
-  const mgr = GATE.roster.filter(m=>m.role==='ul'||m.role==='admin');
-
   if(GATE.mode==='claim'){
     return '<div class="gnote">まだ管理者になっていない方はこちらです。'+
-        '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて入ってください。'+
-        '一度入れば、次回からは名前とパスワードだけで開けます。</div>'+
-      '<div class="f"><label>自分の名前</label><select id="cName">'+
-        '<option value="">選んでください</option>'+
-        GATE.roster.map(m=>'<option value="'+m.id+'"'+(GATE.picked&&GATE.picked.id===m.id?' selected':'')+'>'+
-          esc(m.name)+(m.unit?'（'+esc(m.unit)+'）':'')+'</option>').join('')+
-      '</select></div>'+
+        '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて申請してください。'+
+        'いまいる管理者が承認すると、この画面に入れるようになります。'+
+        '（管理者がまだ1人もいないあいだは、そのまま入れます）</div>'+
+      '<div class="f"><label>自分の名前</label>'+
+        '<input type="text" id="cQuery" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'">'+
+        '<div id="cHits" class="tiny muted" style="margin-top:6px">'+
+          (GATE.picked?'選択中：<b style="color:var(--ink)">'+esc(GATE.picked.name)+'</b>':'名前を2文字以上入れてください。')+
+        '</div></div>'+
       '<div class="f"><label>パスワード</label><input type="password" id="cPass" autocomplete="current-password" placeholder="本人画面で決めたパスワード"></div>'+
       '<div class="f"><label>管理者キー</label><input type="password" id="cKey" autocomplete="off" placeholder="UL間で共有されているキー"></div>'+
       '<button class="btn vio" data-act="claim" style="width:100%;padding:12px">管理者になって入る</button>'+
@@ -330,29 +382,41 @@ function gateHTML(){
       '<p class="tiny muted" style="margin:12px 0 0">パスワードを忘れたときは、他のULに「ログインのリセット」を頼んでください。</p>';
   }
 
-  const q=GATE.q.trim();
-  const list=mgr.filter(m=>!q||String(m.name).indexOf(q)>=0||String(m.unit||'').indexOf(q)>=0);
-  let h='';
-  if(mgr.length){
-    if(mgr.length>8) h+='<div class="f"><input type="text" id="gq" placeholder="名前で絞り込む" value="'+esc(GATE.q)+'"></div>';
-    h+='<div class="glist">';
-    if(!list.length) h+='<div class="gempty">見つかりませんでした。</div>';
-    let lastUnit='__';
-    list.forEach(m=>{
-      const u=m.unit||'（Unit未設定）';
-      if(u!==lastUnit){ lastUnit=u; h+='<div class="gunit">'+esc(u)+'</div>'; }
-      h+='<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
-         '<span>'+(m.linked?'選ぶ ›':'パスワード未設定')+'</span></button>';
-    });
-    h+='</div>';
-  }else{
-    h+='<div class="gnote">まだ管理者が1人もいません。<br>'+
-       'まず本人画面（<a href="./">こちら</a>）で自分を登録し、そのあと下のボタンから'+
-       '管理者キーを入れてください。</div>';
+  /* 管理者の名前も一覧では出さない。名前を入れた人にだけ候補を返す */
+  return '<div class="f"><label>自分の名前</label>'+
+      '<input type="text" id="gq" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'"></div>'+
+    '<div id="gHits"></div>'+
+    '<button class="btn ghost" data-act="toClaim" style="width:100%;padding:12px;margin-top:10px">'+
+      'まだ管理者になっていない方はこちら</button>';
+}
+/* 検索結果だけを描き替える（入力欄を作り直さないのでカーソルが飛ばない） */
+function paintHits(boxId,managersOnly){
+  const box=document.getElementById(boxId);
+  if(!box) return;
+  const q=String(GATE.q).trim();
+  if(q.length<2){ box.innerHTML='<p class="tiny muted" style="margin:8px 2px">名前を2文字以上入れてください。</p>'; return; }
+  if(GATE.searching){ box.innerHTML='<p class="tiny muted" style="margin:8px 2px">探しています…</p>'; return; }
+  if(!GATE.hits.length){
+    box.innerHTML='<p class="tiny muted" style="margin:8px 2px">見つかりませんでした。'+
+      (managersOnly?'まだ管理者になっていない場合は、下のボタンから申請してください。'
+                   :'先に本人画面（<a href="./">こちら</a>）で登録してください。')+'</p>';
+    return;
   }
-  h+='<button class="btn'+(mgr.length?' ghost':' vio')+'" data-act="toClaim" style="width:100%;padding:12px">'+
-     (mgr.length?'まだ管理者になっていない方はこちら':'管理者キーを入れて管理者になる')+'</button>';
-  return h;
+  box.innerHTML='<div class="glist">'+GATE.hits.map(m=>
+    '<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
+    '<span>'+esc(m.unit||'')+(m.linked?' ・ 選ぶ ›':' ・ パスワード未設定')+'</span></button>').join('')+'</div>';
+}
+let searchT=null;
+function gateSearch(q,boxId,managersOnly){
+  GATE.q=q;
+  clearTimeout(searchT);
+  if(String(q).trim().length<2){ GATE.hits=[]; GATE.searching=false; paintHits(boxId,managersOnly); return; }
+  GATE.searching=true; paintHits(boxId,managersOnly);
+  searchT=setTimeout(async()=>{
+    try{ GATE.hits=await Store.searchRoster(q,managersOnly); }
+    catch(e){ GATE.hits=[]; }
+    GATE.searching=false; paintHits(boxId,managersOnly);
+  },260);
 }
 function showGate(err){
   document.getElementById('shell').style.display='none';
@@ -361,12 +425,11 @@ function showGate(err){
   document.getElementById('gateBody').innerHTML = gateHTML();
 
   const gq=document.getElementById('gq');
-  if(gq) gq.oninput=e=>{ GATE.q=e.target.value; const p=e.target.selectionStart; showGate();
-    const n=document.getElementById('gq'); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(x){} } };
-  const first=document.getElementById('gPass')||document.getElementById('cName');
-  if(first) first.focus();
-  const cn=document.getElementById('cName');
-  if(cn) cn.onchange=e=>{ GATE.picked=GATE.roster.find(m=>String(m.id)===e.target.value)||null; };
+  if(gq){ gq.oninput=e=>gateSearch(e.target.value,'gHits',true); gq.focus(); paintHits('gHits',true); }
+  const cq=document.getElementById('cQuery');
+  if(cq){ cq.oninput=e=>gateSearch(e.target.value,'cHits',false); cq.focus(); }
+  const gp=document.getElementById('gPass');
+  if(gp) gp.focus();
 }
 function gateBusy(sel,label){
   const b=document.querySelector(sel);
@@ -383,9 +446,8 @@ async function doLogin(){
 }
 async function doClaim(){
   const g=id=>(document.getElementById(id)||{}).value||'';
-  const who=GATE.roster.find(m=>String(m.id)===g('cName'));
-  if(!who){ showGate('自分の名前を選んでください'); return; }
-  GATE.picked=who;
+  const who=GATE.picked;
+  if(!who){ showGate('自分の名前を入力して、候補から選んでください'); return; }
   if(!g('cPass')){ showGate('パスワードを入力してください'); return; }
   if(!g('cKey')){  showGate('管理者キーを入力してください'); return; }
   gateBusy('[data-act="claim"]','確認しています…');
@@ -403,7 +465,17 @@ async function loadAll(){
   A = await Store.adminLoad();
   compute();
   if(CONFIG_STATUS===null) CONFIG_STATUS = await Store.configStatus();
+  /* しきい値をサーバーに置いてあるなら、そちらを優先する（UL全員で同じ基準になる） */
+  try{
+    const s=await Store.getSettings();
+    if(s){
+      if(s.stale_days) STALE_DAYS=+s.stale_days;
+      if(s.delay_months!=null) DELAY_ALERT=+s.delay_months;
+    }
+  }catch(e){}
 }
+/* 承認まわりが使えるサーバーか */
+function approvalOn(){ return !!(Store.caps&&Store.caps.approval); }
 function compute(){
   const now=new Date();
   /* 表示順はここで決める（cloudはSQLでも並べているが、モードによらず同じ順にする） */
@@ -417,8 +489,10 @@ function compute(){
   const curYwt=ywtPeriod(), curMonth=monthlyPeriod();
   ROWS = A.members.filter(m=>m.active!==false).map(m=>{
     const raw=A.progress[m.id]||{};
-    /* checks は「true かどうか」だけ見る形に正規化（値は日時が入っている） */
-    const checks={}; Object.keys(raw).forEach(k=>{ if(raw[k]) checks[k]=true; });
+    /* checks は「押されているか」、appr は「承認済みか」。
+       進捗の数字は承認済みだけで数える（押しただけの申請中は別に出す）。 */
+    const sp=splitChecks(raw);
+    const checks=sp.approved, all=sp.all, pending=sp.pending;
     const cg=gCurrentGrade(checks), cleared=gClearedCount(checks);
     const st=A.states[m.id]||{};
     const notes=(notesBy[m.id]||[]).slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on)));
@@ -430,7 +504,11 @@ function compute(){
     const atarimae=st.atarimae||{};
     return {
       m:m, id:m.id, name:m.name, unit:m.unit||'（未設定）', role:m.role||'member',
-      checks:checks, state:st,
+      checks:checks, all:all, raw:raw, pending:pending, pendingCount:pending.length,
+      /* 挑戦中グレードの承認待ち。ここが1件でもあれば面談で見る */
+      pendingNow:pending.filter(id=>gradeOf(id)===cg).length,
+      concern:(st.custom&&st.custom.__concern)||'',
+      state:st,
       cg:cg, cleared:cleared, done:gDone(checks,cg), total:gTotal(cg), pct:gPct(checks,cg),
       overall:gOverallPct(checks), checked:gTotalChecked(checks),
       certified:m.certified_grade||null,
@@ -461,6 +539,7 @@ function compute(){
 function units(){ return Array.from(new Set(ROWS.map(r=>r.unit))).sort(); }
 function alertsOf(r){
   const out=[];
+  if(r.pendingCount) out.push('pending');
   if(r.delay!=null && r.delay>=DELAY_ALERT) out.push('delay');
   if(r.stale==null || r.stale>=STALE_DAYS) out.push('stale');
   if(r.readyPromo) out.push('promo');
@@ -506,21 +585,32 @@ const TABS=[
   {k:'notes',  n:'申し送り・メモ',  i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
   {k:'scores', n:'テスト点数',     i:'<path d="M4 19.5V9m5 10.5V4.5m5 15V12m5 7.5V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
   {k:'reviews',n:'YWT・月次',     i:'<path d="M4.5 6.5h15v14h-15zM8 3.5v5M16 3.5v5M4.5 11.5h15" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
-  {k:'mtg',    n:'リーダーMTG',    i:'<circle cx="9" cy="9" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="16.5" cy="10.5" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M3.5 19.5c.9-3 3-4.6 5.5-4.6s4.6 1.6 5.5 4.6M15 19.5c.5-2 1.7-3.1 3.4-3.1 1.2 0 2.2.5 2.9 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'}
+  {k:'mtg',    n:'リーダーMTG',    i:'<circle cx="9" cy="9" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="16.5" cy="10.5" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M3.5 19.5c.9-3 3-4.6 5.5-4.6s4.6 1.6 5.5 4.6M15 19.5c.5-2 1.7-3.1 3.4-3.1 1.2 0 2.2.5 2.9 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
+  {k:'settings',n:'設定',          i:'<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'}
 ];
 function renderNav(){
   const n=ROWS.filter(r=>r.role==='member').length;
   const alerts=ROWS.filter(r=>r.role==='member'&&(alertsOf(r).indexOf('delay')>=0||alertsOf(r).indexOf('stale')>=0)).length;
+  const pend=ROWS.filter(r=>r.role==='member').reduce((a,r)=>a+r.pendingCount,0);
+  const reqs=(A.managerRequests||[]).length;
   document.getElementById('nav').innerHTML=TABS.map(t=>
-    '<button data-act="tab" data-tab="'+t.k+'" class="'+(V.tab===t.k?'on':'')+'">'+
+    '<button data-act="tab" data-tab="'+t.k+'" class="'+(V.tab===t.k?'on':'')+'"'+(V.tab===t.k?' aria-current="page"':'')+'>'+
     '<svg viewBox="0 0 24 24">'+t.i+'</svg><span>'+t.n+'</span>'+
     (t.k==='roster'?'<span class="n">'+n+'</span>':'')+
-    (t.k==='promo'&&alerts?'<span class="n">'+alerts+'</span>':'')+'</button>').join('');
+    (t.k==='dash'&&pend?'<span class="n">'+pend+'</span>':'')+
+    (t.k==='promo'&&alerts?'<span class="n">'+alerts+'</span>':'')+
+    (t.k==='settings'&&reqs?'<span class="n">'+reqs+'</span>':'')+'</button>').join('');
   const me=Store.me&&Store.me.member;
   document.getElementById('asideFoot').innerHTML=
     '<b>'+esc(me?me.name:'—')+'</b>'+
     (me&&me.role==='admin'?'管理者':'UL')+
-    '<br><button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>';
+    '<div class="fetched">最終取得 '+(A.fetchedAt?fmtClock(A.fetchedAt):'—')+
+      ' <button data-act="reload">更新</button></div>'+
+    '<button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>';
+}
+function fmtClock(ms){
+  const d=new Date(ms);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
 /* 10グレードのヒートマップ */
 function heat(r){
@@ -536,11 +626,13 @@ function gradeChip(gn){
   const t=tierOf(gn);
   return '<span class="chip" style="background:'+t.hex+'1A;color:'+t.hex+'">G'+gn+' '+t.name+'</span>';
 }
+/* 「+1.4」ではなく「1.4ヶ月おくれ」と出す。
+   符号の向きを覚えていないと読めない表示にしない。 */
 function delayChip(d){
   if(d==null) return '<span class="muted">—</span>';
-  if(d>=DELAY_ALERT) return '<span class="chip c">+'+d.toFixed(1)+'ヶ月</span>';
-  if(d>=0) return '<span class="chip a">+'+d.toFixed(1)+'</span>';
-  return '<span class="chip m">'+d.toFixed(1)+'</span>';
+  if(d>=DELAY_ALERT) return '<span class="chip c">'+d.toFixed(1)+'ヶ月おくれ</span>';
+  if(d>=0) return '<span class="chip a">'+d.toFixed(1)+'ヶ月おくれ</span>';
+  return '<span class="chip m">'+Math.abs(d).toFixed(1)+'ヶ月はやい</span>';
 }
 function staleChip(r){
   if(r.stale==null) return '<span class="chip c">記録なし</span>';
@@ -565,7 +657,7 @@ function barFilters(opts){
        '<option value="'+o[0]+'"'+(F.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   if(opts.alert!==false){
     h+='<select id="falert"><option value="">アラートで絞らない</option>'+
-      [['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
+      [['pending','承認待ちがある'],['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
        ['ywt','今期のYWT未提出'],['monthly','今月の振り返り未提出'],['atarimae','アタリマエに✕']].map(o=>
        '<option value="'+o[0]+'"'+(F.alert===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   }
@@ -590,9 +682,10 @@ function renderKeepFocus(id){
     if(el2){ el2.focus(); if(pos!=null) try{ el2.setSelectionRange(pos,pos); }catch(e){} }
   },180);
 }
-function th(key,label,cls){
+function th(key,label,cls,tip){
   const on=V.sort===key;
-  return '<th class="'+(cls||'')+'" data-act="sort" data-k="'+key+'">'+label+(on?'<span class="ar">'+(V.dir>0?'▲':'▼')+'</span>':'')+'</th>';
+  return '<th class="'+(cls||'')+'" data-act="sort" data-k="'+key+'"'+(tip?' title="'+esc(tip)+'"':'')+'>'+
+    label+(tip?'<span class="q">?</span>':'')+(on?'<span class="ar">'+(V.dir>0?'▲':'▼')+'</span>':'')+'</th>';
 }
 
 /* ============================================================
@@ -622,17 +715,54 @@ function vDash(){
     '事前に一括で入力する必要はありません。</p></div></div>';
   h+=barFilters({alert:false});
 
+  /* ------------------------------------------------------------
+     今日のアクション
+     数字を眺めるためではなく、その場で1手打つための一覧。
+     ------------------------------------------------------------ */
+  const pendPeople=all.filter(r=>r.pendingCount);
+  const pendTotal=pendPeople.reduce((a,r)=>a+r.pendingCount,0);
+  const noReply=A.reviews.filter(rv=>rv.submitted_at&&!rv.ul_comment&&BY_ID[rv.member_id]&&
+    (!F.unit||BY_ID[rv.member_id].unit===F.unit));
+  const reqs=A.managerRequests||[];
+  const acts=[];
+  if(approvalOn()&&pendTotal) acts.push({t:'チェックの承認待ち',n:pendTotal+'件',
+    s:pendPeople.length+'人ぶん。面談のときに一緒に確認して承認します',
+    b:'対象の人を見る',act:'alert',v:'pending'});
+  if(promo.length) acts.push({t:'昇格面談を組む',n:promo.length+'人',
+    s:'認定グレードの項目を完了しています',b:'昇格タブを開く',act:'tab',v:'promo'});
+  if(noReply.length) acts.push({t:'YWT・月次に返信する',n:noReply.length+'件',
+    s:'提出されたまま、まだコメントを返していないもの',b:'振り返りを開く',act:'tab',v:'reviews'});
+  if(stale.length) acts.push({t:'しばらく動きがない',n:stale.length+'人',
+    s:STALE_DAYS+'日以上チェックが動いていません',b:'リマインド文をコピー',act:'remind',v:'stale'});
+  if(noYwt.length) acts.push({t:'今期のYWTが未提出',n:noYwt.length+'人',
+    s:periodLabel('ywt',ywtPeriod())+'ぶん',b:'リマインド文をコピー',act:'remind',v:'ywt'});
+  if(noMonthly.length) acts.push({t:'今月の振り返りが未提出',n:noMonthly.length+'人',
+    s:periodLabel('monthly',monthlyPeriod())+'ぶん',b:'リマインド文をコピー',act:'remind',v:'monthly'});
+  if(reqs.length) acts.push({t:'管理者になりたい人がいます',n:reqs.length+'件',
+    s:'承認するとメンバー全員の状況を見られるようになります',b:'設定で承認する',act:'tab',v:'settings'});
+
+  h+='<div class="card actions"><h2>今日のアクション <span class="cnt">上から順に片づければ足ります</span></h2>';
+  if(!acts.length) h+='<div class="empty">いま対応が必要なものはありません。</div>';
+  else acts.forEach(a=>{
+    h+='<div class="act"><b class="act-n mono">'+a.n+'</b>'+
+      '<div class="act-b"><b>'+esc(a.t)+'</b><span class="tiny muted">'+esc(a.s)+'</span></div>'+
+      '<button class="btn '+(a.act==='remind'?'ghost':'vio')+' sm" data-act="'+a.act+'" '+
+        (a.act==='tab'?'data-tab="'+a.v+'"':a.act==='alert'?'data-a="'+a.v+'"':'data-kind="'+a.v+'"')+'>'+a.b+'</button></div>';
+  });
+  h+='</div>';
+
   h+='<div class="grid g4" style="margin-bottom:14px">'+
     kpi('メンバー数',all.length,'人',F.unit||'全Unit','')+
-    kpi('平均進捗',avg,'%','全'+TOTAL_ITEMS+'項目に対して','')+
+    kpi('平均進捗',avg,'%','承認済みの項目で計算','')+
     kpi('昇格面談の対象',promo.length,'人','認定グレードの項目を完了','promo')+
     kpi('標準期間より遅れ',delayed.length,'人',DELAY_ALERT+'ヶ月以上の超過','delay')+
   '</div>';
   h+='<div class="grid g4" style="margin-bottom:14px">'+
+    (approvalOn()?kpi('承認待ちがある人',pendPeople.length,'人',pendTotal+'件のチェック','pending'):'')+
     kpi('しばらく動きなし',stale.length,'人',STALE_DAYS+'日以上チェックなし','stale')+
     kpi('今期のYWT未提出',noYwt.length,'人',periodLabel('ywt',ywtPeriod()),'ywt')+
     kpi('今月の振り返り未提出',noMonthly.length,'人',periodLabel('monthly',monthlyPeriod()),'monthly')+
-    kpi('アタリマエに✕',ng.length,'人','自己申告で✕がある','atarimae')+
+    kpi('アタリマエに✕',ng.length,'人','UL・メンターの判定に✕がある','atarimae')+
   '</div>';
 
   /* グレードの分布 */
@@ -733,63 +863,134 @@ function kpi(lab,val,unit,sub,alert){
     '<div class="sub">'+esc(sub)+'</div></div>';
 }
 function cnt(n,c){ return n? '<span class="chip '+c+'">'+n+'</span>' : '<span class="muted">0</span>'; }
-const ALERT_LABEL={delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],ywt:['YWT未提出','g'],monthly:['月次未提出','g'],atarimae:['アタリマエ✕','c']};
+
+/* ------------------------------------------------------------
+   リマインド文をつくってコピーする。
+   Slackに貼るところまでが1動作で終わるように、宛名と期限と
+   URLを入れた定型文にしている。
+   ------------------------------------------------------------ */
+const APP_URL=location.origin+location.pathname.replace(/admin\.html$/,'');
+function remindText(kind){
+  const all=filtered().filter(r=>r.role==='member');
+  let list=[], head='', body='';
+  if(kind==='ywt'){
+    list=all.filter(r=>!r.ywtDone);
+    head='【'+periodLabel('ywt',ywtPeriod())+'のYWTが未提出です】';
+    body='STEPの「記録」タブから提出してください。';
+  }else if(kind==='monthly'){
+    list=all.filter(r=>!r.monthlyDone);
+    head='【'+periodLabel('monthly',monthlyPeriod())+'の振り返りが未提出です】';
+    body='STEPの「記録」タブから、今月の振り返りと次月目標を入れてください。';
+  }else{
+    list=all.filter(r=>r.stale==null||r.stale>=STALE_DAYS);
+    head='【キャリアステップの更新をお願いします】';
+    body=STALE_DAYS+'日以上チェックが動いていません。できたことがあれば入れておいてください。';
+  }
+  if(!list.length) return null;
+  return head+'\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+body+'\n'+APP_URL;
+}
+async function copyText(text,okMsg){
+  try{
+    await navigator.clipboard.writeText(text);
+    toast(okMsg||'コピーしました');
+  }catch(e){
+    /* 権限が無い環境向けの保険 */
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast(okMsg||'コピーしました'); }
+    catch(e2){ toast('コピーできませんでした','bad'); }
+    ta.remove();
+  }
+}
+const ALERT_LABEL={pending:['承認待ち','v'],delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],ywt:['YWT未提出','g'],monthly:['月次未提出','g'],atarimae:['アタリマエ✕','c']};
 function alertChip(a){ const x=ALERT_LABEL[a]||[a,'g']; return '<span class="chip '+x[1]+'">'+x[0]+'</span>'; }
 function cut(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 
 /* ============================================================
    2. キャリア現状一覧
    ============================================================ */
+/* ------------------------------------------------------------
+   一覧の列。全部を常に出すと16列になって横スクロールが必要になるので、
+   使う場面ごとに出す列を決めておく。
+   ------------------------------------------------------------ */
+const COLDEF={
+  unit:      {h:'Unit',    sort:'unit',  cell:r=>esc(r.unit)},
+  months:    {h:'在籍',    sort:'months',cls:'num', tip:'入社日からの経過月数',
+              cell:r=>r.months==null?'—':r.months.toFixed(1)+'ヶ月'},
+  certified: {h:'認定G',   sort:'certified',cls:'num', tip:'社内で認定されている、いまのグレード',
+              cell:r=>r.certified?'G'+r.certified:'—'},
+  cleared:   {h:'完了G',   sort:'cleared',cls:'num', tip:'全項目が承認済みになったグレードの数。認定G以上なら昇格面談の対象',
+              cell:r=>r.cleared},
+  heat:      {h:'Grade 1 → 10', cell:r=>heat(r)},
+  cg:        {h:'挑戦中',  sort:'cg', cell:r=>gradeChip(r.cg)},
+  pct:       {h:'挑戦中の進捗', sort:'pct', cls:'num', tip:'挑戦中のグレードで承認済みの割合',
+              cell:r=>'<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
+                '<span class="mini"><i style="width:'+r.pct+'%;background:'+tierOf(r.cg).hex+'"></i></span>'+
+                '<b class="mono" style="font-size:11px">'+r.pct+'%</b></div>'},
+  pending:   {h:'承認待ち', cls:'num', tip:'本人が押したが、まだ承認していないチェックの数',
+              cell:r=>r.pendingCount?'<button class="chip v" data-act="open" data-id="'+r.id+'">'+r.pendingCount+'</button>':'<span class="muted">—</span>'},
+  overall:   {h:'全体',    sort:'overall',cls:'num', tip:'全'+TOTAL_ITEMS+'項目に対する承認済みの割合',
+              cell:r=>'<span class="mono">'+r.overall+'%</span>'},
+  target:    {h:'昇格予定', sort:'target', tip:'入社日＋標準期間。設定タブで手動の上書きもできます',
+              cell:r=>fmtDateFull(r.outlook.targetDate)},
+  delay:     {h:'標準との差', sort:'delay', cls:'num', tip:'標準期間と、実際の在籍月数の差',
+              cell:r=>delayChip(r.delay)},
+  stale:     {h:'最終更新', sort:'stale', cls:'num', tip:'いちばん最後にチェックが動いた日からの日数',
+              cell:r=>staleChip(r)},
+  quiz:      {h:'テスト',  sort:'quiz', cls:'num', cell:r=>r.quizAvg==null?'<span class="muted">—</span>':r.quizAvg+'%'},
+  notes:     {h:'申し送り', sort:'notes', cls:'num', cell:r=>r.noteCount||'<span class="muted">0</span>'},
+  registered:{h:'登録日',  sort:'registered', cell:r=>r.registeredAt?fmtDateFull(r.registeredAt):'<span class="muted">—</span>'},
+  stuck:     {h:'いちばん詰まっているところ',
+              cell:r=>'<span class="wrap tiny">'+(r.stuck[0]?esc(r.stuck[0].cat.split('｜')[0])+'：'+esc(cut(r.stuck[0].t,42)):'—')+'</span>'}
+};
+const PRESETS={
+  meeting:{n:'面談用', cols:['unit','cg','pct','pending','stuck','stale']},
+  promo:  {n:'昇格判定用', cols:['unit','months','certified','cleared','heat','target','delay']},
+  all:    {n:'棚卸し用（全部）', cols:['unit','months','certified','cleared','heat','cg','pct','pending','overall','target','delay','stale','quiz','notes','registered']}
+};
+function colPreset(){
+  if(!V.preset){ try{ V.preset=localStorage.getItem('careerstep:preset')||'meeting'; }catch(e){ V.preset='meeting'; } }
+  return PRESETS[V.preset]?V.preset:'meeting';
+}
 function vRoster(){
   const list=sorted(filtered());
+  const pk=colPreset(), cols=PRESETS[pk].cols;
   let h='<h1 class="h1 disp">キャリアステップ現状一覧</h1>'+
-    '<p class="lead">全員の到達状況を1画面で。マスの並びは Grade 1〜10 で、'+
-    '<i class="hm" style="display:inline-flex;vertical-align:-3px"><i class="f"></i></i> 完了 '+
-    '<i class="hm" style="display:inline-flex;vertical-align:-3px"><i class="p2"></i></i> 進行中 '+
-    '<i class="hm" style="display:inline-flex;vertical-align:-3px"><i></i></i> 未着手。枠付きが挑戦中のグレードです。</p>';
-  h+=barFilters({right:'<button class="btn ghost" data-act="csvRoster">CSVで書き出す</button>'});
-  h+='<div class="tw"><table><thead><tr>'+
-    th('name','名前','nm')+th('unit','Unit')+th('months','在籍','num')+
-    th('certified','認定G','num')+th('cleared','完了G','num')+
-    '<th class="nos">Grade 1 → 10</th>'+
-    th('cg','挑戦中')+th('pct','挑戦中の進捗','num')+th('overall','全体','num')+
-    th('target','昇格予定')+th('delay','標準比','num')+th('stale','最終更新','num')+
-    th('quiz','テスト','num')+th('notes','申し送り','num')+th('registered','登録日')+
+    '<p class="lead">見たいものに合わせて列を切り替えられます。'+
+    (cols.indexOf('heat')>=0?'マスの並びは Grade 1〜10 で、'+
+      '<i class="hm" style="display:inline-flex;vertical-align:-3px"><i class="f"></i></i> 完了 '+
+      '<i class="hm" style="display:inline-flex;vertical-align:-3px"><i class="p2"></i></i> 進行中 '+
+      '<i class="hm" style="display:inline-flex;vertical-align:-3px"><i></i></i> 未着手。枠付きが挑戦中のグレードです。':'')+'</p>';
+  h+=barFilters({right:
+    '<span class="seg2">'+Object.keys(PRESETS).map(k=>
+      '<button data-act="preset" data-p="'+k+'" class="'+(pk===k?'on':'')+'">'+PRESETS[k].n+'</button>').join('')+'</span>'+
+    '<button class="btn ghost" data-act="csvRoster">CSVで書き出す</button>'});
+
+  h+='<div class="tw"><table><thead><tr>'+th('name','名前','nm')+
+    cols.map(k=>{ const c=COLDEF[k];
+      return c.sort? th(c.sort,c.h,c.cls,c.tip)
+                   : '<th class="nos '+(c.cls||'')+'"'+(c.tip?' title="'+esc(c.tip)+'"':'')+'>'+c.h+'</th>'; }).join('')+
     '<th class="nos st">状況</th></tr></thead><tbody>';
-  if(!list.length) h+='<tr><td colspan="16"><div class="empty">条件に合うメンバーがいません。</div></td></tr>';
+  if(!list.length) h+='<tr><td colspan="'+(cols.length+2)+'"><div class="empty">条件に合うメンバーがいません。</div></td></tr>';
   list.forEach(r=>{
     h+='<tr><td class="nm">'+memberLink(r)+
         (r.role!=='member'?' <span class="chip g">'+(r.role==='admin'?'管理':'UL')+'</span>':'')+'</td>'+
-      '<td>'+esc(r.unit)+'</td>'+
-      '<td class="num">'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'</td>'+
-      '<td class="num">'+(r.certified?'G'+r.certified:'—')+'</td>'+
-      '<td class="num">'+r.cleared+'</td>'+
-      '<td>'+heat(r)+'</td>'+
-      '<td>'+gradeChip(r.cg)+'</td>'+
-      '<td class="num"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
-        '<span class="mini"><i style="width:'+r.pct+'%;background:'+tierOf(r.cg).hex+'"></i></span>'+
-        '<b class="mono" style="font-size:11px">'+r.pct+'%</b></div></td>'+
-      '<td class="num mono">'+r.overall+'%</td>'+
-      '<td>'+fmtDateFull(r.outlook.targetDate)+'</td>'+
-      '<td class="num">'+delayChip(r.delay)+'</td>'+
-      '<td class="num">'+staleChip(r)+'</td>'+
-      '<td class="num">'+(r.quizAvg==null?'<span class="muted">—</span>':r.quizAvg+'%')+'</td>'+
-      '<td class="num">'+(r.noteCount||'<span class="muted">0</span>')+'</td>'+
-      '<td>'+(r.registeredAt?fmtDateFull(r.registeredAt):'<span class="muted">—</span>')+'</td>'+
+      cols.map(k=>{ const c=COLDEF[k]; return '<td class="'+(c.cls||'')+'">'+c.cell(r)+'</td>'; }).join('')+
       '<td class="st">'+(alertsOf(r).filter(a=>a!=='ywt'&&a!=='monthly').map(alertChip).join(' ')||'<span class="muted">—</span>')+'</td></tr>';
   });
   h+='</tbody></table></div>';
   h+='<p class="tiny muted" style="margin-top:10px">'+
-    '「完了G」は全項目が埋まったグレードの数、「認定G」は社内で認定されている現グレード。'+
+    '「完了G」は全項目が承認済みになったグレードの数、「認定G」は社内で認定されている現グレード。'+
     '完了Gが認定G以上になっていれば、昇格面談の対象です。'+
-    '「昇格予定」はキャリアステップシートの標準期間（1ヶ月・2ヶ月…）を入社日に足したもので、手で上書きもできます。</p>';
+    '見出しにカーソルを合わせると、その列の意味が出ます。</p>';
   return h;
 }
 function csvRoster(){
   const rows=[['名前','Unit','UL','メンター','入社日','在籍月数','認定グレード','完了グレード数','挑戦中グレード',
-    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標','登録日']];
+    '承認待ち件数','挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標','登録日']];
   sorted(filtered()).forEach(r=>rows.push([r.name,r.unit,r.m.ul||'',r.m.mentor||'',r.m.join_date||'',
-    r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pct,r.overall,
+    r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pendingCount,r.pct,r.overall,
     r.outlook.targetDate||'',r.delay==null?'':r.delay,r.lastCheck?String(r.lastCheck).slice(0,10):'',
     r.quizAvg==null?'':r.quizAvg,r.noteCount,r.ywtDone?'提出済':'未提出',r.monthlyDone?'提出済':'未提出',
     r.ngAtarimae.length?r.ngAtarimae.join(' / '):'',
@@ -1282,16 +1483,65 @@ function reviewCard(rv){
       (rv.ul_comment?'コメントを編集':'コメントを返す')+'</button></div>'+
     '</div></div>';
 }
-async function openReview(id){
+/* ------------------------------------------------------------
+   振り返りへの返信
+   prompt() だと改行が打てず、スマホでは実質使えないので、
+   本文を左に置いた専用のパネルにしている。
+   ------------------------------------------------------------ */
+let RV={ open:false, id:null, text:'', saving:false };
+const RV_TEMPLATES=[
+  'よく言語化できています。',
+  'ここをもう少し具体的に書けると、次の打ち手が決めやすくなります。',
+  '次回の定例で一緒に見ましょう。',
+  '数字がどう動いたかも書いてみてください。'
+];
+function openReview(id){
   const rv=A.reviews.find(x=>x.id===id); if(!rv) return;
+  RV={ open:true, id:id, text:rv.ul_comment||'', saving:false };
+  renderModal();
+}
+function closeReview(){ RV.open=false; renderModal(); }
+function renderModal(){
+  const box=document.getElementById('modal');
+  if(!RV.open){ box.classList.remove('on'); box.innerHTML=''; document.getElementById('scrim').classList.remove('on'); return; }
+  const rv=A.reviews.find(x=>x.id===RV.id);
+  if(!rv){ RV.open=false; return; }
   const r=BY_ID[rv.member_id];
-  const body = rv.kind==='ywt'
-    ? 'Y｜やったこと\n'+(rv.y||'—')+'\n\nW｜わかったこと\n'+(rv.w||'—')+'\n\nT｜つぎにやること\n'+(rv.t||'—')
-    : '振り返り\n'+(rv.looking_back||'—')+'\n\n次月目標\n'+(rv.next_goal||'—');
-  const c=prompt((r?r.name:'')+'　'+periodLabel(rv.kind,rv.period)+'\n\n'+body+'\n\n────────\nULコメント（空にすると削除）：',rv.ul_comment||'');
-  if(c===null) return;
-  try{ await Store.setUlComment(id,c.trim()||null); await loadAll(); render(); toast('コメントを保存しました'); }
-  catch(e){ toast(e.message||'保存に失敗しました','bad'); }
+  const rows = rv.kind==='ywt'
+    ? [['Y｜やったこと',rv.y],['W｜わかったこと',rv.w],['T｜つぎにやること',rv.t]]
+    : [['今月の振り返り',rv.looking_back],['次月目標',rv.next_goal]];
+  box.innerHTML='<div class="mdl" role="dialog" aria-modal="true" aria-label="振り返りへの返信">'+
+    '<div class="mdl-head"><b>'+(r?esc(r.name):'—')+'</b>'+
+      '<span class="chip '+(rv.kind==='ywt'?'s':'v')+'">'+(rv.kind==='ywt'?'YWT':'月次')+'</span>'+
+      '<span class="tiny muted">'+periodLabel(rv.kind,rv.period)+' ・ '+relDays(rv.submitted_at)+'</span>'+
+      '<button class="dw-close" data-act="closeReview" aria-label="閉じる">✕</button></div>'+
+    '<div class="mdl-body">'+
+      '<div class="mdl-src">'+rows.map(x=>'<div class="mdl-blk"><span class="tiny" style="font-weight:700;color:var(--ink2)">'+
+        x[0]+'</span><div class="body">'+esc(x[1]||'—')+'</div></div>').join('')+'</div>'+
+      '<div class="mdl-reply">'+
+        '<div class="f"><label>ULコメント</label>'+
+          '<textarea id="rvText" style="min-height:150px" placeholder="読んで感じたこと、次に見たいところ">'+esc(RV.text)+'</textarea></div>'+
+        '<div class="radios" style="margin-bottom:10px">'+RV_TEMPLATES.map((t,i)=>
+          '<button data-act="rvTpl" data-i="'+i+'" class="tiny">'+esc(cut(t,18))+'</button>').join('')+'</div>'+
+        '<div style="display:flex;gap:8px">'+
+          '<button class="btn vio" data-act="saveReview"'+(RV.saving?' disabled':'')+'>'+(RV.saving?'保存中…':'コメントを送る')+'</button>'+
+          '<button class="btn ghost" data-act="closeReview">やめる</button>'+
+          (rv.ul_comment?'<span class="spacer"></span><button class="btn ghost" data-act="delReviewComment">コメントを削除</button>':'')+
+        '</div>'+
+      '</div>'+
+    '</div></div>';
+  box.classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+  const ta=document.getElementById('rvText'); if(ta){ ta.focus(); ta.oninput=e=>{ RV.text=e.target.value; }; }
+}
+async function saveReviewComment(text){
+  RV.saving=true; renderModal();
+  try{
+    await Store.setUlComment(RV.id,(text||'').trim()||null);
+    RV.open=false;
+    await loadAll(); render(); renderModal();
+    toast('コメントを送りました');
+  }catch(e){ RV.saving=false; renderModal(); toast(e.message||'保存に失敗しました','bad'); }
 }
 function csvReviews(){
   const kind=V.reviewKind;
@@ -1439,15 +1689,36 @@ function dwStep(r){
       '<span class="gn">'+dn+'/'+gTotal(g.n)+'</span></div>';
   });
   h+='</div>';
-  h+='<div class="card"><h2>いま埋まっていない項目 <span class="cnt">Grade '+r.cg+'・'+r.stuck.length+'件</span></h2>'+
-    '<p class="tiny muted" style="margin:-4px 0 8px">面談しながらここでチェックを入れられます。本人の画面にもすぐ反映されます。</p>';
-  if(!r.stuck.length) h+='<div class="empty">Grade '+r.cg+' はすべて埋まっています。昇格面談の対象です。</div>';
+  /* 本人が押して、承認を待っている項目。面談でいちばん先に見るところ */
+  const pend=ITEMS[r.cg].filter(i=>r.all[i.id]&&!r.checks[i.id]);
+  if(approvalOn()){
+    h+='<div class="card"><h2>承認待ち <span class="cnt">Grade '+r.cg+'・'+pend.length+'件</span>'+
+      (pend.length?'<span class="spacer"></span><button class="btn vio sm" data-act="approveAll" data-id="'+r.id+'">まとめて承認</button>':'')+'</h2>';
+    if(!pend.length) h+='<div class="empty">承認待ちはありません。</div>';
+    else{
+      h+='<p class="tiny muted" style="margin:-4px 0 8px">本人が「できた」と申告した項目です。'+
+        '内容を確認して承認すると、進捗として数えられます。</p>';
+      pend.forEach(it=>{
+        h+='<div class="pitem"><span class="txt">'+esc(it.t)+
+          '<span class="tiny muted"> ／ '+esc(it.cat.split('｜')[0])+'</span></span>'+
+          '<button class="btn vio sm" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="approved">承認</button>'+
+          '<button class="btn ghost sm" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="off">戻す</button></div>';
+      });
+    }
+    h+='</div>';
+  }
+
+  const notYet=ITEMS[r.cg].filter(i=>!r.all[i.id]);
+  h+='<div class="card"><h2>まだ手がついていない項目 <span class="cnt">Grade '+r.cg+'・'+notYet.length+'件</span></h2>'+
+    '<p class="tiny muted" style="margin:-4px 0 8px">面談しながらここでチェックを入れられます。'+
+    (approvalOn()?'ULが押したものは、その場で承認済みになります。':'本人の画面にもすぐ反映されます。')+'</p>';
+  if(!notYet.length) h+='<div class="empty">Grade '+r.cg+' はすべて手がついています。</div>';
   else{
     let lastCat='';
-    r.stuck.forEach(it=>{
+    notYet.forEach(it=>{
       if(it.cat!==lastCat){ lastCat=it.cat;
         h+='<div class="tiny" style="font-weight:700;color:var(--ink2);margin:9px 0 1px">'+esc(it.cat)+'</div>'; }
-      h+='<button class="item" data-act="dwToggle" data-id="'+esc(it.id)+'">'+
+      h+='<button class="item" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="approved" role="checkbox" aria-checked="false">'+
         '<span class="box">'+CHECK+'</span><span class="txt">'+esc(it.t)+'</span></button>';
     });
   }
@@ -1455,23 +1726,31 @@ function dwStep(r){
   /* 済みの項目もたためる形で見せる */
   const doneItems=ITEMS[r.cg].filter(i=>r.checks[i.id]);
   if(doneItems.length){
-    h+='<div class="card"><h2>Grade '+r.cg+' で達成済み <span class="cnt">'+doneItems.length+'件</span></h2>';
+    h+='<div class="card"><h2>Grade '+r.cg+' で承認済み <span class="cnt">'+doneItems.length+'件</span></h2>';
     doneItems.forEach(it=>{
-      h+='<button class="item on" data-act="dwToggle" data-id="'+esc(it.id)+'">'+
-        '<span class="box on">'+CHECK+'</span><span class="txt">'+esc(it.t)+'</span></button>';
+      const meta=r.raw[it.id];
+      const who=(meta&&meta.approvedBy&&BY_ID[meta.approvedBy])?BY_ID[meta.approvedBy].name:'';
+      h+='<button class="item on" data-act="dwSet" data-id="'+esc(it.id)+'" data-s="off" role="checkbox" aria-checked="true">'+
+        '<span class="box on">'+CHECK+'</span><span class="txt">'+esc(it.t)+
+        (meta&&meta.approvedAt?'<span class="tiny muted"> ／ '+fmtDate(meta.approvedAt)+(who?' '+esc(who):'')+'</span>':'')+
+        '</span></button>';
     });
     h+='</div>';
   }
-  /* アタリマエ */
+  /* アタリマエ。判定はUL・メンターが入れる（本人の自己申告にすると全員○になるため） */
   const am=r.state.atarimae||{};
-  h+='<div class="card"><h2>アタリマエ評価 <span class="cnt">本人の自己申告</span></h2>';
+  h+='<div class="card"><h2>アタリマエ <span class="cnt">判定はUL・メンターが入れます</span></h2>';
   ATARIMAE.forEach(a=>{
     const v=am[a.k];
     h+='<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--line2)">'+
       '<b style="font-size:12.5px;width:88px">'+esc(a.n)+'</b>'+
-      (v==='ok'?'<span class="chip m">○</span>':v==='ng'?'<span class="chip c">✕</span>':'<span class="muted tiny">未回答</span>')+
+      '<span class="radios" style="flex:0 0 auto">'+
+        '<button data-act="setAtari" data-id="'+r.id+'" data-k="'+a.k+'" data-v="ok" class="'+(v==='ok'?'on':'')+'">○</button>'+
+        '<button data-act="setAtari" data-id="'+r.id+'" data-k="'+a.k+'" data-v="ng" class="'+(v==='ng'?'on':'')+'">✕</button>'+
+      '</span>'+
       '<span class="tiny muted" style="flex:1">'+esc(cut(a.d,70))+'</span></div>';
   });
+  if(r.concern) h+='<div class="na" style="margin-top:10px">本人が気にしていること：'+esc(r.concern)+'</div>';
   h+='</div>';
   return h;
 }
@@ -1534,6 +1813,17 @@ function dwProfile(r){
     'チェック・申し送り・テスト結果・振り返りは消えません。'+
     'このあと本人が本人画面で自分の名前を選ぶと、共通パスコードを入れて新しいパスワードを決め直せます。</p>'+
     '<button class="btn ghost" data-act="resetLogin" data-id="'+r.id+'">ログインをリセットする</button>'+
+    '</div>'+
+    /* 本人画面から消せないようにした代わりに、ここに置いてある。
+       取り消せない操作なので、名前を打ってもらってから実行する。 */
+    '<div class="card"><h2>チェックの消去</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">'+esc(r.name)+' さんのチェックを全件（'+
+    Object.keys(r.all).length+'件）消します。<b>元に戻せません。</b>'+
+    '申し送り・テスト結果・振り返りは残ります。実行すると申し送りに記録が残ります。</p>'+
+    '<div class="f"><label>確認のため、氏名を入力してください</label>'+
+      '<input type="text" id="pfConfirm" placeholder="'+esc(r.name)+'"></div>'+
+    '<button class="btn ghost" style="color:var(--coral);border-color:var(--coral)" '+
+      'data-act="clearProgress" data-id="'+r.id+'">チェックを全件消去する</button>'+
     '</div>';
 }
 async function saveProfileFor(id){
@@ -1560,20 +1850,83 @@ async function resetLoginFor(id){
 }
 
 /* ============================================================
+   8. 設定
+   ============================================================ */
+function vSettings(){
+  const reqs=A.managerRequests||[];
+  let h='<h1 class="h1 disp">設定</h1>'+
+    '<p class="lead">アラートの基準と、管理者の追加をここで扱います。</p>';
+
+  /* 管理者になりたい人の承認 */
+  h+='<div class="card"><h2>管理者の申請 <span class="cnt">'+reqs.length+'件</span></h2>';
+  if(!Store.caps.managerRequests){
+    h+='<p class="tiny muted" style="margin:0">管理者キーを入れた人がその場で管理者になる設定のままです。'+
+      '承認制にするには supabase/schema.sql を貼り直してください。</p>';
+  }else if(!reqs.length){
+    h+='<div class="empty">申請はありません。</div>';
+  }else{
+    h+='<p class="tiny muted" style="margin:-4px 0 8px">承認すると、その人はメンバー全員の進捗・申し送りを見られるようになります。'+
+      '心当たりのない申請は承認しないでください。</p>';
+    reqs.forEach(q=>{
+      const r=BY_ID[q.member_id];
+      h+='<div class="act"><div class="act-b"><b>'+(r?esc(r.name):'（不明なメンバー）')+'</b>'+
+        '<span class="tiny muted">'+(r?esc(r.unit):'')+' ・ 申請 '+relDays(q.requested_at)+'</span></div>'+
+        '<button class="btn vio sm" data-act="mreq" data-id="'+q.member_id+'" data-v="1">承認する</button>'+
+        '<button class="btn ghost sm" data-act="mreq" data-id="'+q.member_id+'" data-v="0">却下</button></div>';
+    });
+  }
+  h+='</div>';
+
+  /* アラートのしきい値 */
+  h+='<div class="card"><h2>アラートの基準</h2>'+
+    '<div class="fr">'+
+      '<div class="f"><label>何日チェックが動かなければ「動きなし」とするか</label>'+
+        '<input type="number" id="stStale" min="1" max="120" value="'+STALE_DAYS+'"></div>'+
+      '<div class="f"><label>標準期間を何ヶ月超えたら「遅れ」とするか</label>'+
+        '<input type="number" id="stDelay" min="0" max="12" step="0.5" value="'+DELAY_ALERT+'"></div>'+
+    '</div>'+
+    '<button class="btn vio" data-act="saveSettings">保存する</button>'+
+    '<p class="tiny muted" style="margin:8px 0 0">'+
+      (Store.caps.settings? 'この設定はUL全員で共有されます。'
+                          : 'いまはこのブラウザだけの設定です。全員で共有するには supabase/schema.sql を貼り直してください。')+
+    '</p></div>';
+
+  /* パスコードの状態 */
+  h+='<div class="card"><h2>パスコード</h2><div class="tiny muted">'+
+    '共通パスコード：'+(CONFIG_STATUS&&CONFIG_STATUS.team===false?'<b style="color:var(--coral)">未設定</b>（URLを知る人が誰でも登録できます）':'設定済み')+'<br>'+
+    '管理者キー：'+(CONFIG_STATUS&&CONFIG_STATUS.admin===false?'<b style="color:var(--coral)">未設定</b>':'設定済み')+'<br>'+
+    '変更のしかたは SETUP.md 手順5にあります（SQL Editorから直接更新します）。</div></div>';
+
+  /* サーバー側の対応状況 */
+  const caps=Store.caps||{};
+  h+='<div class="card"><h2>この環境で使える機能</h2><div class="tiny muted">'+
+    [['チェックの承認（申請中／承認済み）',caps.approval],
+     ['ログイン画面の名前検索',caps.rosterSearch],
+     ['しきい値の共有',caps.settings],
+     ['管理者の承認制',caps.managerRequests]]
+    .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/schema.sql の貼り直しで有効になります）')+'</div>').join('')+
+    '</div></div>';
+  return h;
+}
+
+/* ============================================================
    描画とイベント
    ============================================================ */
 function render(){
   const v=document.getElementById('view');
   const y=v.scrollTop;
+  withFocus(()=>{
   if(V.tab==='dash')        v.innerHTML=vDash();
   else if(V.tab==='roster') v.innerHTML=vRoster();
   else if(V.tab==='promo')  v.innerHTML=vPromo();
   else if(V.tab==='notes')  v.innerHTML=vNotes();
   else if(V.tab==='scores') v.innerHTML=vScores();
   else if(V.tab==='reviews')v.innerHTML=vReviews();
+  else if(V.tab==='settings')v.innerHTML=vSettings();
   else                      v.innerHTML=vMtg();
   renderNav();
   bindFilters();
+  });
   const nk=document.getElementById('nkind'); if(nk) nk.onchange=e=>{ NFILTER.kind=e.target.value; render(); };
   const nv=document.getElementById('nvis');  if(nv) nv.onchange=e=>{ NFILTER.vis=e.target.value; render(); };
   const mu=document.getElementById('mtgUnit'); if(mu) mu.onchange=e=>{ V.mtgUnit=e.target.value; render(); };
@@ -1591,22 +1944,110 @@ document.addEventListener('click',async e=>{
   else if(a==='open'){ e.preventDefault(); openDrawer(el.dataset.id); }
   else if(a==='closeDw'){ closeDrawer(); }
   else if(a==='dwTab'){ V.dwTab=el.dataset.t; renderDrawer(); }
-  else if(a==='dwToggle'){
-    const r=BY_ID[V.drawer]; const id=el.dataset.id; const on=!r.checks[id];
+  else if(a==='dwSet'){
+    const r=BY_ID[V.drawer]; const id=el.dataset.id; const state=el.dataset.s;
     try{
-      await Store.setCheckFor(r.id,id,on);
+      await Store.setCheckFor(r.id,id,state);
       await loadAll();
       const nr=BY_ID[V.drawer];
       renderDrawer(); render();
-      if(on && gCurrentGrade(nr.checks)>gCurrentGrade(r.checks)) toast('Grade '+r.cg+' が埋まりました','xp');
+      if(state==='approved' && gCurrentGrade(nr.checks)>gCurrentGrade(r.checks)) toast('Grade '+r.cg+' が埋まりました','xp');
     }catch(err){ toast(err.message||'更新に失敗しました','bad'); }
+  }
+  else if(a==='approveAll'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    const ids=r.pending.filter(id=>gradeOf(id)===r.cg);
+    if(!ids.length) return;
+    if(!confirm(r.name+' さんの承認待ち '+ids.length+' 件をまとめて承認します。よろしいですか？')) return;
+    try{
+      const n=await Store.approveItems(r.id,ids);
+      await loadAll(); renderDrawer(); render();
+      toast(n+'件を承認しました','xp');
+    }catch(err){ toast(err.message||'承認に失敗しました','bad'); }
+  }
+  else if(a==='setAtari'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    const k=el.dataset.k, v=el.dataset.v;
+    const cur=Object.assign({},r.state.atarimae||{});
+    cur[k]=(cur[k]===v?null:v);
+    try{
+      await Store.saveStateFor(r.id,{atarimae:cur});
+      await loadAll(); renderDrawer(); render();
+    }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
+  }
+  else if(a==='clearProgress'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    const typed=(document.getElementById('pfConfirm')||{}).value||'';
+    if(typed.replace(/[\s　]/g,'')!==String(r.name).replace(/[\s　]/g,'')){
+      toast('確認のため、氏名を正確に入力してください','bad'); return;
+    }
+    if(!confirm(r.name+' さんのチェックを全件消します。元に戻せません。よろしいですか？')) return;
+    try{
+      const n=await Store.clearProgressFor(r.id);
+      await loadAll(); renderDrawer(); render();
+      toast(n?n+'件を消去しました':'消去しました');
+    }catch(err){ toast(err.message||'消去に失敗しました','bad'); }
+  }
+  else if(a==='preset'){
+    V.preset=el.dataset.p;
+    try{ localStorage.setItem('careerstep:preset',V.preset); }catch(err){}
+    render();
+  }
+  else if(a==='remind'){
+    const t=remindText(el.dataset.kind);
+    if(!t){ toast('対象の人がいません'); return; }
+    await copyText(t,'リマインド文をコピーしました。Slackに貼ってください');
+  }
+  else if(a==='reload'){
+    el.disabled=true; el.textContent='更新中…';
+    try{ await loadAll(); render(); toast('最新の状態にしました'); }
+    catch(err){ toast(err.message||'更新に失敗しました','bad'); render(); }
+  }
+  else if(a==='mreq'){
+    const ok=el.dataset.v==='1';
+    const r=BY_ID[el.dataset.id];
+    if(ok && !confirm((r?r.name:'この人')+' さんを管理者にします。メンバー全員の進捗・申し送りが見られるようになります。よろしいですか？')) return;
+    try{
+      await Store.decideManagerRequest(el.dataset.id,ok);
+      await loadAll(); render();
+      toast(ok?'管理者にしました':'却下しました');
+    }catch(err){ toast(err.message||'処理に失敗しました','bad'); }
+  }
+  else if(a==='saveSettings'){
+    const g=x=>(document.getElementById(x)||{}).value;
+    const s={ stale_days:Math.max(1,+g('stStale')||14), delay_months:Math.max(0,+g('stDelay')||0) };
+    STALE_DAYS=s.stale_days; DELAY_ALERT=s.delay_months;
+    try{ localStorage.setItem('careerstep:settings',JSON.stringify(s)); }catch(err){}
+    try{
+      if(Store.caps.settings){ await Store.saveSettings(s); toast('保存しました（UL全員に反映されます）'); }
+      else toast('このブラウザに保存しました');
+    }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
+    compute(); render();
+  }
+  else if(a==='closeReview'){ closeReview(); }
+  else if(a==='rvTpl'){
+    const t=RV_TEMPLATES[+el.dataset.i];
+    const ta=document.getElementById('rvText');
+    if(ta){ ta.value=(ta.value?ta.value.replace(/\s*$/,'')+'\n':'')+t; RV.text=ta.value; ta.focus(); }
+  }
+  else if(a==='saveReview'){
+    const ta=document.getElementById('rvText');
+    await saveReviewComment(ta?ta.value:RV.text);
+  }
+  else if(a==='delReviewComment'){
+    if(!confirm('このコメントを削除します。よろしいですか？')) return;
+    await saveReviewComment('');
   }
   else if(a==='logout'){ await Store.signOut(); location.reload(); }
   else if(a==='login'){ await doLogin(); }
   else if(a==='claim'){ await doClaim(); }
-  else if(a==='pick'){ GATE.picked=GATE.roster.find(m=>String(m.id)===el.dataset.id); GATE.mode='pass'; showGate(); }
-  else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
-  else if(a==='toClaim'){ GATE.mode='claim'; showGate(); }
+  else if(a==='pick'){
+    GATE.picked=GATE.hits.find(m=>String(m.id)===el.dataset.id)||null;
+    if(GATE.mode!=='claim') GATE.mode='pass';
+    showGate();
+  }
+  else if(a==='toPick'){ GATE.mode='pick'; GATE.q=''; GATE.hits=[]; GATE.picked=null; showGate(); }
+  else if(a==='toClaim'){ GATE.mode='claim'; GATE.q=''; GATE.hits=[]; GATE.picked=null; showGate(); }
   else if(a==='retry'){ location.reload(); }
 
   else if(a==='newNote'){ NF.open=true; NF.editing=null; NF.member_id=''; NF.body=''; NF.next_action=''; NF.kind='memo'; NF.grade=''; NF.occurred_on=todayStr(); render(); }
@@ -1661,8 +2102,12 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='printMtg'){ window.print(); }
 });
-document.getElementById('scrim').onclick=closeDrawer;
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&V.drawer) closeDrawer(); });
+document.getElementById('scrim').onclick=()=>{ if(RV.open) closeReview(); else closeDrawer(); };
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  if(RV.open) closeReview();
+  else if(V.drawer) closeDrawer();
+});
 document.getElementById('csvFile').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
@@ -1680,10 +2125,11 @@ document.addEventListener('keydown',e=>{
 /* ============================================================
    起動
    ============================================================ */
-/* ログイン画面に出す名前の一覧。読めなくても画面は出す（エラーだけ見せる） */
+/* サーバーに届くかどうかだけ確かめる。名前の一覧は取りにいかない
+   （管理者の氏名が、ログイン前に誰でも見える状態にならないように） */
 async function loadRoster(){
-  try{ GATE.roster=await Store.roster()||[]; GATE.offline=false; }
-  catch(e){ GATE.roster=[]; GATE.offline=true; }
+  try{ await Store.rosterUnits(); GATE.offline=false; }
+  catch(e){ GATE.offline=true; }
 }
 async function boot(){
   const s=await Store.restore();

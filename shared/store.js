@@ -18,6 +18,7 @@ const Store = (() => {
   const CLOUD = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
   const LEGACY_KEY = 'careerstep:v1';          // 共有化する前の、端末だけに保存していたデータ
   const MIGRATED_KEY = 'careerstep:migrated';  // その引き継ぎが済んだか
+  const QUEUE_KEY = 'careerstep:queue';        // 電波が無いときに溜めておくチェック
 
   let sb = null;                  // Supabase クライアント
   let me = null;                  // {member, role, isManager}
@@ -96,8 +97,13 @@ const Store = (() => {
     if(has && has.length){ LS.set(MIGRATED_KEY,'1'); return 0; }
 
     if(itemIds.length){
-      const now=new Date().toISOString();
-      chk(await sb.from('progress').upsert(itemIds.map(id=>({member_id:memberId,item_id:id,checked_at:now}))));
+      if(caps.approval){
+        /* 本人からの直接書き込みは閉じてあるので、1件ずつ関数を通す */
+        for(const id of itemIds) chk(await sb.rpc('set_my_check',{p_item_id:id,p_on:true}));
+      }else{
+        const now=new Date().toISOString();
+        chk(await sb.from('progress').upsert(itemIds.map(id=>({member_id:memberId,item_id:id,checked_at:now}))));
+      }
     }
     const st={};
     if(raw.buddy)    st.buddy=raw.buddy;
@@ -113,19 +119,103 @@ const Store = (() => {
   }
 
   /* ============================================================
+     サーバー側の機能検出
+     ------------------------------------------------------------
+     supabase/schema.sql の追加分（承認・名前検索・設定など）を
+     まだ流していない環境でも、画面がそのまま動くようにする。
+     使える機能だけをオンにして、無い機能は従来のやり方に落とす。
+     ============================================================ */
+  const caps = { approval:false, rosterSearch:false, settings:false, managerRequests:false };
+  let capsDone = false;   /* 一度でも通信できたか。電波が悪いだけの結果を信じない */
+  async function detectCaps(){
+    let ok=true;
+    try{
+      const r=await sb.from('progress').select('approved_at').limit(1);
+      /* 列が無い（42703）ならこの機能は無い。通信自体が失敗したなら判定しない */
+      if(r.error && !/column|does not exist|42703/i.test(String(r.error.message||''))) ok=false;
+      else caps.approval = !r.error;
+    }catch(e){ ok=false; }
+    try{
+      const r=await sb.rpc('roster_search',{p_q:'',p_managers:false});
+      if(r.error && !/function|does not exist|Could not find/i.test(String(r.error.message||''))) ok=false;
+      else caps.rosterSearch = !r.error;
+    }catch(e){ ok=false; }
+    capsDone = capsDone || ok;
+  }
+  /* 管理者としてログインしたあとに分かるもの */
+  async function detectManagerCaps(){
+    try{ const r=await sb.rpc('get_app_settings'); caps.settings = !r.error; }catch(e){ caps.settings=false; }
+    try{ const r=await sb.from('manager_requests').select('member_id').limit(1); caps.managerRequests = !r.error; }
+    catch(e){ caps.managerRequests=false; }
+  }
+
+  /* ============================================================
+     オフラインでも押せるようにする
+     ------------------------------------------------------------
+     通信できないときは端末に積んでおき、つながったときに送る。
+     移動中や電波の悪い現場で、チェックが素通りしないようにするため。
+     ============================================================ */
+  const queue = {
+    all(){ return readJSON(QUEUE_KEY,[]) || []; },
+    save(list){ LS.set(QUEUE_KEY, JSON.stringify(list)); },
+    push(job){ const l=queue.all(); l.push(job); queue.save(l); api.queued=l.length; },
+    get size(){ return queue.all().length; }
+  };
+  /* 通信そのものが届かなかったか（＝あとで送り直す価値があるか） */
+  function isOffline(e){
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return true;
+    const m=String((e&&e.message)||e);
+    return /Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m);
+  }
+  async function flushQueue(){
+    if(!CLOUD || !sb || !me) return 0;
+    const list=queue.all();
+    if(!list.length) return 0;
+    const rest=[]; let sent=0;
+    for(const job of list){
+      try{ await sendCheck(job.itemId, job.on); sent++; }
+      catch(e){ if(isOffline(e)) rest.push(job); /* それ以外は捨てる（もう不要な操作） */ }
+    }
+    queue.save(rest); api.queued=rest.length;
+    return sent;
+  }
+  /* 本人のチェック1件を実際に送る */
+  async function sendCheck(itemId,on){
+    if(caps.approval){ chk(await sb.rpc('set_my_check',{p_item_id:itemId,p_on:!!on})); return; }
+    const r = on
+      ? await sb.from('progress').upsert({member_id:me.member.id,item_id:itemId,checked_at:new Date().toISOString()})
+      : await sb.from('progress').delete().eq('member_id',me.member.id).eq('item_id',itemId);
+    /* 直接書き込みが閉じられている＝承認のしくみが入っている。
+       判定を取り違えていただけなので、関数経由でやり直す。 */
+    if(r.error && /row-level security|permission denied/i.test(String(r.error.message||''))){
+      caps.approval=true;
+      chk(await sb.rpc('set_my_check',{p_item_id:itemId,p_on:!!on}));
+      return;
+    }
+    chk(r);
+  }
+  if(typeof window!=='undefined') window.addEventListener('online',()=>{ flushQueue(); });
+
+  /* ============================================================
      公開API
      ============================================================ */
   const api = {
     mode: CLOUD?'cloud':'unconfigured',
     get me(){ return me; },
     get isManager(){ return !!(me && me.isManager); },
+    get caps(){ return caps; },
     /* 直前のログイン／登録で、端末に残っていた記録を何件引き継いだか */
     migratedCount: 0,
+    /* まだ送れていないチェックの件数（画面の「オフライン」表示に使う） */
+    queued: 0,
+    flushQueue,
 
     /* ---------- 起動 ---------- */
     async init(){
       if(!CLOUD) return api.mode;
       await client();
+      api.queued = queue.size;
+      await detectCaps();
       return api.mode;
     },
 
@@ -134,7 +224,9 @@ const Store = (() => {
       if(!CLOUD) return null;
       const { data } = await sb.auth.getSession();
       if(!data || !data.session) return null;
-      return await resolveMe();
+      const r=await resolveMe();
+      if(r) flushQueue().catch(()=>{});   /* 前回オフラインで押したぶんを送る */
+      return r;
     },
 
     /* ---------- 名簿（ログイン画面用） ----------
@@ -143,6 +235,37 @@ const Store = (() => {
       if(!CLOUD) return [];
       const r=await sb.from('member_roster').select('id,name,unit,ul,slug,role,linked');
       return chk(r)||[];
+    },
+
+    /* ---------- 名前で探す（ログイン画面用） ----------
+       60人ぶんの氏名をログイン前に並べないための入口。
+       2文字以上を入れた人にだけ、一致した数件を返す。
+       サーバー側に検索関数が無い環境では、名簿を取ってから手元で絞る
+       （＝従来と同じ見え方になるが、画面の操作は変わらない）。 */
+    async searchRoster(q, managersOnly){
+      if(!CLOUD) return [];
+      const s=String(q||'').trim();
+      if(s.length<2) return [];
+      if(caps.rosterSearch){
+        const r=await sb.rpc('roster_search',{p_q:s,p_managers:!!managersOnly});
+        return chk(r)||[];
+      }
+      const all=await api.roster();
+      return all.filter(m=>(!managersOnly||m.role==='ul'||m.role==='admin')&&
+        (String(m.name).indexOf(s)>=0||String(m.unit||'').indexOf(s)>=0)).slice(0,10);
+    },
+
+    /* 新規登録の Unit 候補。個人名は含まない */
+    async rosterUnits(){
+      if(!CLOUD) return [];
+      if(caps.rosterSearch){
+        const r=await sb.rpc('roster_units');
+        if(!r.error) return (chk(r)||[]).map(x=>x.unit).filter(Boolean);
+      }
+      try{
+        const all=await api.roster();
+        return Array.from(new Set(all.map(m=>m.unit).filter(Boolean))).sort();
+      }catch(e){ return []; }
     },
 
     /* 共通パスコードが合っているか。未設定のあいだは true が返る */
@@ -186,6 +309,7 @@ const Store = (() => {
       const r=await resolveMe();
       if(!r) throw new Error('この名前はまだパスワードが設定されていません。「はじめて使う」から進んでください');
       api.migratedCount = await migrateLegacy(r.member.id);
+      flushQueue().catch(()=>{});
       return r;
     },
 
@@ -214,20 +338,55 @@ const Store = (() => {
       if(!r){ await api.signOut(); throw new Error('このログインは名簿と紐付いていません。本人画面から登録し直してください'); }
       if(!r.isManager){
         if(!adminKey){ await api.signOut(); throw new Error('このアカウントには管理者権限がありません。管理者キーを入力してください'); }
-        try{ await api.claimManager(adminKey); }
+        let status;
+        try{ status=await api.requestManager(adminKey); }
         catch(e){ await api.signOut(); throw e; }
+        if(status==='pending'){
+          await api.signOut();
+          throw new Error('管理者への申請を受け付けました。いまいる管理者が承認すると、この画面に入れるようになります');
+        }
         r=me;
       }
       if(!r || !r.isManager){ await api.signOut(); throw new Error('このアカウントには管理者権限がありません'); }
       return r;
     },
 
-    /* 管理者キーを入れて自分をULに昇格させる */
-    async claimManager(code){
+    /* 管理者になりたいと申請する。
+       返り値 'approved' … その場で管理者になった（まだ管理者が1人もいないとき）
+              'pending'  … 申請を出した。既存の管理者が承認すると使えるようになる
+       サーバーが古い（承認制の関数が無い）ときは、これまでどおり即昇格する。 */
+    async requestManager(code){
       need();
-      const role=chk(await sb.rpc('claim_manager',{p_code:code}));
+      const r=await sb.rpc('request_manager',{p_code:code});
+      if(r.error && /function .*request_manager.* does not exist|Could not find the function/i.test(String(r.error.message||''))){
+        const role=chk(await sb.rpc('claim_manager',{p_code:code}));
+        await resolveMe();
+        return role? 'approved' : 'approved';
+      }
+      const status=chk(r);
       await resolveMe();
-      return role;
+      return status||'pending';
+    },
+
+    /* 管理者への昇格を待っている人（管理画面で承認する） */
+    async managerRequests(){
+      if(!caps.managerRequests) return [];
+      const r=await sb.from('manager_requests').select('*').eq('status','pending');
+      return chk(r)||[];
+    },
+    async decideManagerRequest(memberId,approve){
+      need();
+      chk(await sb.rpc('decide_manager_request',{p_member_id:memberId,p_approve:!!approve}));
+    },
+
+    /* ---------- アラートのしきい値（管理画面の設定） ---------- */
+    async getSettings(){
+      if(!caps.settings) return null;
+      try{ return chk(await sb.rpc('get_app_settings'))||{}; }catch(e){ return null; }
+    },
+    async saveSettings(s){
+      if(!caps.settings) throw new Error('この設定を保存するには supabase/schema.sql を貼り直してください');
+      return chk(await sb.rpc('set_app_settings',{p_settings:s}));
     },
 
     /* パスコード・管理者キーが設定済みかどうか（管理者画面の注意表示用） */
@@ -246,11 +405,17 @@ const Store = (() => {
     async myData(){
       need();
       const mid=me.member.id;
+      const cols=caps.approval? 'item_id,checked_at,approved_at,approved_by' : 'item_id,checked_at';
       const [p,s]=await Promise.all([
-        sb.from('progress').select('item_id,checked_at').eq('member_id',mid),
+        sb.from('progress').select(cols).eq('member_id',mid),
         sb.from('member_state').select('*').eq('member_id',mid).maybeSingle()
       ]);
-      const checks={}; (chk(p)||[]).forEach(r=>checks[r.item_id]=r.checked_at);
+      const checks={};
+      (chk(p)||[]).forEach(r=>{
+        checks[r.item_id] = caps.approval
+          ? { at:r.checked_at, approved:!!r.approved_at, approvedBy:r.approved_by||null, approvedAt:r.approved_at||null }
+          : r.checked_at;
+      });
       const st=chk(s)||{};
       return {
         member:me.member, checks,
@@ -259,17 +424,56 @@ const Store = (() => {
       };
     },
 
-    async setCheck(itemId,on){ return api.setCheckFor(me.member.id,itemId,on); },
-
-    async setCheckFor(memberId,itemId,on){
+    /* 本人がチェックする。届かなかったときは端末に積んで、つながったら送る。
+       返り値 {queued:true} なら、まだサーバーには届いていない。 */
+    async setCheck(itemId,on){
       need();
-      if(on) chk(await sb.from('progress').upsert({member_id:memberId,item_id:itemId,checked_at:new Date().toISOString()}));
-      else   chk(await sb.from('progress').delete().eq('member_id',memberId).eq('item_id',itemId));
+      try{
+        await sendCheck(itemId,on);
+        if(queue.size) await flushQueue();
+        return {queued:false};
+      }catch(e){
+        if(!isOffline(e)) throw e;
+        queue.push({itemId:itemId,on:!!on,at:Date.now()});
+        return {queued:true};
+      }
+    },
+
+    /* 管理者が他の人のチェックを操作する。
+       state: 'approved'（承認）/ 'pending'（申請中に戻す）/ 'off'（外す） */
+    async setCheckFor(memberId,itemId,state){
+      need();
+      if(state===true)  state='approved';
+      if(state===false) state='off';
+      if(caps.approval){ chk(await sb.rpc('set_check_for',{p_member_id:memberId,p_item_id:itemId,p_state:state})); return; }
+      if(state==='off') chk(await sb.from('progress').delete().eq('member_id',memberId).eq('item_id',itemId));
+      else chk(await sb.from('progress').upsert({member_id:memberId,item_id:itemId,checked_at:new Date().toISOString()}));
+    },
+
+    /* 申請中のものをまとめて承認する（面談の最後に1回押す用） */
+    async approveItems(memberId,itemIds){
+      need();
+      if(!caps.approval) return 0;
+      return chk(await sb.rpc('approve_items',{p_member_id:memberId,p_item_ids:itemIds||null}))||0;
+    },
+
+    /* その人のチェックを全件消す（管理者のみ。申し送りに記録が残る） */
+    async clearProgressFor(memberId){
+      need();
+      if(caps.approval) return chk(await sb.rpc('admin_clear_progress',{p_member_id:memberId}))||0;
+      chk(await sb.from('progress').delete().eq('member_id',memberId));
+      return 0;
     },
 
     async saveState(patch){
       need();
       chk(await sb.from('member_state').upsert(Object.assign({member_id:me.member.id,updated_at:new Date().toISOString()},patch)));
+    },
+
+    /* 管理者が他の人の member_state を更新する（アタリマエの判定など） */
+    async saveStateFor(memberId,patch){
+      need();
+      chk(await sb.from('member_state').upsert(Object.assign({member_id:memberId,updated_at:new Date().toISOString()},patch)));
     },
 
     async saveProfile(p){
@@ -313,17 +517,26 @@ const Store = (() => {
     /* ---------- 管理者用：まとめて読む ---------- */
     async adminLoad(){
       need();
+      await detectManagerCaps();
+      const pcols=caps.approval? 'member_id,item_id,checked_at,approved_at,approved_by' : 'member_id,item_id,checked_at';
       const [m,p,s,n,q,rv]=await Promise.all([
         sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name'),
-        sb.from('progress').select('member_id,item_id,checked_at'),
+        sb.from('progress').select(pcols),
         sb.from('member_state').select('*'),
         sb.from('notes').select('*').order('occurred_on',{ascending:false}),
         sb.from('quiz_scores').select('*').order('taken_on',{ascending:false}),
         sb.from('reviews').select('*').order('period',{ascending:false})
       ]);
-      const progress={}; (chk(p)||[]).forEach(r=>{ (progress[r.member_id]=progress[r.member_id]||{})[r.item_id]=r.checked_at; });
+      const progress={};
+      (chk(p)||[]).forEach(r=>{
+        (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = caps.approval
+          ? { at:r.checked_at, approved:!!r.approved_at, approvedBy:r.approved_by||null, approvedAt:r.approved_at||null }
+          : r.checked_at;
+      });
       const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
-      return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[], reviews:chk(rv)||[] };
+      const reqs = caps.managerRequests ? await api.managerRequests() : [];
+      return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[], reviews:chk(rv)||[],
+               managerRequests:reqs, fetchedAt:Date.now() };
     },
 
     /* ---------- 管理者用：書き込み ---------- */
@@ -387,6 +600,9 @@ const Store = (() => {
     if(!uid){ me=null; return null; }
     const m=chk(await sb.from('members').select('*').eq('auth_id',uid).maybeSingle());
     if(!m){ me=null; return null; }
+    /* 起動時に電波が悪くて判定できていなければ、ログインできたここでやり直す。
+       判定を間違えると、書き込み先（関数か直接か）を取り違えてしまうため。 */
+    if(!capsDone) await detectCaps();
     me={member:m, role:m.role, isManager:m.role==='ul'||m.role==='admin'};
     return me;
   }
