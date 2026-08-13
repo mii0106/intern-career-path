@@ -953,6 +953,30 @@ function colPreset(){
   if(!V.preset){ try{ V.preset=localStorage.getItem('careerstep:preset')||'meeting'; }catch(e){ V.preset='meeting'; } }
   return PRESETS[V.preset]?V.preset:'meeting';
 }
+/* ------------------------------------------------------------
+   一覧が空のとき、「まだ誰も登録していない」のか
+   「絞り込みで消えているだけ」なのかを区別して出す。
+   既定の絞り込みは「メンバーのみ」なので、管理者キーでULに昇格した人
+   （UL・メンター）しか登録していない段階では0件になる。
+   ------------------------------------------------------------ */
+function rosterEmpty(){
+  if(!ROWS.length) return '<b>まだ誰も登録していません</b>'+
+    '<p class="tiny muted" style="margin:8px 0 0;line-height:1.9">'+
+    'メンバーが本人用の画面から自分の情報を登録すると、ここに順に増えていきます。<br>'+
+    'アプリのURLと共通パスコードを共有してください。</p>';
+  const managers=ROWS.filter(r=>r.role!=='member').length;
+  const why=[];
+  if(F.role==='member')  why.push('「メンバーのみ」で絞っています'+
+    (managers?'（UL・管理者が'+managers+'人いますが、この絞り込みでは出ません）':''));
+  if(F.role==='manager') why.push('「UL・管理者のみ」で絞っています');
+  if(F.unit)  why.push('Unitを「'+esc(F.unit)+'」で絞っています');
+  if(F.alert) why.push('アラートで絞っています');
+  if(F.q)     why.push('「'+esc(F.q)+'」で検索しています');
+  return '<b>絞り込みに合う人がいません</b>'+
+    '<p class="tiny muted" style="margin:8px 0 0;line-height:1.9">登録は'+ROWS.length+'人あります。<br>'+
+    (why.length?why.join('<br>')+'<br>':'')+'</p>'+
+    '<button class="btn ghost" style="margin-top:10px" data-act="clearFilters">絞り込みをすべて外す</button>';
+}
 function vRoster(){
   const list=sorted(filtered());
   const pk=colPreset(), cols=PRESETS[pk].cols;
@@ -972,7 +996,7 @@ function vRoster(){
       return c.sort? th(c.sort,c.h,c.cls,c.tip)
                    : '<th class="nos '+(c.cls||'')+'"'+(c.tip?' title="'+esc(c.tip)+'"':'')+'>'+c.h+'</th>'; }).join('')+
     '<th class="nos st">状況</th></tr></thead><tbody>';
-  if(!list.length) h+='<tr><td colspan="'+(cols.length+2)+'"><div class="empty">条件に合うメンバーがいません。</div></td></tr>';
+  if(!list.length) h+='<tr><td colspan="'+(cols.length+2)+'"><div class="empty">'+rosterEmpty()+'</div></td></tr>';
   list.forEach(r=>{
     h+='<tr><td class="nm">'+memberLink(r)+
         (r.role!=='member'?' <span class="chip g">'+(r.role==='admin'?'管理':'UL')+'</span>':'')+'</td>'+
@@ -1993,6 +2017,7 @@ document.addEventListener('click',async e=>{
     try{ localStorage.setItem('careerstep:preset',V.preset); }catch(err){}
     render();
   }
+  else if(a==='clearFilters'){ F.unit=''; F.q=''; F.role='all'; F.alert=''; render(); }
   else if(a==='remind'){
     const t=remindText(el.dataset.kind);
     if(!t){ toast('対象の人がいません'); return; }
