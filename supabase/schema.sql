@@ -650,10 +650,13 @@ grant execute on function public.roster_units() to anon, authenticated;
 
 -- ============================================================
 -- 5.7 管理者になるまでの流れを「申請 → 既存管理者の承認」に変える
---     管理者キーだけで即昇格できると、キーが1度でも漏れた時点で
---     全員分のデータが見られてしまうため。
---     管理者がまだ1人もいないときだけ、キーでそのまま昇格できる（初回導入用）。
+--     管理者キーを知っている人が、育成／ULのどちらとして入るかを選んで
+--     その場で権限を付ける。承認を待つ必要はない。
+--     そのぶんキーの管理がすべてなので、メンバーには配らないこと。
+--     総当り対策として、5回続けて間違えると15分ロックする。
 -- ============================================================
+-- 承認制をやめたので、この表はもう使っていない（過去の申請の記録が残っているだけ）。
+-- 消したい場合は drop table public.manager_requests; を手で実行してください。
 create table if not exists public.manager_requests (
   member_id   uuid primary key references public.members(id) on delete cascade,
   requested_at timestamptz not null default now(),
@@ -678,7 +681,7 @@ alter table public.members add column if not exists admin_key_locked_until times
 drop function if exists public.request_manager(text);
 create or replace function public.request_manager(p_code text, p_role text default 'ul')
 returns text language plpgsql security definer set search_path = public, extensions as $$
-declare v_id uuid := public.current_member_id(); v_hash text; v_lock timestamptz; v_managers int;
+declare v_id uuid := public.current_member_id(); v_hash text; v_lock timestamptz;
         v_want text := case when p_role = 'mentor' then 'mentor' else 'ul' end;
 begin
   if v_id is null then raise exception 'not linked'; end if;
@@ -700,48 +703,18 @@ begin
   end if;
   update public.members set admin_key_fails = 0, admin_key_locked_until = null where id = v_id;
 
-  select count(*) into v_managers from public.members where role in ('mentor','ul') and active;
-  if v_managers = 0 then
-    /* いちばん最初の1人だけは、承認する人がいないのでそのまま昇格する */
-    update public.members set role = v_want where id = v_id and role = 'member';
-    insert into public.manager_requests(member_id, status, want_role, decided_at)
-    values (v_id, 'approved', v_want, now())
-    on conflict (member_id) do update set status = 'approved', want_role = v_want, decided_at = now();
-    return 'approved';
-  end if;
-
-  insert into public.manager_requests(member_id, status, want_role, requested_at)
-  values (v_id, 'pending', v_want, now())
-  on conflict (member_id) do update set status = 'pending', want_role = v_want, requested_at = now(),
-                                        decided_by = null, decided_at = null;
-  return 'pending';
+  /* キーが合っていれば、その場で権限を付ける（承認待ちはない）。
+     すでに育成／ULの人が選び直した場合も、選んだほうに切り替える。 */
+  update public.members set role = v_want where id = v_id and role <> v_want;
+  return 'approved';
 end $$;
 
-create or replace function public.decide_manager_request(p_member_id uuid, p_approve boolean)
-returns text language plpgsql security definer set search_path = public as $$
-declare v_me uuid := public.current_member_id(); v_want text;
-begin
-  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
-  if p_member_id = v_me then raise exception '自分の申請は自分で承認できません'; end if;
-  select want_role into v_want from public.manager_requests where member_id = p_member_id;
-
-  update public.manager_requests
-     set status = case when p_approve then 'approved' else 'rejected' end,
-         decided_by = v_me, decided_at = now()
-   where member_id = p_member_id;
-  if not found then raise exception '申請が見つかりません'; end if;
-
-  if p_approve then
-    update public.members set role = case when v_want = 'mentor' then 'mentor' else 'ul' end
-     where id = p_member_id and role = 'member';
-  end if;
-  return case when p_approve then 'approved' else 'rejected' end;
-end $$;
+-- 承認制をやめたので、承認する関数は落とす。
+drop function if exists public.decide_manager_request(uuid, boolean);
 
 grant execute on function public.request_manager(text, text)           to authenticated;
-grant execute on function public.decide_manager_request(uuid, boolean) to authenticated;
 
--- 旧：キーだけで即昇格。承認制にしたので落とす。
+-- 旧：引数の無い版。request_manager に一本化したので落とす。
 drop function if exists public.claim_manager(text);
 
 -- ============================================================

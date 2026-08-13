@@ -125,7 +125,7 @@ const Store = (() => {
      まだ流していない環境でも、画面がそのまま動くようにする。
      使える機能だけをオンにして、無い機能は従来のやり方に落とす。
      ============================================================ */
-  const caps = { approval:false, rosterSearch:false, settings:false, managerRequests:false };
+  const caps = { approval:false, rosterSearch:false, settings:false };
   let capsDone = false;   /* 一度でも通信できたか。電波が悪いだけの結果を信じない */
   async function detectCaps(){
     let ok=true;
@@ -145,8 +145,6 @@ const Store = (() => {
   /* 管理者としてログインしたあとに分かるもの */
   async function detectManagerCaps(){
     try{ const r=await sb.rpc('get_app_settings'); caps.settings = !r.error; }catch(e){ caps.settings=false; }
-    try{ const r=await sb.from('manager_requests').select('member_id').limit(1); caps.managerRequests = !r.error; }
-    catch(e){ caps.managerRequests=false; }
   }
 
   /* ============================================================
@@ -338,24 +336,18 @@ const Store = (() => {
       if(!r){ await api.signOut(); throw new Error('このログインは名簿と紐付いていません。本人画面から登録し直してください'); }
       if(!r.isManager){
         if(!adminKey){ await api.signOut(); throw new Error('このアカウントには管理者ツールを使う権限がありません。管理者キーを入力してください'); }
-        let status;
-        try{ status=await api.requestManager(adminKey, wantRole); }
+        try{ await api.requestManager(adminKey, wantRole); }
         catch(e){ await api.signOut(); throw e; }
-        if(status==='pending'){
-          await api.signOut();
-          throw new Error('申請を受け付けました。いまいる育成・ULが承認すると、この画面に入れるようになります');
-        }
         r=me;
       }
       if(!r || !r.isManager){ await api.signOut(); throw new Error('このアカウントには管理者ツールを使う権限がありません'); }
       return r;
     },
 
-    /* 育成／ULとして入りたいと申請する。
+    /* 管理者キーを入れて、育成／ULの権限を自分に付ける。
        wantRole 'mentor'（育成）か 'ul'。できることは同じで、表示上の役割が違うだけ。
-       返り値 'approved' … その場で権限が付いた（まだ育成・ULが1人もいないとき）
-              'pending'  … 申請を出した。いまいる育成・ULが承認すると使えるようになる
-       サーバーが古い（役割を選べない版／承認制でない版）のときは、そこまで戻して呼び直す。 */
+       キーが合っていればその場で付く（承認待ちはない）。
+       サーバーが古い（役割を選べない版）のときは、そこまで戻して呼び直す。 */
     async requestManager(code, wantRole){
       need();
       const want = wantRole==='mentor' ? 'mentor' : 'ul';
@@ -367,20 +359,11 @@ const Store = (() => {
         await resolveMe();
         return 'approved';
       }
-      const status=chk(r);
+      chk(r);
       await resolveMe();
-      return status||'pending';
-    },
-
-    /* 管理者への昇格を待っている人（管理画面で承認する） */
-    async managerRequests(){
-      if(!caps.managerRequests) return [];
-      const r=await sb.from('manager_requests').select('*').eq('status','pending');
-      return chk(r)||[];
-    },
-    async decideManagerRequest(memberId,approve){
-      need();
-      chk(await sb.rpc('decide_manager_request',{p_member_id:memberId,p_approve:!!approve}));
+      /* 承認制をやめる前のサーバーだと 'pending' が返ることがある。
+         その場合は権限が付いていないので、そのまま知らせる。 */
+      return (me && me.isManager) ? 'approved' : 'pending';
     },
 
     /* ---------- アラートのしきい値（管理画面の設定） ---------- */
@@ -538,9 +521,8 @@ const Store = (() => {
           : r.checked_at;
       });
       const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
-      const reqs = caps.managerRequests ? await api.managerRequests() : [];
       return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[], reviews:chk(rv)||[],
-               managerRequests:reqs, fetchedAt:Date.now() };
+               fetchedAt:Date.now() };
     },
 
     /* ---------- 管理者用：書き込み ---------- */

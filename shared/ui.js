@@ -105,6 +105,21 @@ function ring(pct,color,label){
    '<circle cx="23" cy="23" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+(c*(1-pct/100))+'" transform="rotate(-90 23 23)"/>'+
    '</svg><b style="color:'+color+'">'+(label!=null?label:pct)+'</b></div>';
 }
+/* クリップボードにコピー（本人画面・管理者ツールの両方で使う） */
+async function copyText(text,okMsg){
+  try{
+    await navigator.clipboard.writeText(text);
+    toast(okMsg||'コピーしました');
+  }catch(e){
+    /* 権限が無い環境向けの保険 */
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast(okMsg||'コピーしました'); }
+    catch(e2){ toast('コピーできませんでした','bad'); }
+    ta.remove();
+  }
+}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 /* トーストは読み上げにも乗せる。表示は3秒（1.5秒だと読み終わらない） */
 function toast(msg,cls,ms){
