@@ -40,6 +40,9 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
+/* スクロールバーの分の幅を常に空けておく。
+   ページごとにスクロールバーが出たり消えたりして横に動くのを防ぐ */
+html{scrollbar-gutter:stable}
 body{
   font-family:'Noto Sans JP',-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
   color:var(--ink);
@@ -51,7 +54,17 @@ body{
   -webkit-font-smoothing:antialiased;
   line-height:1.6;
 }
-#app{max-width:480px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 18px)}
+/* ------------------------------------------------------------
+   どのタブでも画面の高さは同じにする。
+   タブごとに中身の量が違うので、そのままだと切り替えるたびに
+   ページの高さが変わって画面が動いてしまう。
+   main を残りの高さいっぱいに伸ばして、短いページでも
+   ちょうど1画面ぶんの高さになるようにしている。
+   ------------------------------------------------------------ */
+#app{max-width:480px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 18px);
+  display:flex;flex-direction:column}
+@supports (min-height:100svh){ #app{min-height:100svh} }
+main{flex:1 1 auto}
 .disp{font-family:'Bricolage Grotesque','Noto Sans JP',sans-serif;font-weight:800;letter-spacing:-.02em}
 button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:15px;color:var(--ink)}
@@ -322,9 +335,11 @@ main{padding:0 16px}
 /* ---------- desktop ---------- */
 @media (min-width:900px){
   #app{max-width:1240px;padding-bottom:48px;display:grid;grid-template-columns:236px minmax(0,1fr);
-       grid-template-areas:"head head" "side main";column-gap:20px;align-items:start}
+       grid-template-areas:"head head" "side main";grid-template-rows:auto minmax(0,1fr);
+       column-gap:20px;align-items:start}
   .top{grid-area:head;padding:22px 8px 10px}
-  main{grid-area:main;padding:0 8px 0 0}
+  /* 中身が少ないタブでも、本文の領域は画面の高さぶん確保する（①と同じ理由） */
+  main{grid-area:main;padding:0 8px 0 0;align-self:stretch}
   .tabbar{grid-area:side;position:sticky;top:16px;left:auto;bottom:auto;transform:none;width:auto;max-width:none;height:auto;
     display:flex;flex-direction:column;gap:4px;padding:16px 12px 18px;border-top:0;border:1px solid var(--line);
     border-radius:22px;background:rgba(255,255,255,.82);z-index:10}
@@ -407,9 +422,36 @@ main{padding:0 16px}
 .offbar{background:var(--amber-soft);color:#8A5606;border-radius:12px;padding:9px 12px;font-size:11.5px;margin-bottom:12px}
 
 /* ---------- ずかん（相棒を押すと開く） ---------- */
-.buddy-btn{display:block;padding:0;width:100%}
-/* .pod を兼ねる相棒ボタン（サイドバー）は、ポッドの暗い背景と中央寄せを保つ */
-.pod.buddy-btn{display:grid;place-items:center;width:auto;
+.buddy-btn{display:block;padding:0;width:100%;position:relative;
+  transition:transform .22s cubic-bezier(.2,1.5,.4,1)}
+.buddy-btn:active{transform:scale(.965)}
+/* 説明の吹き出しはホバーできる端末だけに出す（指の端末では場所を取るだけ） */
+.buddy-hint{display:none;position:absolute;left:50%;bottom:-4px;transform:translate(-50%,5px);
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;background:var(--ink);
+  border-radius:99px;padding:3px 11px;white-space:nowrap;pointer-events:none;
+  box-shadow:0 6px 14px -6px rgba(24,18,64,.5);transition:opacity .2s,transform .2s}
+/* 相棒にカーソルを乗せると、跳ねて・まばたきして・衛星が速くなる。
+   指で使う端末（ホバーが無い端末）では出さない。 */
+@media (hover:hover) and (pointer:fine){
+  .buddy-btn:hover,.buddy-btn:focus-visible{transform:translateY(-3px) scale(1.035)}
+  .buddy-btn:hover .mochi,.buddy-btn:focus-visible .mochi{animation:hop .66s cubic-bezier(.28,1.5,.4,1) infinite}
+  .buddy-btn:hover .float,.buddy-btn:focus-visible .float{animation-duration:1.2s}
+  .buddy-btn:hover .orbit,.buddy-btn:focus-visible .orbit{animation-duration:2.4s}
+  .buddy-btn:hover .eyes,.buddy-btn:focus-visible .eyes{animation:wink 1.3s infinite}
+  .buddy-hint{display:block;opacity:0;transform:translate(-50%,5px)}
+  .buddy-btn:hover .buddy-hint,.buddy-btn:focus-visible .buddy-hint{opacity:1;transform:translate(-50%,0)}
+}
+@keyframes hop{
+  0%{transform:translateY(0) scale(1,1)}
+  28%{transform:translateY(-7%) scale(.955,1.05)}
+  56%{transform:translateY(0) scale(1.06,.945)}
+  78%{transform:translateY(-1.5%) scale(.99,1.01)}
+  100%{transform:translateY(0) scale(1,1)}}
+@keyframes wink{0%,68%,100%{transform:scaleY(1)}78%{transform:scaleY(.14)}}
+/* .pod を兼ねる相棒ボタン（サイドバー）は、ポッドの暗い背景と中央寄せを保つ。
+   サイドバーの中にあるので .tabbar button の角丸（13px）に負けて
+   四角く見えていたため、丸に戻している */
+.pod.buddy-btn,.tabbar .pod.buddy-btn{display:grid;place-items:center;width:auto;border-radius:50%;
   background:radial-gradient(circle at 32% 26%,#36425F,#141A2B)}
 #dex{position:fixed;inset:0;z-index:75;display:none;padding:18px;overflow-y:auto;background:rgba(19,14,52,.7);
   backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
@@ -733,7 +775,8 @@ function vHome(){
      '<div class="hero-title disp">'+(D.buddy?esc(D.buddy):'なまえ未設定')+'</div>'+
      '<div class="hero-name">'+nm+(D.buddy?'':' ・ <button data-act="tab" data-tab="sheet" style="color:var(--violet);font-weight:700;font-size:12px">名前をつける</button>')+'</div>'+
    '</div><div style="text-align:right"><div class="pct" style="color:'+t.hex+'">'+pct+'<small>%</small></div></div></div>'+
-   '<div class="capsule-wrap"><button class="buddy-btn" data-act="openDex" aria-label="進化ずかんをひらく">'+porthole(st,pct,t.hex)+'</button></div>'+
+   '<div class="capsule-wrap"><button class="buddy-btn" data-act="openDex" aria-label="進化ずかんをひらく">'+
+     porthole(st,pct,t.hex)+'<span class="buddy-hint">押すと進化ずかん</span></button></div>'+
    '<div class="bar"><i class="bar-appr" style="width:'+pct+'%;background:linear-gradient(90deg,#C9202B,'+t.hex+')"></i>'+
      (pend?'<i class="bar-pend" style="left:'+pct+'%;width:'+(pendPct-pct)+'%;background:'+t.hex+'"></i>':'')+'</div>'+
    '<div class="hero-foot"><span class="muted">'+dn+' / '+tt+' 項目 ・ 第'+st+'形態「'+sg.t+'」</span>'+
