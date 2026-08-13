@@ -91,6 +91,9 @@ main{min-width:0;padding:20px 22px 60px}
 .chip.a{background:var(--amber-soft);color:#B0700A}
 .chip.c{background:var(--coral-soft);color:#C9273D}
 .chip.g{background:#EDECF6;color:var(--ink2)}
+/* 自分が担当している人の行。強すぎない程度に敷く */
+tbody tr.mine td{background:var(--violet-soft)}
+tbody tr.mine td.nm{box-shadow:inset 3px 0 0 var(--violet)}
 .muted{color:var(--ink2)}
 .tiny{font-size:11px;line-height:1.6}
 .empty{padding:26px 10px;text-align:center;color:var(--ink3);font-size:12.5px}
@@ -214,6 +217,9 @@ tbody tr:hover td.st{background:#FBFAFF}
 .act-n{flex:0 0 62px;font-size:17px;color:var(--violet)}
 .act-b{flex:1;min-width:0;display:flex;flex-direction:column}
 .act-b b{font-size:13px}
+/* 自分が対応する分は、左に線を引いて先に目に入るようにする */
+.actions .act.mine{background:var(--violet-soft);border-radius:12px;padding-left:10px;padding-right:10px;
+  box-shadow:inset 3px 0 0 var(--violet)}
 .card .act{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)}
 .card .act:first-of-type{border-top:0}
 
@@ -271,8 +277,8 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
       <span class="disp" style="font-size:18px;letter-spacing:.06em">STEP</span>
       <span class="tiny muted" style="letter-spacing:.14em">ADMIN CONSOLE</span>
     </div>
-    <h1 class="disp">管理者ログイン</h1>
-    <p class="tiny muted" style="margin:0 0 16px">UL・メンター用の画面です。インターン本人の画面は <a href="./">こちら</a>。</p>
+    <h1 class="disp">管理者ツール</h1>
+    <p class="tiny muted" style="margin:0 0 16px">育成・UL用の画面です。インターン本人の画面は <a href="./">こちら</a>。</p>
     <div id="gateErr"></div>
     <div id="gateBody"></div>
   </div>
@@ -327,7 +333,7 @@ let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済み�
 let ROWS = [], BY_ID = {};
 /* 画面の状態 */
 let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'step', reviewKind:'ywt', mtgUnit:'' };
-let F = { unit:'', q:'', role:'member', alert:'' };
+let F = { unit:'', q:'', role:'member', alert:'', mine:false };
 
 /* ============================================================
    ログイン
@@ -335,16 +341,16 @@ let F = { unit:'', q:'', role:'member', alert:'' };
    デモ用の入口は持たない。実際に本人画面から登録した人だけが入れる。
 
    画面は3つ。
-     pick  … 管理者として登録済みの人の一覧から自分を選ぶ
+     pick  … 育成・ULとして登録済みの人の一覧から自分を選ぶ
      pass  … 自分のパスワードを入れる
-     claim … まだ管理者になっていない人が、
-             自分の名前・パスワード・管理者キーを入れて昇格する
+     claim … まだ育成・ULになっていない人が、どちらとして入るかを選び、
+             自分の名前・パスワード・管理者キーを入れて申請する
 
    パスワードは本人画面で登録したときに自分で決めたもの。
    共通パスコードではログインできない（それだと共通パスコードを知っている
    メンバー全員がULになりすませてしまうため）。
    ============================================================ */
-let GATE={ hits:[], picked:null, q:'', searching:false, mode:'pick', offline:false };
+let GATE={ hits:[], picked:null, q:'', searching:false, mode:'pick', offline:false, want:'mentor' };
 
 function gateHTML(){
   if(Store.mode!=='cloud'){
@@ -352,7 +358,7 @@ function gateHTML(){
       'shared/config.js に Supabase の情報を入れると、実際のデータで動きます。'+
       '手順はリポジトリの SETUP.md にあります。</div></div>';
   }
-  /* 名簿が読めていない。「管理者が1人もいません」と出すと嘘になるので分ける */
+  /* 名簿が読めていない。「該当者が1人もいません」と出すと嘘になるので分ける */
   if(GATE.offline){
     return '<div class="banner"><span>⚠️</span><div><b>通信できませんでした</b><br>'+
       'Supabaseに接続できていません。接続情報（shared/config.js）と回線を確認してください。'+
@@ -361,10 +367,15 @@ function gateHTML(){
   }
 
   if(GATE.mode==='claim'){
-    return '<div class="gnote">まだ管理者になっていない方はこちらです。'+
+    return '<div class="gnote">まだ'+MANAGER_LABEL+'になっていない方はこちらです。'+
         '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて申請してください。'+
-        'いまいる管理者が承認すると、この画面に入れるようになります。'+
-        '（管理者がまだ1人もいないあいだは、そのまま入れます）</div>'+
+        'いまいる'+MANAGER_LABEL+'が承認すると、この画面に入れるようになります。'+
+        '（'+MANAGER_LABEL+'がまだ1人もいないあいだは、そのまま入れます）</div>'+
+      '<div class="f"><label>どちらとして入りますか</label>'+
+        '<div class="seg2" id="cRole" style="display:flex;width:100%">'+ROLES.filter(r=>r.k!=='member').map(r=>
+          '<button type="button" data-act="wantRole" data-r="'+r.k+'" style="flex:1;padding:9px 6px;font-size:13px" '+
+          'class="'+(GATE.want===r.k?'on':'')+'">'+r.n+'</button>').join('')+'</div>'+
+        '<p class="tiny muted" style="margin:6px 0 0">できることは同じです。表示上の役割が変わります。</p></div>'+
       '<div class="f"><label>自分の名前</label>'+
         '<input type="text" id="cQuery" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'">'+
         '<div id="cHits" class="tiny muted" style="margin-top:6px">'+
@@ -372,7 +383,7 @@ function gateHTML(){
         '</div></div>'+
       '<div class="f"><label>パスワード</label><input type="password" id="cPass" autocomplete="current-password" placeholder="本人画面で決めたパスワード"></div>'+
       '<div class="f"><label>管理者キー</label><input type="password" id="cKey" autocomplete="off" placeholder="UL間で共有されているキー"></div>'+
-      '<button class="btn vio" data-act="claim" style="width:100%;padding:12px">管理者になって入る</button>'+
+      '<button class="btn vio" data-act="claim" style="width:100%;padding:12px">'+roleName(GATE.want)+'として申請する</button>'+
       '<button class="btn ghost" data-act="toPick" style="width:100%;padding:10px;margin-top:8px">戻る</button>';
   }
 
@@ -390,7 +401,7 @@ function gateHTML(){
       '<input type="text" id="gq" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'"></div>'+
     '<div id="gHits"></div>'+
     '<button class="btn ghost" data-act="toClaim" style="width:100%;padding:12px;margin-top:10px">'+
-      'まだ管理者になっていない方はこちら</button>';
+      'まだ'+MANAGER_LABEL+'になっていない方はこちら</button>';
 }
 /* 検索結果だけを描き替える（入力欄を作り直さないのでカーソルが飛ばない） */
 function paintHits(boxId,managersOnly){
@@ -401,7 +412,7 @@ function paintHits(boxId,managersOnly){
   if(GATE.searching){ box.innerHTML='<p class="tiny muted" style="margin:8px 2px">探しています…</p>'; return; }
   if(!GATE.hits.length){
     box.innerHTML='<p class="tiny muted" style="margin:8px 2px">見つかりませんでした。'+
-      (managersOnly?'まだ管理者になっていない場合は、下のボタンから申請してください。'
+      (managersOnly?'まだ'+MANAGER_LABEL+'になっていない場合は、下のボタンから申請してください。'
                    :'先に本人画面（<a href="./">こちら</a>）で登録してください。')+'</p>';
     return;
   }
@@ -455,9 +466,9 @@ async function doClaim(){
   if(!g('cKey')){  showGate('管理者キーを入力してください'); return; }
   gateBusy('[data-act="claim"]','確認しています…');
   try{
-    await Store.signInManager(who, g('cPass'), g('cKey'));
+    await Store.signInManager(who, g('cPass'), g('cKey'), GATE.want);
     await boot();
-    toast('管理者になりました','xp');
+    toast(roleName(Store.me&&Store.me.member&&Store.me.member.role)+'になりました','xp');
   }catch(e){ showGate(e.message||String(e)); }
 }
 
@@ -490,7 +501,12 @@ function compute(){
   A.reviews.forEach(r=>(reviewsBy[r.member_id]=reviewsBy[r.member_id]||[]).push(r));
 
   const curYwt=ywtPeriod(), curMonth=monthlyPeriod();
+  const myName=normName(meName());
   ROWS = A.members.filter(m=>m.active!==false).map(m=>{
+    /* 「自分が対応する人」＝その人のUL欄・メンター欄に自分の名前が入っている人。
+       名前の表記ゆれ（空白・全角空白・大文字小文字）は吸収する。 */
+    const mineUl     = !!(myName && normName(m.ul)===myName);
+    const mineMentor = !!(myName && normName(m.mentor)===myName);
     const raw=A.progress[m.id]||{};
     /* checks は「押されているか」、appr は「承認済みか」。
        進捗の数字は承認済みだけで数える（押しただけの申請中は別に出す）。 */
@@ -506,7 +522,9 @@ function compute(){
     const outlook=promotionOutlook(m,checks,now);
     const atarimae=st.atarimae||{};
     return {
-      m:m, id:m.id, name:m.name, unit:m.unit||'（未設定）', role:m.role||'member',
+      m:m, id:m.id, name:m.name, unit:m.unit||'（未設定）', role:roleKey(m.role),
+      mineUl:mineUl, mineMentor:mineMentor, mine:(mineUl||mineMentor),
+      noCharge: !(String(m.ul||'').trim() || String(m.mentor||'').trim()),
       checks:checks, all:all, raw:raw, pending:pending, pendingCount:pending.length,
       /* 挑戦中グレードの承認待ち。ここが1件でもあれば面談で見る */
       pendingNow:pending.filter(id=>gradeOf(id)===cg).length,
@@ -538,6 +556,22 @@ function compute(){
   BY_ID={}; ROWS.forEach(r=>BY_ID[r.id]=r);
 }
 
+/* ---------- 担当（誰が対応するか） ---------- */
+function meName(){ return (Store.me&&Store.me.member&&Store.me.member.name)||''; }
+function normName(s){ return String(s||'').replace(/[\s\u3000]/g,'').toLowerCase(); }
+/* 担当の2人をチップで出す。自分の担当ぶんは色を変えて先に出す */
+function chargeChips(r,opts){
+  opts=opts||{};
+  const out=[];
+  if(r.m.ul)     out.push({t:'UL',      n:r.m.ul,     me:r.mineUl});
+  if(r.m.mentor) out.push({t:'育成',    n:r.m.mentor, me:r.mineMentor});
+  if(!out.length) return '<span class="chip a">担当が未登録</span>';
+  out.sort((a,b)=>(b.me?1:0)-(a.me?1:0));
+  return out.map(x=>'<span class="chip '+(x.me?'v':'g')+'" title="'+esc(x.t+'：'+x.n)+'">'+
+    x.t+'：'+esc(x.me&&!opts.full?'自分':x.n)+'</span>').join(' ');
+}
+function mineTag(r){ return r.mine? ' <span class="chip v">自分の担当</span>' : ''; }
+
 /* ---------- 絞り込み ---------- */
 function units(){ return Array.from(new Set(ROWS.map(r=>r.unit))).sort(); }
 function alertsOf(r){
@@ -557,6 +591,7 @@ function filtered(){
     if(F.unit && r.unit!==F.unit) return false;
     if(F.role==='member' && r.role!=='member') return false;
     if(F.role==='manager' && r.role==='member') return false;
+    if(F.mine && !r.mine) return false;
     if(F.alert && alertsOf(r).indexOf(F.alert)<0) return false;
     if(q && (r.name+' '+r.unit+' '+(r.m.ul||'')+' '+(r.m.mentor||'')).toLowerCase().indexOf(q)<0) return false;
     return true;
@@ -569,7 +604,9 @@ function sorted(list){
     cleared:r.cleared, cg:r.cg, pct:r.pct, overall:r.overall,
     delay:r.delay==null?-99:r.delay, stale:r.stale==null?9999:r.stale,
     target:r.outlook.targetDate||'9999', notes:r.noteCount, quiz:r.quizAvg==null?-1:r.quizAvg,
-    registered:r.registeredAt||''
+    registered:r.registeredAt||'',
+    /* 自分の担当 → 担当あり → 未登録 の順に寄せる */
+    charge:r.mine?2:(r.noCharge?0:1)
   })[k];
   return list.slice().sort((a,b)=>{
     const x=val(a), y=val(b);
@@ -606,7 +643,7 @@ function renderNav(){
   const me=Store.me&&Store.me.member;
   document.getElementById('asideFoot').innerHTML=
     '<b>'+esc(me?me.name:'—')+'</b>'+
-    (me&&me.role==='admin'?'管理者':'UL')+
+    roleName(me&&me.role)+
     '<div class="fetched">最終取得 '+(A.fetchedAt?fmtClock(A.fetchedAt):'—')+
       ' <button data-act="reload">更新</button></div>'+
     '<button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>';
@@ -656,13 +693,19 @@ function barFilters(opts){
   h+='<select id="funit"><option value="">全Unit</option>'+
      units().map(u=>'<option value="'+esc(u)+'"'+(F.unit===u?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>';
   h+='<select id="frole">'+
-     [['all','全員'],['member','メンバーのみ'],['manager','UL・管理者のみ']].map(o=>
+     [['all','全員'],['member','メンバーのみ'],['manager',MANAGER_LABEL+'のみ']].map(o=>
        '<option value="'+o[0]+'"'+(F.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   if(opts.alert!==false){
     h+='<select id="falert"><option value="">アラートで絞らない</option>'+
       [['pending','承認待ちがある'],['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
        ['ywt','今期のYWT未提出'],['monthly','今月の振り返り未提出'],['atarimae','アタリマエに✕']].map(o=>
        '<option value="'+o[0]+'"'+(F.alert===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+  }
+  if(opts.mine!==false){
+    const n=ROWS.filter(r=>r.mine).length;
+    h+='<button class="btn '+(F.mine?'vio':'ghost')+' sm" data-act="mine" '+
+       'title="自分がUL・育成に設定されている人だけにします" aria-pressed="'+(F.mine?'true':'false')+'">'+
+       '自分の担当だけ'+(n?' '+n:'')+'</button>';
   }
   h+='<span class="spacer"></span>'+(opts.right||'')+'</div>';
   return h;
@@ -727,31 +770,50 @@ function vDash(){
   const noReply=A.reviews.filter(rv=>rv.submitted_at&&!rv.ul_comment&&BY_ID[rv.member_id]&&
     (!F.unit||BY_ID[rv.member_id].unit===F.unit));
   const reqs=A.managerRequests||[];
+  /* 「自分がやらなきゃいけない分」＝その人のUL欄・メンター欄に自分が入っているもの。
+     全員ぶん見えることは変えず、自分の担当だけ数えて横に添える。 */
+  const mineOf=l=>l.filter(r=>r.mine).length;
   const acts=[];
   if(approvalOn()&&pendTotal) acts.push({t:'チェックの承認待ち',n:pendTotal+'件',
     s:pendPeople.length+'人ぶん。面談のときに一緒に確認して承認します',
-    b:'対象の人を見る',act:'alert',v:'pending'});
+    m:mineOf(pendPeople),mu:'人',b:'対象の人を見る',act:'alert',v:'pending'});
   if(promo.length) acts.push({t:'昇格面談を組む',n:promo.length+'人',
-    s:'認定グレードの項目を完了しています',b:'昇格タブを開く',act:'tab',v:'promo'});
+    s:'認定グレードの項目を完了しています',
+    m:mineOf(promo),mu:'人',b:'昇格タブを開く',act:'tab',v:'promo'});
   if(noReply.length) acts.push({t:'YWT・月次に返信する',n:noReply.length+'件',
-    s:'提出されたまま、まだコメントを返していないもの',b:'振り返りを開く',act:'tab',v:'reviews'});
+    s:'提出されたまま、まだコメントを返していないもの',
+    m:noReply.filter(rv=>BY_ID[rv.member_id]&&BY_ID[rv.member_id].mine).length,mu:'件',
+    b:'振り返りを開く',act:'tab',v:'reviews'});
   if(stale.length) acts.push({t:'しばらく動きがない',n:stale.length+'人',
-    s:STALE_DAYS+'日以上チェックが動いていません',b:'リマインド文をコピー',act:'remind',v:'stale'});
+    s:STALE_DAYS+'日以上チェックが動いていません',
+    m:mineOf(stale),mu:'人',b:'リマインド文をコピー',act:'remind',v:'stale'});
   if(noYwt.length) acts.push({t:'今期のYWTが未提出',n:noYwt.length+'人',
-    s:periodLabel('ywt',ywtPeriod())+'ぶん',b:'リマインド文をコピー',act:'remind',v:'ywt'});
+    s:periodLabel('ywt',ywtPeriod())+'ぶん',
+    m:mineOf(noYwt),mu:'人',b:'リマインド文をコピー',act:'remind',v:'ywt'});
   if(noMonthly.length) acts.push({t:'今月の振り返りが未提出',n:noMonthly.length+'人',
-    s:periodLabel('monthly',monthlyPeriod())+'ぶん',b:'リマインド文をコピー',act:'remind',v:'monthly'});
-  if(reqs.length) acts.push({t:'管理者になりたい人がいます',n:reqs.length+'件',
+    s:periodLabel('monthly',monthlyPeriod())+'ぶん',
+    m:mineOf(noMonthly),mu:'人',b:'リマインド文をコピー',act:'remind',v:'monthly'});
+  if(reqs.length) acts.push({t:MANAGER_LABEL+'になりたい人がいます',n:reqs.length+'件',
     s:'承認するとメンバー全員の状況を見られるようになります',b:'設定で承認する',act:'tab',v:'settings'});
 
-  h+='<div class="card actions"><h2>今日のアクション <span class="cnt">上から順に片づければ足ります</span></h2>';
+  /* 自分の担当ぶんを先に出す。誰の宿題かをはっきりさせるため */
+  acts.sort((a,b)=>((b.m||0)>0?1:0)-((a.m||0)>0?1:0));
+  const myTotal=acts.reduce((a,x)=>a+(x.m||0),0);
+  h+='<div class="card actions"><h2>今日のアクション '+
+    '<span class="cnt">'+(myTotal? '<b style="color:var(--violet)">'+myTotal+'</b> 件があなたの担当ぶん'
+                                 : '上から順に片づければ足ります')+'</span></h2>';
   if(!acts.length) h+='<div class="empty">いま対応が必要なものはありません。</div>';
   else acts.forEach(a=>{
-    h+='<div class="act"><b class="act-n mono">'+a.n+'</b>'+
-      '<div class="act-b"><b>'+esc(a.t)+'</b><span class="tiny muted">'+esc(a.s)+'</span></div>'+
+    h+='<div class="act'+(a.m?' mine':'')+'"><b class="act-n mono">'+a.n+'</b>'+
+      '<div class="act-b"><b>'+esc(a.t)+
+        (a.m?' <span class="chip v">自分の担当 '+a.m+a.mu+'</span>':'')+'</b>'+
+        '<span class="tiny muted">'+esc(a.s)+'</span></div>'+
       '<button class="btn '+(a.act==='remind'?'ghost':'vio')+' sm" data-act="'+a.act+'" '+
         (a.act==='tab'?'data-tab="'+a.v+'"':a.act==='alert'?'data-a="'+a.v+'"':'data-kind="'+a.v+'"')+'>'+a.b+'</button></div>';
   });
+  if(!F.mine&&ROWS.some(r=>r.mine)) h+='<p class="tiny muted" style="margin:8px 2px 0">'+
+    '見えているのは'+MANAGER_LABEL+'全員ぶんです。'+
+    '<button class="lnk" data-act="mine" style="color:var(--violet);font-weight:700">自分の担当だけに絞る</button></p>';
   h+='</div>';
 
   h+='<div class="grid g4" style="margin-bottom:14px">'+
@@ -811,7 +873,7 @@ function vDash(){
   const noProfile=all.filter(r=>!r.m.join_date||!r.m.unit);
   h+='<div class="card"><h2>登録状況 <span class="cnt">メンバーが自分で登録した分だけ集まります</span></h2>'+
     '<div class="grid g3" style="margin-bottom:12px">'+
-      kpi('登録済み',ROWS.length,'人','UL・管理者を含む','')+
+      kpi('登録済み',ROWS.length,'人',MANAGER_LABEL+'を含む','')+
       kpi('直近7日の新規登録',last7,'人','','')+
       kpi('情報が足りない人',noProfile.length,'人','Unitか入社日が未入力','')+
     '</div>';
@@ -943,14 +1005,16 @@ const COLDEF={
               cell:r=>staleChip(r)},
   quiz:      {h:'テスト',  sort:'quiz', cls:'num', cell:r=>r.quizAvg==null?'<span class="muted">—</span>':r.quizAvg+'%'},
   notes:     {h:'申し送り', sort:'notes', cls:'num', cell:r=>r.noteCount||'<span class="muted">0</span>'},
+  charge:    {h:'担当',    sort:'charge', tip:'その人のマイシートに入っているUL・メンター。自分が入っていれば「自分」と出ます',
+              cell:r=>chargeChips(r)},
   registered:{h:'登録日',  sort:'registered', cell:r=>r.registeredAt?fmtDateFull(r.registeredAt):'<span class="muted">—</span>'},
   stuck:     {h:'いちばん詰まっているところ',
               cell:r=>'<span class="wrap tiny">'+(r.stuck[0]?esc(r.stuck[0].cat.split('｜')[0])+'：'+esc(cut(r.stuck[0].t,42)):'—')+'</span>'}
 };
 const PRESETS={
-  meeting:{n:'面談用', cols:['unit','cg','pct','pending','stuck','stale']},
-  promo:  {n:'昇格判定用', cols:['unit','months','certified','cleared','heat','target','delay']},
-  all:    {n:'棚卸し用（全部）', cols:['unit','months','certified','cleared','heat','cg','pct','pending','overall','target','delay','stale','quiz','notes','registered']}
+  meeting:{n:'面談用', cols:['unit','charge','cg','pct','pending','stuck','stale']},
+  promo:  {n:'昇格判定用', cols:['unit','charge','months','certified','cleared','heat','target','delay']},
+  all:    {n:'棚卸し用（全部）', cols:['unit','charge','months','certified','cleared','heat','cg','pct','pending','overall','target','delay','stale','quiz','notes','registered']}
 };
 function colPreset(){
   if(!V.preset){ try{ V.preset=localStorage.getItem('careerstep:preset')||'meeting'; }catch(e){ V.preset='meeting'; } }
@@ -970,8 +1034,9 @@ function rosterEmpty(){
   const managers=ROWS.filter(r=>r.role!=='member').length;
   const why=[];
   if(F.role==='member')  why.push('「メンバーのみ」で絞っています'+
-    (managers?'（UL・管理者が'+managers+'人いますが、この絞り込みでは出ません）':''));
-  if(F.role==='manager') why.push('「UL・管理者のみ」で絞っています');
+    (managers?'（'+MANAGER_LABEL+'が'+managers+'人いますが、この絞り込みでは出ません）':''));
+  if(F.role==='manager') why.push('「'+MANAGER_LABEL+'のみ」で絞っています');
+  if(F.mine)             why.push('「自分の担当だけ」で絞っています');
   if(F.unit)  why.push('Unitを「'+esc(F.unit)+'」で絞っています');
   if(F.alert) why.push('アラートで絞っています');
   if(F.q)     why.push('「'+esc(F.q)+'」で検索しています');
@@ -1001,8 +1066,8 @@ function vRoster(){
     '<th class="nos st">状況</th></tr></thead><tbody>';
   if(!list.length) h+='<tr><td colspan="'+(cols.length+2)+'"><div class="empty">'+rosterEmpty()+'</div></td></tr>';
   list.forEach(r=>{
-    h+='<tr><td class="nm">'+memberLink(r)+
-        (r.role!=='member'?' <span class="chip g">'+(r.role==='admin'?'管理':'UL')+'</span>':'')+'</td>'+
+    h+='<tr'+(r.mine?' class="mine"':'')+'><td class="nm">'+memberLink(r)+
+        (r.role!=='member'?' <span class="chip g">'+roleName(r.role)+'</span>':'')+mineTag(r)+'</td>'+
       cols.map(k=>{ const c=COLDEF[k]; return '<td class="'+(c.cls||'')+'">'+c.cell(r)+'</td>'; }).join('')+
       '<td class="st">'+(alertsOf(r).filter(a=>a!=='ywt'&&a!=='monthly').map(alertChip).join(' ')||'<span class="muted">—</span>')+'</td></tr>';
   });
@@ -1152,7 +1217,7 @@ let NFILTER={ kind:'', vis:'' };
 function vNotes(){
   let h='<h1 class="h1 disp">申し送り・メモ</h1>'+
     '<p class="lead">ULと育成側が本人とどう関わったかを、時系列で1か所に。昇格面談のメモもここに残します。'+
-    '「管理者のみ」で書いたものは本人の画面には出ません。</p>';
+    '「'+MANAGER_LABEL+'だけ」で書いたものは本人の画面には出ません。</p>';
   h+='<div class="bar">'+
     '<input type="search" id="fq" placeholder="本文・名前で検索" value="'+esc(F.q)+'">'+
     '<select id="funit"><option value="">全Unit</option>'+units().map(u=>'<option value="'+esc(u)+'"'+(F.unit===u?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>'+
@@ -1160,7 +1225,7 @@ function vNotes(){
       '<option value="'+k+'"'+(NFILTER.kind===k?' selected':'')+'>'+NOTE_KIND[k].n+'</option>').join('')+'</select>'+
     '<select id="nvis"><option value="">公開範囲すべて</option>'+
       '<option value="shared"'+(NFILTER.vis==='shared'?' selected':'')+'>本人にも見せる</option>'+
-      '<option value="admin"'+(NFILTER.vis==='admin'?' selected':'')+'>管理者のみ</option></select>'+
+      '<option value="admin"'+(NFILTER.vis==='admin'?' selected':'')+'>'+MANAGER_LABEL+'だけ</option></select>'+
     '<span class="spacer"></span>'+
     '<button class="btn ghost" data-act="csvNotes">CSVで書き出す</button>'+
     '<button class="btn vio" data-act="newNote">＋ 記録を追加</button></div>';
@@ -1203,7 +1268,7 @@ function noteHTML(n,withActs){
       (r?'<span class="tiny muted">'+esc(r.unit)+'</span>':'')+
       kindChip(n.kind)+
       (n.grade?'<span class="chip g">G'+n.grade+'</span>':'')+
-      (n.visibility==='admin'?'<span class="chip c">管理者のみ</span>':'<span class="chip m">本人も見える</span>')+
+      (n.visibility==='admin'?'<span class="chip c">'+MANAGER_LABEL+'だけ</span>':'<span class="chip m">本人も見える</span>')+
       (n.author_name?'<span class="tiny muted">記入：'+esc(n.author_name)+'</span>':'')+
       (withActs?'<span class="acts"><button data-act="editNote" data-id="'+n.id+'">編集</button>'+
         '<button data-act="delNote" data-id="'+n.id+'">削除</button></span>':'')+
@@ -1234,8 +1299,8 @@ function noteFormHTML(){
     '<div class="f"><label>次にやること（任意）</label><input type="text" id="nfNext" value="'+esc(NF.next_action)+'" placeholder="例）次回の定例までに考察を3本提出"></div>'+
     '<div class="f"><label>公開範囲</label><div class="radios">'+
       '<button data-act="nfVis" data-v="shared" class="'+(NF.visibility==='shared'?'on':'')+'">本人にも見せる</button>'+
-      '<button data-act="nfVis" data-v="admin" class="'+(NF.visibility==='admin'?'on':'')+'">管理者のみ</button>'+
-    '</div><p class="tiny muted" style="margin:5px 0 0">「管理者のみ」は本人のブラウザからは取得できません（Supabase側で遮断）。</p></div>'+
+      '<button data-act="nfVis" data-v="admin" class="'+(NF.visibility==='admin'?'on':'')+'">'+MANAGER_LABEL+'だけ</button>'+
+    '</div><p class="tiny muted" style="margin:5px 0 0">「'+MANAGER_LABEL+'だけ」は本人のブラウザからは取得できません（Supabase側で遮断）。</p></div>'+
     '<div style="display:flex;gap:8px"><button class="btn vio" data-act="saveNote">'+(NF.editing?'更新する':'保存する')+'</button>'+
     '<button class="btn ghost" data-act="closeNote">やめる</button></div></div>';
 }
@@ -1267,7 +1332,7 @@ function csvNotes(){
   A.notes.forEach(n=>{
     const r=BY_ID[n.member_id]; if(F.unit&&(!r||r.unit!==F.unit)) return;
     rows.push([n.occurred_on,r?r.name:'',r?r.unit:'',(NOTE_KIND[n.kind]||{}).n||n.kind,
-      n.grade||'',n.body,n.next_action||'',n.author_name||'',n.visibility==='admin'?'管理者のみ':'本人にも見せる']);
+      n.grade||'',n.body,n.next_action||'',n.author_name||'',n.visibility==='admin'?MANAGER_LABEL+'だけ':'本人にも見せる']);
   });
   downloadCSV('申し送り_'+todayStr()+'.csv',rows);
   toast('CSVを書き出しました');
@@ -1439,22 +1504,27 @@ function vReviews(){
     '<button data-act="rk" data-k="monthly" class="'+(kind==='monthly'?'on':'')+'">月次振り返り</button></span>'+
     '<input type="search" id="fq" placeholder="名前で検索" value="'+esc(F.q)+'">'+
     '<select id="funit"><option value="">全Unit</option>'+units().map(u=>'<option value="'+esc(u)+'"'+(F.unit===u?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>'+
+    '<button class="btn '+(F.mine?'vio':'ghost')+' sm" data-act="mine" aria-pressed="'+(F.mine?'true':'false')+'">自分の担当だけ</button>'+
     '<span class="spacer"></span><button class="btn ghost" data-act="csvReviews">CSVで書き出す</button></div>';
 
   /* 提出状況のマトリクス */
   const sub=[], tot=[];
   h+='<div class="tw"><table><thead><tr><th class="nos nm">名前</th><th class="nos">Unit</th>'+
+    '<th class="nos" title="返信するのは基本この2人です">担当</th>'+
     periods.map((p,i)=>'<th class="nos num'+(i===0?'" style="color:var(--violet)':'')+'">'+periodLabel(kind,p)+(i===0?'<br><span class="tiny">今期</span>':'')+'</th>').join('')+
     '<th class="nos num">提出率</th></tr></thead><tbody>';
   list.forEach(r=>{
     let ok=0;
-    h+='<tr><td class="nm">'+memberLink(r)+'</td><td>'+esc(r.unit)+'</td>';
+    h+='<tr'+(r.mine?' class="mine"':'')+'><td class="nm">'+memberLink(r)+mineTag(r)+'</td><td>'+esc(r.unit)+'</td>'+
+      '<td>'+chargeChips(r)+'</td>';
     periods.forEach(p=>{
       const rv=r.reviews.find(x=>x.kind===kind&&x.period===p);
       if(rv&&rv.submitted_at){
         ok++;
-        h+='<td class="num"><button class="chip '+(rv.ul_comment?'v':'m')+'" data-act="openReview" data-id="'+rv.id+'" '+
-          'title="押すと内容を表示">'+(rv.ul_comment?'✓ 返信済':'✓')+'</button></td>';
+        const todo = !rv.ul_comment;
+        h+='<td class="num"><button class="chip '+(rv.ul_comment?'v':(r.mine?'a':'m'))+'" data-act="openReview" data-id="'+rv.id+'" '+
+          'title="'+(todo?(r.mine?'あなたが返信する分です':'まだ返信がありません'):'返信済み')+'">'+
+          (rv.ul_comment?'✓ 返信済':(r.mine?'要返信':'✓'))+'</button></td>';
       }else{
         h+='<td class="num"><span class="muted">—</span></td>';
       }
@@ -1465,7 +1535,10 @@ function vReviews(){
   h+='</tbody></table></div>';
   const rate=tot.length? Math.round(sub.reduce((a,b)=>a+b,0)/tot.reduce((a,b)=>a+b,0)*100):0;
   h+='<p class="tiny muted" style="margin-top:8px">直近'+periods.length+'期間の提出率：全体 '+rate+'%　'+
-    '<span class="chip m">✓</span> 提出済　<span class="chip v">✓ 返信済</span> ULコメントあり</p>';
+    '<span class="chip m">✓</span> 提出済　<span class="chip a">要返信</span> 自分が担当で未返信　'+
+    '<span class="chip v">✓ 返信済</span> コメントあり<br>'+
+    '中身は'+MANAGER_LABEL+'の全員が見られます。「要返信」は、その人のマイシートでULかメンターに'+
+    'あなたの名前が入っているものです。</p>';
 
   /* 次月目標の一覧 */
   if(kind==='monthly'){
@@ -1494,6 +1567,7 @@ function vReviews(){
 }
 function reviewCard(rv){
   const r=BY_ID[rv.member_id];
+  const charge = r? chargeChips(r) : '';
   const body = rv.kind==='ywt'
     ? [['Y｜やったこと',rv.y],['W｜わかったこと',rv.w],['T｜つぎにやること',rv.t]]
     : [['振り返り',rv.looking_back],['次月目標',rv.next_goal]];
@@ -1501,13 +1575,18 @@ function reviewCard(rv){
     '<div class="bd"><div class="hdr">'+(r?memberLink(r):'—')+
       (r?'<span class="tiny muted">'+esc(r.unit)+'</span>':'')+
       '<span class="chip '+(rv.kind==='ywt'?'s':'v')+'">'+(rv.kind==='ywt'?'YWT':'月次')+'</span>'+
-      (rv.ul_comment?'<span class="chip m">返信済</span>':'<span class="chip a">未返信</span>')+'</div>'+
+      (rv.ul_comment?'<span class="chip m">返信済</span>'
+                    :'<span class="chip a">'+(r&&r.mine?'あなたが返信':'未返信')+'</span>')+
+      charge+'</div>'+
     body.filter(x=>x[1]).map(x=>'<div style="margin-bottom:5px"><span class="tiny" style="font-weight:700;color:var(--ink2)">'+x[0]+'</span>'+
       '<div class="body">'+esc(x[1])+'</div></div>').join('')+
     (rv.ul_comment?'<div class="na" style="background:var(--violet-soft)">UL：'+esc(rv.ul_comment)+
       (rv.ul_comment_by?'<span class="tiny muted">（'+esc(rv.ul_comment_by)+'）</span>':'')+'</div>':'')+
     '<div style="margin-top:7px"><button class="btn ghost sm" data-act="openReview" data-id="'+rv.id+'">'+
-      (rv.ul_comment?'コメントを編集':'コメントを返す')+'</button></div>'+
+      (rv.ul_comment?'コメントを編集':'コメントを返す')+'</button>'+
+      (r&&!r.mine&&!rv.ul_comment?'<span class="tiny muted" style="margin-left:8px">'+
+        '担当は'+esc([r.m.ul,r.m.mentor].filter(Boolean).join('・')||'未登録')+'ですが、返信はだれでもできます</span>':'')+
+      '</div>'+
     '</div></div>';
 }
 /* ------------------------------------------------------------
@@ -1683,8 +1762,10 @@ function renderDrawer(){
     '<div style="display:flex;align-items:center;gap:12px">'+
       '<div style="width:52px;height:52px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;'+
         'background:radial-gradient(circle at 32% 26%,#36425F,#141A2B)">'+creature(gStage(r.checks),46,'')+'</div>'+
-      '<div><div style="font-size:17px;font-weight:700">'+esc(r.name)+'</div>'+
-      '<div class="tiny muted">'+esc(r.unit)+(r.m.ul?'　UL：'+esc(r.m.ul):'')+(r.m.mentor?'　メンター：'+esc(r.m.mentor):'')+'</div></div>'+
+      '<div><div style="font-size:17px;font-weight:700">'+esc(r.name)+
+        (r.role!=='member'?' <span class="chip g">'+roleName(r.role)+'</span>':'')+'</div>'+
+      '<div class="tiny muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">'+
+        esc(r.unit)+chargeChips(r,{full:true})+(r.mine?'<span class="chip v">自分の担当</span>':'')+'</div></div>'+
       '<div style="margin-left:auto;text-align:right">'+gradeChip(r.cg)+
         '<div class="tiny muted" style="margin-top:3px">在籍 '+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'／全体 '+r.overall+'%</div></div>'+
     '</div>'+
@@ -1831,7 +1912,7 @@ function dwProfile(r){
       fmtDateFull(addMonths(r.m.join_date,periodMonths(r.cg)))+'）</span></label>'+
       '<input type="date" id="pfTarget" value="'+esc(r.m.promotion_target||'')+'"></div>'+
     '<div class="f"><label>権限</label><select id="pfRole">'+
-      [['member','メンバー'],['ul','UL（全員を見られる）'],['admin','管理者（全員を見られる）']].map(o=>
+      ROLES.map(o=>[o.k,o.n+'（'+o.d+'）']).map(o=>
         '<option value="'+o[0]+'"'+(r.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
     '<button class="btn vio" data-act="saveProfile" data-id="'+r.id+'">保存する</button>'+
     '</div>'+
@@ -1882,12 +1963,12 @@ async function resetLoginFor(id){
 function vSettings(){
   const reqs=A.managerRequests||[];
   let h='<h1 class="h1 disp">設定</h1>'+
-    '<p class="lead">アラートの基準と、管理者の追加をここで扱います。</p>';
+    '<p class="lead">アラートの基準と、'+MANAGER_LABEL+'の追加をここで扱います。</p>';
 
   /* 管理者になりたい人の承認 */
-  h+='<div class="card"><h2>管理者の申請 <span class="cnt">'+reqs.length+'件</span></h2>';
+  h+='<div class="card"><h2>'+MANAGER_LABEL+'の申請 <span class="cnt">'+reqs.length+'件</span></h2>';
   if(!Store.caps.managerRequests){
-    h+='<p class="tiny muted" style="margin:0">管理者キーを入れた人がその場で管理者になる設定のままです。'+
+    h+='<p class="tiny muted" style="margin:0">管理者キーを入れた人がその場で'+MANAGER_LABEL+'になる設定のままです。'+
       '承認制にするには supabase/schema.sql を貼り直してください。</p>';
   }else if(!reqs.length){
     h+='<div class="empty">申請はありません。</div>';
@@ -1896,7 +1977,8 @@ function vSettings(){
       '心当たりのない申請は承認しないでください。</p>';
     reqs.forEach(q=>{
       const r=BY_ID[q.member_id];
-      h+='<div class="act"><div class="act-b"><b>'+(r?esc(r.name):'（不明なメンバー）')+'</b>'+
+      h+='<div class="act"><div class="act-b"><b>'+(r?esc(r.name):'（不明なメンバー）')+
+        ' <span class="chip s">'+roleName(q.want_role||'ul')+'として</span></b>'+
         '<span class="tiny muted">'+(r?esc(r.unit):'')+' ・ 申請 '+relDays(q.requested_at)+'</span></div>'+
         '<button class="btn vio sm" data-act="mreq" data-id="'+q.member_id+'" data-v="1">承認する</button>'+
         '<button class="btn ghost sm" data-act="mreq" data-id="'+q.member_id+'" data-v="0">却下</button></div>';
@@ -1914,7 +1996,7 @@ function vSettings(){
     '</div>'+
     '<button class="btn vio" data-act="saveSettings">保存する</button>'+
     '<p class="tiny muted" style="margin:8px 0 0">'+
-      (Store.caps.settings? 'この設定はUL全員で共有されます。'
+      (Store.caps.settings? 'この設定は'+MANAGER_LABEL+'全員で共有されます。'
                           : 'いまはこのブラウザだけの設定です。全員で共有するには supabase/schema.sql を貼り直してください。')+
     '</p></div>';
 
@@ -1930,7 +2012,7 @@ function vSettings(){
     [['チェックの承認（申請中／承認済み）',caps.approval],
      ['ログイン画面の名前検索',caps.rosterSearch],
      ['しきい値の共有',caps.settings],
-     ['管理者の承認制',caps.managerRequests]]
+     [MANAGER_LABEL+'の承認制',caps.managerRequests]]
     .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/schema.sql の貼り直しで有効になります）')+'</div>').join('')+
     '</div></div>';
   return h;
@@ -2020,7 +2102,8 @@ document.addEventListener('click',async e=>{
     try{ localStorage.setItem('careerstep:preset',V.preset); }catch(err){}
     render();
   }
-  else if(a==='clearFilters'){ F.unit=''; F.q=''; F.role='all'; F.alert=''; render(); }
+  else if(a==='clearFilters'){ F.unit=''; F.q=''; F.role='all'; F.alert=''; F.mine=false; render(); }
+  else if(a==='mine'){ F.mine=!F.mine; render(); }
   else if(a==='remind'){
     const t=remindText(el.dataset.kind);
     if(!t){ toast('対象の人がいません'); return; }
@@ -2034,11 +2117,13 @@ document.addEventListener('click',async e=>{
   else if(a==='mreq'){
     const ok=el.dataset.v==='1';
     const r=BY_ID[el.dataset.id];
-    if(ok && !confirm((r?r.name:'この人')+' さんを管理者にします。メンバー全員の進捗・申し送りが見られるようになります。よろしいですか？')) return;
+    const q=(A.managerRequests||[]).find(x=>x.member_id===el.dataset.id);
+    if(ok && !confirm((r?r.name:'この人')+' さんを'+roleName((q&&q.want_role)||'ul')+
+      'にします。メンバー全員の進捗・申し送りが見られるようになります。よろしいですか？')) return;
     try{
       await Store.decideManagerRequest(el.dataset.id,ok);
       await loadAll(); render();
-      toast(ok?'管理者にしました':'却下しました');
+      toast(ok?'権限をつけました':'却下しました');
     }catch(err){ toast(err.message||'処理に失敗しました','bad'); }
   }
   else if(a==='saveSettings'){
@@ -2047,7 +2132,7 @@ document.addEventListener('click',async e=>{
     STALE_DAYS=s.stale_days; DELAY_ALERT=s.delay_months;
     try{ localStorage.setItem('careerstep:settings',JSON.stringify(s)); }catch(err){}
     try{
-      if(Store.caps.settings){ await Store.saveSettings(s); toast('保存しました（UL全員に反映されます）'); }
+      if(Store.caps.settings){ await Store.saveSettings(s); toast('保存しました（'+MANAGER_LABEL+'全員に反映されます）'); }
       else toast('このブラウザに保存しました');
     }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
     compute(); render();
@@ -2076,6 +2161,11 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='toPick'){ GATE.mode='pick'; GATE.q=''; GATE.hits=[]; GATE.picked=null; showGate(); }
   else if(a==='toClaim'){ GATE.mode='claim'; GATE.q=''; GATE.hits=[]; GATE.picked=null; showGate(); }
+  else if(a==='wantRole'){
+    GATE.want=el.dataset.r;
+    const box=document.getElementById('cRole');
+    if(box) Array.from(box.children).forEach(b=>b.classList.toggle('on',b.dataset.r===GATE.want));
+  }
   else if(a==='retry'){ location.reload(); }
 
   else if(a==='newNote'){ NF.open=true; NF.editing=null; NF.member_id=''; NF.body=''; NF.next_action=''; NF.kind='memo'; NF.grade=''; NF.occurred_on=todayStr(); render(); }
@@ -2163,7 +2253,7 @@ async function boot(){
   const s=await Store.restore();
   if(!s || !Store.isManager){
     await loadRoster();
-    showGate(s&&!Store.isManager?'このアカウントには管理者権限がありません。管理者キーを入れて昇格してください':'');
+    showGate(s&&!Store.isManager?'このアカウントには管理者ツールを使う権限がありません。育成かULを選び、管理者キーを入れて申請してください':'');
     return;
   }
   document.getElementById('gate').style.display='none';

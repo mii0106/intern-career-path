@@ -251,7 +251,7 @@ const Store = (() => {
         return chk(r)||[];
       }
       const all=await api.roster();
-      return all.filter(m=>(!managersOnly||m.role==='ul'||m.role==='admin')&&
+      return all.filter(m=>(!managersOnly||isManagerRole(m.role))&&
         (String(m.name).indexOf(s)>=0||String(m.unit||'').indexOf(s)>=0)).slice(0,10);
     },
 
@@ -331,37 +331,41 @@ const Store = (() => {
 
     /* ---------- 管理者ログイン（admin.html） ----------
        名前とパスワードでログインし、まだ管理者でなければ管理者キーで昇格する。 */
-    async signInManager(member, password, adminKey){
+    async signInManager(member, password, adminKey, wantRole){
       need();
       chk(await sb.auth.signInWithPassword({email:emailFor(member.slug),password}));
       let r=await resolveMe();
       if(!r){ await api.signOut(); throw new Error('このログインは名簿と紐付いていません。本人画面から登録し直してください'); }
       if(!r.isManager){
-        if(!adminKey){ await api.signOut(); throw new Error('このアカウントには管理者権限がありません。管理者キーを入力してください'); }
+        if(!adminKey){ await api.signOut(); throw new Error('このアカウントには管理者ツールを使う権限がありません。管理者キーを入力してください'); }
         let status;
-        try{ status=await api.requestManager(adminKey); }
+        try{ status=await api.requestManager(adminKey, wantRole); }
         catch(e){ await api.signOut(); throw e; }
         if(status==='pending'){
           await api.signOut();
-          throw new Error('管理者への申請を受け付けました。いまいる管理者が承認すると、この画面に入れるようになります');
+          throw new Error('申請を受け付けました。いまいる育成・ULが承認すると、この画面に入れるようになります');
         }
         r=me;
       }
-      if(!r || !r.isManager){ await api.signOut(); throw new Error('このアカウントには管理者権限がありません'); }
+      if(!r || !r.isManager){ await api.signOut(); throw new Error('このアカウントには管理者ツールを使う権限がありません'); }
       return r;
     },
 
-    /* 管理者になりたいと申請する。
-       返り値 'approved' … その場で管理者になった（まだ管理者が1人もいないとき）
-              'pending'  … 申請を出した。既存の管理者が承認すると使えるようになる
-       サーバーが古い（承認制の関数が無い）ときは、これまでどおり即昇格する。 */
-    async requestManager(code){
+    /* 育成／ULとして入りたいと申請する。
+       wantRole 'mentor'（育成）か 'ul'。できることは同じで、表示上の役割が違うだけ。
+       返り値 'approved' … その場で権限が付いた（まだ育成・ULが1人もいないとき）
+              'pending'  … 申請を出した。いまいる育成・ULが承認すると使えるようになる
+       サーバーが古い（役割を選べない版／承認制でない版）のときは、そこまで戻して呼び直す。 */
+    async requestManager(code, wantRole){
       need();
-      const r=await sb.rpc('request_manager',{p_code:code});
-      if(r.error && /function .*request_manager.* does not exist|Could not find the function/i.test(String(r.error.message||''))){
-        const role=chk(await sb.rpc('claim_manager',{p_code:code}));
+      const want = wantRole==='mentor' ? 'mentor' : 'ul';
+      const missing=e=>/does not exist|Could not find the function/i.test(String((e&&e.message)||''));
+      let r=await sb.rpc('request_manager',{p_code:code, p_role:want});
+      if(r.error && missing(r.error)) r=await sb.rpc('request_manager',{p_code:code});
+      if(r.error && missing(r.error)){
+        chk(await sb.rpc('claim_manager',{p_code:code}));
         await resolveMe();
-        return role? 'approved' : 'approved';
+        return 'approved';
       }
       const status=chk(r);
       await resolveMe();
@@ -603,7 +607,7 @@ const Store = (() => {
     /* 起動時に電波が悪くて判定できていなければ、ログインできたここでやり直す。
        判定を間違えると、書き込み先（関数か直接か）を取り違えてしまうため。 */
     if(!capsDone) await detectCaps();
-    me={member:m, role:m.role, isManager:m.role==='ul'||m.role==='admin'};
+    me={member:m, role:m.role, isManager:isManagerRole(m.role)};
     return me;
   }
 
