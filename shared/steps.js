@@ -378,26 +378,15 @@ function gIsLocked(checks,gn,certified){
 function gIsCertified(gn,certified){ return !!(certified && gn<=+certified); }
 
 /* ------------------------------------------------------------
-   チェックの2段階
-     progress の1行は「本人が押した（申請中）」か「ULが承認した」のどちらか。
-     raw は {項目id: {at, approved}} か、旧形式の {項目id: 日時 or true}。
-     旧形式（承認列がまだ無いDB）のときは、すべて承認済みとして扱う。
+   チェックの読み取り
+     承認制はないので、progress に行があれば達成。
+     raw は {項目id: {at,...}} か、旧形式の {項目id: 日時 or true}。
+     どちらの形でも {項目id: true} にそろえて返す。
    ------------------------------------------------------------ */
-function splitChecks(raw){
-  const all={}, approved={}, pending=[];
-  Object.keys(raw||{}).forEach(k=>{
-    const v=raw[k];
-    if(!v) return;
-    all[k]=true;
-    if(typeof v==='object'){ if(v.approved) approved[k]=true; else pending.push(k); }
-    else approved[k]=true;   /* 旧形式：押した＝達成 */
-  });
-  return {all:all, approved:approved, pending:pending};
-}
-/* 承認待ちの件数（グレードを指定すればそのグレードの分だけ） */
-function gPendingCount(all,approved,gn){
-  const list = gn? ITEMS[gn] : ALL_ITEMS;
-  return list.filter(i=>all[i.id]&&!approved[i.id]).length;
+function checksOf(raw){
+  const all={};
+  Object.keys(raw||{}).forEach(k=>{ if(raw[k]) all[k]=true; });
+  return all;
 }
 function gClearedCount(checks){ return GRADES.filter(g=>gIsDone(checks,g.n)).length; }
 function gStage(checks){ return Math.min(gClearedCount(checks)+1,10); }

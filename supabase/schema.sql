@@ -513,45 +513,40 @@ create policy reviews_delete on public.reviews for delete to authenticated
   using (public.is_manager());
 
 -- ============================================================
--- 5.5 チェックの2段階（申請中 → 承認済み）
+-- 5.5 チェックは本人が押した時点で達成
 --     ------------------------------------------------------------
---     本人が押したチェックは「申請中」、UL・メンターが管理画面で
---     承認したものだけが「承認済み」になります。
---     昇格判断に使う進捗率は承認済みだけで数えます。
+--     承認制はやめました。本人が画面でチェックを入れれば、その場で
+--     達成として数えます。外すのも本人がそのままできます。
+--     UL・メンターは管理画面から代わりに付ける／外すことができます。
 --
---     この節を実行する前でも、アプリはこれまでどおり
---     「押した＝達成」として動きます（画面側で機能を検出しています）。
+--     approved_at / approved_by の列は、これまでのデータを消さないために
+--     残していますが、いまはチェックと同時に埋まるだけの記録です。
 -- ============================================================
 alter table public.progress add column if not exists checked_by  uuid references public.members(id) on delete set null;
 alter table public.progress add column if not exists approved_by uuid references public.members(id) on delete set null;
 alter table public.progress add column if not exists approved_at timestamptz;
 
--- すでに入っているチェックは、承認済みとして扱う（導入時に全員が
--- いきなり「申請中」に戻ると、それまでの評価が消えたように見えるため）。
+-- 承認待ちのまま残っているチェックは、すべて達成として扱う。
 update public.progress set approved_at = checked_at where approved_at is null;
 
--- 本人からの書き込みは関数経由に限定する。
--- 直接 insert/update できると、本人が approved_at を自分で埋められてしまう。
+-- 本人からの書き込みは関数経由に限定する（他人の行に触れないようにするため）。
 create or replace function public.set_my_check(p_item_id text, p_on boolean)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_id uuid := public.current_member_id();
 begin
   if v_id is null then raise exception 'not linked'; end if;
   if p_on then
-    insert into public.progress(member_id, item_id, checked_at, checked_by)
-    values (v_id, p_item_id, now(), v_id)
-    on conflict (member_id, item_id) do nothing;   -- 承認済みを押し直しても状態は変えない
+    insert into public.progress(member_id, item_id, checked_at, checked_by, approved_at, approved_by)
+    values (v_id, p_item_id, now(), v_id, now(), v_id)
+    on conflict (member_id, item_id)
+      do update set approved_at = coalesce(progress.approved_at, excluded.approved_at);
   else
-    delete from public.progress
-     where member_id = v_id and item_id = p_item_id and approved_at is null;
-    if not found and exists (select 1 from public.progress where member_id = v_id and item_id = p_item_id) then
-      raise exception 'この項目はすでに承認されています。取り消しはULに相談してください';
-    end if;
+    delete from public.progress where member_id = v_id and item_id = p_item_id;
   end if;
 end $$;
 
--- UL・メンターが承認する／戻す／外す。
---   p_state: 'approved'（承認済み） / 'pending'（申請中に戻す） / 'off'（チェックを外す）
+-- UL・メンターが代わりに付ける／外す。
+--   p_state: 'off'（チェックを外す）／それ以外（チェックを付ける）
 create or replace function public.set_check_for(p_member_id uuid, p_item_id text, p_state text)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_me uuid := public.current_member_id();
@@ -559,25 +554,22 @@ begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   if p_state = 'off' then
     delete from public.progress where member_id = p_member_id and item_id = p_item_id;
-  elsif p_state = 'pending' then
-    insert into public.progress(member_id, item_id, checked_at, checked_by)
-    values (p_member_id, p_item_id, now(), v_me)
-    on conflict (member_id, item_id) do update set approved_at = null, approved_by = null;
   else
     insert into public.progress(member_id, item_id, checked_at, checked_by, approved_at, approved_by)
     values (p_member_id, p_item_id, now(), v_me, now(), v_me)
-    on conflict (member_id, item_id) do update set approved_at = now(), approved_by = v_me;
+    on conflict (member_id, item_id) do update set approved_at = coalesce(progress.approved_at, excluded.approved_at);
   end if;
 end $$;
 
--- 申請中のものをまとめて承認する（面談の最後に1回押す用）。
+-- 承認制をやめる前に残った「承認待ち」を、まとめて達成にそろえる関数。
+-- ふだんは使いませんが、古いデータが混じったときの片付け用に残しています。
 create or replace function public.approve_items(p_member_id uuid, p_item_ids text[])
 returns int language plpgsql security definer set search_path = public as $$
-declare v_me uuid := public.current_member_id(); v_n int;
+declare v_n int;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   update public.progress
-     set approved_at = now(), approved_by = v_me
+     set approved_at = checked_at
    where member_id = p_member_id and approved_at is null
      and (p_item_ids is null or item_id = any(p_item_ids));
   get diagnostics v_n = row_count;

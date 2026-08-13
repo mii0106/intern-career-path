@@ -381,18 +381,9 @@ main{padding:0 16px}
 .tabbadge{position:absolute;top:8px;left:calc(50% + 8px);min-width:16px;height:16px;border-radius:99px;
   background:var(--coral);color:#fff;font-size:9.5px;line-height:16px;padding:0 4px;font-weight:700}
 
-/* ---------- チェックの2段階（申請中／承認済み） ---------- */
-.box.pend{border-color:var(--amber);background:var(--amber-soft)}
-.box.pend svg{opacity:1;transform:scale(1)}
-.box.pend svg path{stroke:var(--amber)}
-.item.pend .txt{color:var(--ink)}
-.tag-pend{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;color:#B0700A;
-  background:var(--amber-soft);border-radius:99px;padding:1px 7px;vertical-align:1px}
+/* ---------- チェックした日の表示 ---------- */
 .stamp{display:block;margin-top:3px;font-size:10.5px;color:var(--mint)}
-.pendline{margin-top:10px;font-size:11.5px;line-height:1.6;color:#B0700A;background:var(--amber-soft);
-  border-radius:12px;padding:8px 11px}
 .bar{position:relative}
-.bar > i.bar-pend{position:absolute;top:0;height:100%;opacity:.28}
 
 /* ---------- 今週やること・ピン留め ---------- */
 .item-row,.next-row{display:flex;align-items:flex-start;gap:2px;border-top:1px solid var(--line)}
@@ -564,7 +555,7 @@ const DEFAULT={
   profile:{name:'',join:'',grade:'',unit:'',ul:'',mentor:''}, buddy:'', sound:true,
   goals:{basic:'',skill:''},
   creed:[{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0}],
-  atarimae:{}, checks:{}, appr:{}, meta:{}, custom:{}, log:[], seen:[]
+  atarimae:{}, checks:{}, meta:{}, custom:{}, log:[], seen:[]
 };
 let D=JSON.parse(JSON.stringify(DEFAULT));
 /* 育成・ULの権限を付けるとき、どちらとして入るか（設定タブで選ぶ） */
@@ -595,20 +586,14 @@ function markRead(kind){
 }
 function concern(){ return D.custom.__concern||''; }
 
-/* 承認まわり。サーバーが対応していない環境では「押した＝達成」のまま */
-function approvalOn(){ return !!(Store.caps&&Store.caps.approval); }
-function isApproved(id){ return !!D.appr[id]; }
-function isPending(id){ return !!D.checks[id] && !D.appr[id]; }
-function pendingIds(gn){ return ITEMS[gn].filter(i=>isPending(i.id)).map(i=>i.id); }
 
 async function load(){
   const d=await Store.myData();
   D=JSON.parse(JSON.stringify(DEFAULT));
   D.profile={ name:d.member.name||'', join:d.member.join_date||'', grade:d.member.certified_grade||'',
               unit:d.member.unit||'', ul:d.member.ul||'', mentor:d.member.mentor||'' };
-  const sp=splitChecks(d.checks);
-  D.checks=sp.all; D.appr=sp.approved;
-  Object.keys(d.checks).forEach(k=>{ const v=d.checks[k]; if(v&&typeof v==='object') D.meta[k]=v; });
+  D.checks=checksOf(d.checks);
+  Object.keys(d.checks).forEach(k=>{ const v=d.checks[k]; D.meta[k] = (v&&typeof v==='object')? v : {at:v}; });
   const s=d.state||{};
   D.buddy=s.buddy||'';
   D.goals=Object.assign({basic:'',skill:''},s.goals||{});
@@ -683,16 +668,15 @@ function offlineNote(){
    MODEL HELPERS
    計算式は shared/steps.js にひとつだけ置いて、管理者画面と共通にしている。
    ============================================================ */
-/* 進捗は「承認済み」で数える。押しただけの項目（申請中）は別に出す。
-   サーバーが承認に対応していない環境では、押した時点で承認済み扱いになる。 */
-function done(g){return gDone(D.appr,g);}
+/* 進捗は、本人が入れたチェックでそのまま数える（承認はない）。 */
+function done(g){return gDone(D.checks,g);}
 function total(g){return gTotal(g);}
-function isDone(g){return gIsDone(D.appr,g);}
-function isLocked(n){return gIsLocked(D.appr,n,D.profile.grade);}
+function isDone(g){return gIsDone(D.checks,g);}
+function isLocked(n){return gIsLocked(D.checks,n,D.profile.grade);}
 function isCertified(n){return gIsCertified(n,D.profile.grade);}
-function currentGrade(){return gCurrentGrade(D.appr);}
-function stage(){return gStage(D.appr);}
-function totalChecked(){return gTotalChecked(D.appr);}
+function currentGrade(){return gCurrentGrade(D.checks);}
+function stage(){return gStage(D.checks);}
+function totalChecked(){return gTotalChecked(D.checks);}
 function totalItems(){return TOTAL_ITEMS;}
 function weekCount(){const wk=Date.now()-6048e5;return D.log.filter(t=>t>wk).length;}
 /* 未読の共有事項・ULコメントの件数 */
@@ -763,8 +747,6 @@ function dl(id,items){ return '<datalist id="'+id+'">'+items.map(v=>'<option val
 function vHome(){
   const cg=currentGrade(), g=GRADES[cg-1], t=tierOf(cg);
   const dn=done(cg), tt=total(cg), pct=Math.round(dn/tt*100);
-  const pend=gPendingCount(D.checks,D.appr,cg);
-  const pendPct=Math.round((dn+pend)/tt*100);
   const st=stage(), sg=STAGES[st-1];
   const rest=tt-dn;
   const nm=D.profile.name?esc(D.profile.name)+' さん':'名前を登録しよう';
@@ -777,18 +759,14 @@ function vHome(){
    '</div><div style="text-align:right"><div class="pct" style="color:'+t.hex+'">'+pct+'<small>%</small></div></div></div>'+
    '<div class="capsule-wrap"><button class="buddy-btn" data-act="openDex" aria-label="進化ずかんをひらく">'+
      porthole(st,pct,t.hex)+'<span class="buddy-hint">押すと進化ずかん</span></button></div>'+
-   '<div class="bar"><i class="bar-appr" style="width:'+pct+'%;background:linear-gradient(90deg,#C9202B,'+t.hex+')"></i>'+
-     (pend?'<i class="bar-pend" style="left:'+pct+'%;width:'+(pendPct-pct)+'%;background:'+t.hex+'"></i>':'')+'</div>'+
+   '<div class="bar"><i class="bar-appr" style="width:'+pct+'%;background:linear-gradient(90deg,#C9202B,'+t.hex+')"></i></div>'+
    '<div class="hero-foot"><span class="muted">'+dn+' / '+tt+' 項目 ・ 第'+st+'形態「'+sg.t+'」</span>'+
      '<b style="color:'+t.hex+'">'+(rest===0?'昇格条件クリア！':'あと '+rest+' 項目で進化')+'</b></div>'+
-   (approvalOn()&&pend?'<div class="pendline">ULの承認待ちが '+pend+' 件あります。定例で確認してもらいましょう。</div>':'')+
    '</section>';
 
   h+='<div class="stats">'+
-    '<div class="stat"><b>'+totalChecked()+'</b><span>承認された項目</span></div>'+
-    (approvalOn()
-      ? '<div class="stat"><b style="color:var(--amber)">'+gPendingCount(D.checks,D.appr)+'</b><span>承認待ち</span></div>'
-      : '<div class="stat"><b>'+GRADES.filter(x=>isDone(x.n)).length+'</b><span>達成グレード</span></div>')+
+    '<div class="stat"><b>'+totalChecked()+'</b><span>達成した項目</span></div>'+
+    '<div class="stat"><b>'+GRADES.filter(x=>isDone(x.n)).length+'</b><span>達成グレード</span></div>'+
     '<div class="stat"><b style="color:var(--mint)">+'+weekCount()+'</b><span>今週の達成</span></div>'+
   '</div>';
 
@@ -842,11 +820,11 @@ function vHome(){
 }
 /* 「今週やること」の1行。チェックとピン留めの解除ができる */
 function nextItemHTML(i){
-  const on=!!D.checks[i.id], ap=isApproved(i.id);
+  const on=!!D.checks[i.id];
   return '<div class="next-row">'+
     '<button class="next-item" data-act="toggle" data-id="'+i.id+'" role="checkbox" aria-checked="'+(on?'true':'false')+'">'+
-      '<span class="box'+(ap?' on':(on?' pend':''))+'">'+CHECK+'</span>'+
-      '<span class="txt"><span class="cat">'+esc(i.cat)+(on&&!ap?' ・ 承認待ち':'')+'</span>'+esc(i.t)+'</span></button>'+
+      '<span class="box'+(on?' on':'')+'">'+CHECK+'</span>'+
+      '<span class="txt"><span class="cat">'+esc(i.cat)+'</span>'+esc(i.t)+'</span></button>'+
     '<button class="pinbtn'+(isPinned(i.id)?' on':'')+'" data-act="pin" data-id="'+i.id+'" '+
       'aria-pressed="'+(isPinned(i.id)?'true':'false')+'" aria-label="今週やることに固定">📌</button>'+
   '</div>';
@@ -855,14 +833,13 @@ function nextItemHTML(i){
 function vGrades(){
   let h=stepHead()+
    '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
-   (approvalOn()?'押したチェックは「申請中」になり、ULが承認すると達成として数えます。':'チェックボックスがすべて埋まったら昇格を検討します。')+
+   'チェックを入れた時点で達成として数えます。チェックボックスがすべて埋まったら昇格を検討します。'+
    '</div>'+
    '<div class="glist">';
   const cg=currentGrade();
   GRADES.forEach(g=>{
     const t=tierOf(g.n), dn=done(g.n), tt=total(g.n), pct=Math.round(dn/tt*100);
     const dd=dn===tt, lk=isLocked(g.n), ct=isCertified(g.n);
-    const pend=gPendingCount(D.checks,D.appr,g.n);
     h+='<button class="gcard'+(dd?' done':'')+(lk?' lk':'')+'" data-act="openGrade" data-g="'+g.n+'">'+
       ring(pct,dd?'#17B98A':(lk?'#C9C5DE':t.hex),dd?'✓':pct)+
       '<span style="flex:1">'+
@@ -870,7 +847,7 @@ function vGrades(){
         (ct?'<span class="pill s" style="margin-left:6px">認定済み</span>':'')+
         '<div class="gtitle">'+t.name+'<span class="muted" style="font-weight:400;font-size:12px">（'+g.period+'）</span></div>'+
         '<div class="gmeta">'+(lk?'Grade '+(g.n-1)+' を埋めると開く':
-          dn+' / '+tt+' 項目'+(pend?' ・ 承認待ち'+pend:'')+(g.n===cg?' ・ 挑戦中':''))+'</div>'+
+          dn+' / '+tt+' 項目'+(g.n===cg?' ・ 挑戦中':''))+'</div>'+
       '</span>'+
       '<span style="color:var(--ink3);font-size:18px">›</span></button>';
   });
@@ -887,12 +864,11 @@ function stepHead(){
 
 function vDetail(n){
   const g=GRADES[n-1], t=tierOf(n), dn=done(n), tt=total(n), pct=Math.round(dn/tt*100), lk=isLocked(n);
-  const pend=gPendingCount(D.checks,D.appr,n);
   let h='<div class="dhead"><button class="back" data-act="back">‹ グレード一覧</button>'+
     '<div class="gnum" style="color:'+t.hex+'">GRADE '+n+' ／ '+g.period+'</div>'+
     '<div class="dtitle disp">'+t.name+'</div>'+
     '<div class="bar"><i style="width:'+pct+'%;background:'+t.hex+'"></i></div>'+
-    '<div class="hero-foot"><span class="tiny muted">'+dn+' / '+tt+' 項目'+(pend?' ・ 承認待ち '+pend:'')+'</span>'+
+    '<div class="hero-foot"><span class="tiny muted">'+dn+' / '+tt+' 項目</span>'+
     '<b class="tiny" style="color:'+t.hex+'">'+pct+'%</b></div></div>';
 
   if(isCertified(n)&&n<currentGrade())
@@ -925,24 +901,15 @@ function vDetail(n){
   h+='</div>';
   return h;
 }
-/* 承認した人の名前（名簿から引く。取れないときは出さない） */
-function approverName(id){
-  const m=D.meta[id];
-  if(!m||!m.approvedBy) return '';
-  const who=ROSTER.find(x=>String(x.id)===String(m.approvedBy));
-  return who? who.name : '';
-}
 function itemHTML(id,txt,link,sub,lk){
-  const on=!!D.checks[id], ap=isApproved(id), pend=on&&!ap;
-  const who=ap?approverName(id):'';
-  const stamp = ap&&D.meta[id]&&D.meta[id].approvedAt
-    ? '<span class="stamp">'+fmtDate(D.meta[id].approvedAt)+(who?' '+esc(who)+' が承認':' 承認済み')+'</span>' : '';
+  const on=!!D.checks[id];
+  const at=on&&D.meta[id]?D.meta[id].at:null;
+  const stamp = at? '<span class="stamp">'+fmtDate(at)+' 達成</span>' : '';
   return '<div class="item-row'+(sub?' sub':'')+'">'+
-    '<button class="item'+(ap?' on':'')+(pend?' pend':'')+(lk&&!on?' lk':'')+'" data-act="toggle" data-id="'+id+'"'+
-      ' role="checkbox" aria-checked="'+(ap?'true':(pend?'mixed':'false'))+'">'+
-      '<span class="box'+(ap?' on':'')+(pend?' pend':'')+'">'+(lk&&!on?LOCK:CHECK)+'</span>'+
-      '<span class="txt">'+esc(txt)+
-        (pend&&approvalOn()?'<span class="tag-pend">承認待ち</span>':'')+stamp+
+    '<button class="item'+(on?' on':'')+(lk&&!on?' lk':'')+'" data-act="toggle" data-id="'+id+'"'+
+      ' role="checkbox" aria-checked="'+(on?'true':'false')+'">'+
+      '<span class="box'+(on?' on':'')+'">'+(lk&&!on?LOCK:CHECK)+'</span>'+
+      '<span class="txt">'+esc(txt)+stamp+
         (link?'<br><a href="'+link+'" target="_blank" rel="noopener" class="tiny">クイズを開く →</a>':'')+
       '</span></button>'+
     (on?'':'<button class="pinbtn'+(isPinned(id)?' on':'')+'" data-act="pin" data-id="'+id+'"'+
@@ -950,13 +917,12 @@ function itemHTML(id,txt,link,sub,lk){
   '</div>';
 }
 function customHTML(id,label,lk){
-  const on=!!D.checks[id], ap=isApproved(id);
+  const on=!!D.checks[id];
   return '<div style="padding:11px 0;border-top:1px solid var(--line)">'+
-   '<div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:6px">'+esc(label)+
-     (on&&!ap&&approvalOn()?'<span class="tag-pend">承認待ち</span>':'')+'</div>'+
+   '<div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:6px">'+esc(label)+'</div>'+
    '<div style="display:flex;gap:10px;align-items:center">'+
-   '<button class="box'+(ap?' on':'')+(on&&!ap?' pend':'')+(lk&&!on?' lkbox':'')+'" data-act="toggle" data-id="'+id+'"'+
-     ' role="checkbox" aria-checked="'+(ap?'true':(on?'mixed':'false'))+'" aria-label="達成">'+(lk&&!on?LOCK:CHECK)+'</button>'+
+   '<button class="box'+(on?' on':'')+(lk&&!on?' lkbox':'')+'" data-act="toggle" data-id="'+id+'"'+
+     ' role="checkbox" aria-checked="'+(on?'true':'false')+'" aria-label="達成">'+(lk&&!on?LOCK:CHECK)+'</button>'+
    '<input type="text" data-custom="'+id+'" value="'+esc(D.custom[id]||'')+'" placeholder="面談ですり合わせた内容を入力" style="flex:1;border:1.5px solid var(--line);background:#FBFAFF;border-radius:10px;padding:9px 11px;font-size:13.5px">'+
    '</div></div>';
 }
@@ -1105,12 +1071,12 @@ function vMap(){
       const lk=isLocked(g.n);
       let cells=[], dn=0, tt=0;
       if(c.k==='vision'){
-        const st=visStats(D.appr,g.n); dn=st.d; tt=st.t;
+        const st=visStats(D.checks,g.n); dn=st.d; tt=st.t;
         if(tt) cells.push(g.vision.join(' / '));
       }else{
         g.sections.forEach((sec,si)=>{
           if(sec.title.indexOf(c.k)!==0) return;
-          const st=secStats(D.appr,g.n,si); dn+=st.d; tt+=st.t;
+          const st=secStats(D.checks,g.n,si); dn+=st.d; tt+=st.t;
           cells.push(subLabel(sec.title,c.k));
         });
       }
@@ -1472,18 +1438,14 @@ async function toggle(id){
     toast('Grade '+(gn-1)+' を埋めると開きます');
     return;
   }
-  if(approvalOn() && isApproved(id)){
-    toast('ULが承認した項目です。取り消したいときは相談してください',null,4000);
-    return;
-  }
   const before=GRADES.filter(g=>isDone(g.n)).map(g=>g.n), st0=stage();
   const now=!D.checks[id];
   if(now){
     D.checks[id]=true;
-    if(!approvalOn()) D.appr[id]=true;   /* 承認のしくみが無い環境では、押した時点で達成 */
+    D.meta[id]={at:new Date().toISOString()};
     D.log.push(Date.now()); if(D.log.length>400) D.log=D.log.slice(-400);
   }else{
-    delete D.checks[id]; delete D.appr[id];
+    delete D.checks[id]; delete D.meta[id];
   }
   const after=GRADES.filter(g=>isDone(g.n)).map(g=>g.n);
   const newly=after.filter(n=>!before.includes(n)&&!D.seen.includes(n));
@@ -1495,7 +1457,7 @@ async function toggle(id){
     blip(done(gn)/total(gn));
     /* グレード全体は長いので、区切り（セクション）を埋めたところで褒める */
     if(sectionJustDone(D.checks,id)) toast('「'+cutTxt(sectionTitleOf(id).split('｜')[0],14)+'」を全部うめました','xp',4000);
-    else toast(approvalOn()?'申請しました':'チェックしました','xp');
+    else toast('チェックしました','xp');
   }
   try{
     const r=await Store.setCheck(id,now);
@@ -1504,13 +1466,13 @@ async function toggle(id){
   }
   catch(e){
     /* 保存できなかったら画面も元に戻す（ズレたまま進まないように） */
-    if(now){ delete D.checks[id]; delete D.appr[id]; }
+    if(now){ delete D.checks[id]; delete D.meta[id]; }
     else { D.checks[id]=true; }
     render(true);
     showFail('チェックを保存できませんでした',null,e.message);
   }
 }
-/* ログインし直したときに、承認によって埋まったグレードの演出を出す */
+/* 別の端末や管理画面でチェックが進んでいたときに、進化の演出を出す */
 function checkEvolution(){
   const cleared=GRADES.filter(g=>isDone(g.n)).map(g=>g.n);
   const newly=cleared.filter(n=>!D.seen.includes(n));
@@ -1856,10 +1818,10 @@ async function boot(){
   document.getElementById('app').style.display='';
   await load();
   render();
-  checkEvolution();   /* 前回から承認が進んでいたら、ここで進化を見せる */
+  checkEvolution();   /* 前回から進んでいたら、ここで進化を見せる */
   /* 共有事項とテスト結果は裏で読んで、記録タブを開いたときに待たせない */
   loadLog().then(()=>render(true)).catch(()=>{});
-  /* Unit・UL・メンターの選択肢と、承認者の名前に使う名簿。失敗しても画面は動く */
+  /* Unit・UL・メンターの選択肢に使う名簿。失敗しても画面は動く */
   Store.roster().then(r=>{ ROSTER=r||[]; render(true); }).catch(()=>{});
 }
 (async()=>{
