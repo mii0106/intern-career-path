@@ -427,6 +427,13 @@ main{padding:0 16px}
 .gbox .who{width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:12px;padding:12px;font-size:15px;margin-bottom:10px}
 .gbtn{width:100%;padding:14px;border-radius:16px;background:var(--violet);color:#fff;font-weight:700;font-size:15px;margin-top:4px}
 .gbtn.alt{background:#fff;color:var(--ink);border:1.5px solid var(--line);font-size:13px;padding:11px;margin-top:8px}
+/* パスワードを忘れた人への手順 */
+.steps{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.stp{display:flex;gap:10px;align-items:flex-start}
+.stp>i{flex:0 0 22px;height:22px;border-radius:50%;background:var(--violet);color:#fff;font-style:normal;
+  font-size:12px;font-weight:800;display:grid;place-items:center;margin-top:1px}
+.stp b{display:block;font-size:13.5px}
+.stp span{display:block;font-size:11.5px;color:var(--ink2);line-height:1.7;margin-top:2px}
 .glist{max-height:46vh;overflow-y:auto;border:1.5px solid var(--line);border-radius:14px;margin-bottom:10px}
 .gitem{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}
 .gitem:last-child{border-bottom:0}
@@ -518,7 +525,7 @@ const DEFAULT={
   atarimae:{}, checks:{}, appr:{}, meta:{}, custom:{}, log:[], seen:[]
 };
 let D=JSON.parse(JSON.stringify(DEFAULT));
-/* 育成・ULの申請で、どちらとして入るか（設定タブで選ぶ） */
+/* 育成・ULの権限を付けるとき、どちらとして入るか（設定タブで選ぶ） */
 let WANT_ROLE='mentor';
 let view='home', openG=null, ready=false, profileDirty=false;
 let stepSeg='grades';       /* ステップタブの中身：grades（一覧）／map（横並び） */
@@ -987,8 +994,7 @@ function vSettings(){
     h+='<div class="sec-label">自分の権限</div><div class="card">'+
      '<p class="tiny muted" style="margin:0 0 10px">いまは<b>メンバー</b>です。'+
      '育成・ULの方は、どちらで入るかを選んで管理者キーを入れてください。'+
-     'いまいる'+MANAGER_LABEL+'が承認すると、メンバー全員の状況を見られる管理者ツールが使えるようになります。'+
-     '（'+MANAGER_LABEL+'がまだ1人もいないあいだは、そのまま権限が付きます）</p>'+
+     'キーが合っていれば、その場でメンバー全員の状況を見られる管理者ツールが使えるようになります。</p>'+
      '<div class="field" style="margin-bottom:8px"><label>どちらとして入りますか</label>'+
        '<div class="seg2" id="wantRole">'+
          ROLES.filter(r=>r.k!=='member').map(r=>
@@ -997,7 +1003,7 @@ function vSettings(){
        '<p class="tiny muted" style="margin:6px 0 0">できることは同じです。管理者ツールでの表示と、'+
        'メンバーの「担当」の出しかたが変わります。</p></div>'+
      '<div class="field" style="margin-bottom:8px"><input type="password" id="adminKey" placeholder="管理者キー"></div>'+
-     '<button class="savebtn" data-act="claimManager">この権限を申請する</button></div>';
+     '<button class="savebtn" data-act="claimManager">この権限にする</button></div>';
   }else{
     h+='<div class="sec-label">自分の権限</div><div class="card">'+
      '<p class="tiny muted" style="margin:0 0 10px">あなたは<b>'+roleName(Store.me.member.role)+'</b>です。'+
@@ -1396,10 +1402,11 @@ document.addEventListener('click',async e=>{
       const status=await Store.requestManager(key,WANT_ROLE);
       if(status==='approved'){ toast(roleName(WANT_ROLE)+'になりました','xp'); location.href='admin.html'; }
       else{
-        el.textContent='申請しました';
-        toast(roleName(WANT_ROLE)+'として申請しました。いまいる'+MANAGER_LABEL+'が承認すると使えるようになります','xp',5000);
+        /* 承認制をやめる前のサーバーがまだ動いている場合だけここに来る */
+        el.disabled=false; el.textContent='この権限にする';
+        toast('サーバー側が古いままです。SETUP.md 手順2の貼り直しをしてください',null,6000);
       }
-    }catch(err){ el.disabled=false; el.textContent='この権限を申請する'; toast(err.message||'管理者キーが違います',null,5000); }
+    }catch(err){ el.disabled=false; el.textContent='この権限にする'; toast(err.message||'管理者キーが違います',null,5000); }
   }
   else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
 });
@@ -1514,8 +1521,13 @@ function evolve(gradeN,oldSt,newSt){
      pass  … 自分のパスワードを入れて入る
      setpw … 名簿に名前はあるがパスワード未設定の人が、
              共通パスコードと新しいパスワードを設定する
-             （ULにログインをリセットしてもらった直後もここ）
+             （育成・ULにログインをリセットしてもらった直後もここ）
+     forgot… パスワードを忘れた人に、次に何をすればいいかを出す
      reg   … はじめて使う人が自分の情報を登録する
+
+   パスワードの再設定は、育成・ULに「ログインのリセット」をしてもらってから
+   本人が決め直す形にしている。共通パスコードだけで決め直せてしまうと、
+   パスコードを知っている人が誰にでもなりすませてしまうため。
 
    名簿は事前に一括投入しない。登録した人から順に増えていく。
    共通パスコードは「登録していい人か」を確かめるためのもので、
@@ -1552,11 +1564,11 @@ function paintHits(){
   box.innerHTML='<div class="glist">'+GATE.hits.map(m=>
     '<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
     (m.unit?'<span class="tiny muted" style="margin-left:8px">'+esc(m.unit)+'</span>':'')+
-    '<span>'+(m.linked?'選ぶ ›':'パスワード設定 ›')+'</span></button>').join('')+'</div>';
+    '<span>'+(m.linked?'選ぶ ›':'パスワードを決める ›')+'</span></button>').join('')+'</div>';
 }
 
 const PW_HINT='<p class="tiny muted" style="margin:4px 0 0">6文字以上。次回からはこのパスワードでログインします。'+
-  '忘れたときはULに言えば設定し直せます（記録は消えません）。</p>';
+  '忘れたときは、ULか育成の人に「ログインのリセット」を頼めば決め直せます（記録は消えません）。</p>';
 
 function showGate(err){
   document.getElementById('app').style.display='none';
@@ -1623,12 +1635,39 @@ function showGate(err){
     return;
   }
 
+  /* パスワードを忘れた人。ここで完結はしないので、次にやることだけを短く出す */
+  if(GATE.mode==='forgot'){
+    const nm=GATE.picked? GATE.picked.name : '';
+    lead.textContent='パスワードを設定し直します。';
+    body.innerHTML=
+      '<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
+        '<b>これまでの記録は消えません。</b>チェック・申し送り・テスト・振り返りはそのまま残り、'+
+        'パスワードだけを決め直します。</div>'+
+      '<div class="steps">'+
+        '<div class="stp"><i>1</i><div><b>ULか育成の人に頼む</b>'+
+          '<span>「STEPのログインをリセットしてほしい」と伝えてください。'+
+          '管理者ツールから1クリックでできます。</span></div></div>'+
+        '<div class="stp"><i>2</i><div><b>この画面で自分の名前を選ぶ</b>'+
+          '<span>リセットが済むと、名前の右が「パスワードを決める ›」に変わります。</span></div></div>'+
+        '<div class="stp"><i>3</i><div><b>共通パスコードと新しいパスワードを入れる</b>'+
+          '<span>共通パスコードは全員おなじものです（自分のパスワードではありません）。</span></div></div>'+
+      '</div>'+
+      '<button class="gbtn" data-act="copyReset">頼む文をコピーする</button>'+
+      '<button class="gbtn alt" data-act="toPick">名前を選ぶ画面に戻る</button>'+
+      '<p class="tiny muted" style="margin:12px 0 0">'+
+        (nm? '選んでいた名前：'+esc(nm)+'<br>' : '')+
+        'リセットが済むまでは、この画面からは入れません。'+
+        'メールでの再設定は使っていないので、メールは届きません。</p>';
+    return;
+  }
+
   if(GATE.mode==='pick'){
     lead.textContent='自分の名前を入力してください。';
     body.innerHTML=
       '<input class="who" id="gq" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'">'+
       '<div id="gHits"></div>'+
-      '<button class="gbtn alt" data-act="toReg">はじめて使う（新規登録）</button>';
+      '<button class="gbtn alt" data-act="toReg">はじめて使う（新規登録）</button>'+
+      '<button class="gbtn alt" data-act="toForgot">パスワードを忘れた</button>';
     const gq=document.getElementById('gq');
     gq.oninput=e=>searchRoster(e.target.value);
     gq.focus();
@@ -1645,10 +1684,14 @@ function showGate(err){
     lead.textContent='パスワードを設定してください。';
     body.innerHTML=who+
       '<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
-        'この名前にはまだパスワードがありません。ここで決めたパスワードで、次回からログインします。'+
-        'これまでの記録はそのまま残ります。</div>'+
+        'この名前にはいまパスワードがありません。'+
+        '<b>登録した直後の人</b>と、<b>ログインをリセットしてもらった人</b>がここに来ます。'+
+        'ここで決めたパスワードで、次回からログインします。'+
+        '<b>これまでの記録はそのまま残ります。</b></div>'+
       '<div class="field"><label>部署共通のパスコード</label>'+
-        '<input type="password" id="sCode" autocomplete="off" placeholder="ULから共有されたパスコード"></div>'+
+        '<input type="password" id="sCode" autocomplete="off" placeholder="全員おなじパスコード">'+
+        '<p class="tiny muted" style="margin:4px 0 0">自分のパスワードではありません。'+
+        'ULから共有されている、全員で同じものです。</p></div>'+
       '<div class="field"><label>新しいパスワード</label>'+
         '<input type="password" id="sPw" autocomplete="new-password" placeholder="自分で決めてください">'+PW_HINT+'</div>'+
       '<div class="field"><label>パスワード（確認）</label>'+
@@ -1665,8 +1708,8 @@ function showGate(err){
     '<input class="who" id="gpass" type="password" inputmode="text" autocomplete="current-password" placeholder="自分のパスワード">'+
     '<button class="gbtn" data-act="signin">はじめる</button>'+
     '<button class="gbtn alt" data-act="toPick">名前を選びなおす</button>'+
-    '<p class="tiny muted" style="margin:12px 0 0">パスワードを忘れたときは、ULに「ログインのリセット」を頼んでください。'+
-    'これまでの記録は消えずに、パスワードだけ決め直せます。</p>';
+    '<button class="gbtn alt" data-act="toForgot">パスワードを忘れた</button>'+
+    '<p class="tiny muted" style="margin:12px 0 0">記録は消えずに、パスワードだけ決め直せます。</p>';
   const gp=document.getElementById('gpass');
   gp.focus();
   gp.onkeydown=ev=>{ if(ev.key==='Enter') doSignIn(); };
@@ -1747,6 +1790,16 @@ document.addEventListener('click',async e=>{
   else if(a==='retry'){ location.reload(); }
   else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
   else if(a==='toReg'){ GATE.mode='reg'; showGate(); }
+  else if(a==='toForgot'){ GATE.mode='forgot'; showGate(); }
+  else if(a==='copyReset'){
+    const nm=GATE.picked? GATE.picked.name : '（自分の名前）';
+    const t='STEP（キャリアステップシート）のパスワードを忘れてしまいました。\n'+
+      '管理者ツールの「キャリア現状一覧」から '+nm+' を開いて、'+
+      '設定タブの「ログインをリセットする」を押してもらえますか。\n'+
+      'リセットしてもらったら、自分でパスワードを決め直します。記録は消えません。\n'+
+      location.origin+location.pathname;
+    copyText(t,'コピーしました。ULか育成の人に送ってください');
+  }
   else if(a==='signin'){ await doSignIn(); }
   else if(a==='setpw'){ await doSetPw(); }
   else if(a==='register'){ await doRegister(); }

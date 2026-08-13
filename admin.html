@@ -214,6 +214,13 @@ tbody tr:hover td.st{background:#FBFAFF}
 /* ---------- 今日のアクション ---------- */
 .actions .act{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
 .actions .act:first-of-type{border-top:0}
+/* 手順の3ステップ（設定タブ） */
+.steps3{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 14px}
+.stp3{flex:1;min-width:210px;display:flex;gap:9px;align-items:flex-start}
+.stp3>i{flex:0 0 21px;height:21px;border-radius:50%;background:var(--violet);color:#fff;font-style:normal;
+  font-size:11.5px;font-weight:800;display:grid;place-items:center;margin-top:1px}
+.stp3 b{display:block;font-size:13px}
+.stp3 span{display:block;font-size:11px;color:var(--ink2);line-height:1.7;margin-top:2px}
 .act-n{flex:0 0 62px;font-size:17px;color:var(--violet)}
 .act-b{flex:1;min-width:0;display:flex;flex-direction:column}
 .act-b b{font-size:13px}
@@ -344,7 +351,7 @@ let F = { unit:'', q:'', role:'member', alert:'', mine:false };
      pick  … 育成・ULとして登録済みの人の一覧から自分を選ぶ
      pass  … 自分のパスワードを入れる
      claim … まだ育成・ULになっていない人が、どちらとして入るかを選び、
-             自分の名前・パスワード・管理者キーを入れて申請する
+             自分の名前・パスワード・管理者キーを入れて権限を付ける
 
    パスワードは本人画面で登録したときに自分で決めたもの。
    共通パスコードではログインできない（それだと共通パスコードを知っている
@@ -368,9 +375,8 @@ function gateHTML(){
 
   if(GATE.mode==='claim'){
     return '<div class="gnote">まだ'+MANAGER_LABEL+'になっていない方はこちらです。'+
-        '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて申請してください。'+
-        'いまいる'+MANAGER_LABEL+'が承認すると、この画面に入れるようになります。'+
-        '（'+MANAGER_LABEL+'がまだ1人もいないあいだは、そのまま入れます）</div>'+
+        '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて入ってください。'+
+        'キーが合っていれば、その場で使えるようになります（承認待ちはありません）。</div>'+
       '<div class="f"><label>どちらとして入りますか</label>'+
         '<div class="seg2" id="cRole" style="display:flex;width:100%">'+ROLES.filter(r=>r.k!=='member').map(r=>
           '<button type="button" data-act="wantRole" data-r="'+r.k+'" style="flex:1;padding:9px 6px;font-size:13px" '+
@@ -383,7 +389,7 @@ function gateHTML(){
         '</div></div>'+
       '<div class="f"><label>パスワード</label><input type="password" id="cPass" autocomplete="current-password" placeholder="本人画面で決めたパスワード"></div>'+
       '<div class="f"><label>管理者キー</label><input type="password" id="cKey" autocomplete="off" placeholder="UL間で共有されているキー"></div>'+
-      '<button class="btn vio" data-act="claim" style="width:100%;padding:12px">'+roleName(GATE.want)+'として申請する</button>'+
+      '<button class="btn vio" data-act="claim" style="width:100%;padding:12px">'+roleName(GATE.want)+'として入る</button>'+
       '<button class="btn ghost" data-act="toPick" style="width:100%;padding:10px;margin-top:8px">戻る</button>';
   }
 
@@ -412,7 +418,7 @@ function paintHits(boxId,managersOnly){
   if(GATE.searching){ box.innerHTML='<p class="tiny muted" style="margin:8px 2px">探しています…</p>'; return; }
   if(!GATE.hits.length){
     box.innerHTML='<p class="tiny muted" style="margin:8px 2px">見つかりませんでした。'+
-      (managersOnly?'まだ'+MANAGER_LABEL+'になっていない場合は、下のボタンから申請してください。'
+      (managersOnly?'まだ'+MANAGER_LABEL+'になっていない場合は、下のボタンから入ってください。'
                    :'先に本人画面（<a href="./">こちら</a>）で登録してください。')+'</p>';
     return;
   }
@@ -468,7 +474,7 @@ async function doClaim(){
   try{
     await Store.signInManager(who, g('cPass'), g('cKey'), GATE.want);
     await boot();
-    toast(roleName(Store.me&&Store.me.member&&Store.me.member.role)+'になりました','xp');
+    toast(roleName(Store.me&&Store.me.member&&Store.me.member.role)+'として入りました','xp');
   }catch(e){ showGate(e.message||String(e)); }
 }
 
@@ -632,14 +638,13 @@ function renderNav(){
   const n=ROWS.filter(r=>r.role==='member').length;
   const alerts=ROWS.filter(r=>r.role==='member'&&(alertsOf(r).indexOf('delay')>=0||alertsOf(r).indexOf('stale')>=0)).length;
   const pend=ROWS.filter(r=>r.role==='member').reduce((a,r)=>a+r.pendingCount,0);
-  const reqs=(A.managerRequests||[]).length;
   document.getElementById('nav').innerHTML=TABS.map(t=>
     '<button data-act="tab" data-tab="'+t.k+'" class="'+(V.tab===t.k?'on':'')+'"'+(V.tab===t.k?' aria-current="page"':'')+'>'+
     '<svg viewBox="0 0 24 24">'+t.i+'</svg><span>'+t.n+'</span>'+
     (t.k==='roster'?'<span class="n">'+n+'</span>':'')+
     (t.k==='dash'&&pend?'<span class="n">'+pend+'</span>':'')+
     (t.k==='promo'&&alerts?'<span class="n">'+alerts+'</span>':'')+
-    (t.k==='settings'&&reqs?'<span class="n">'+reqs+'</span>':'')+'</button>').join('');
+    '</button>').join('');
   const me=Store.me&&Store.me.member;
   document.getElementById('asideFoot').innerHTML=
     '<b>'+esc(me?me.name:'—')+'</b>'+
@@ -769,7 +774,6 @@ function vDash(){
   const pendTotal=pendPeople.reduce((a,r)=>a+r.pendingCount,0);
   const noReply=A.reviews.filter(rv=>rv.submitted_at&&!rv.ul_comment&&BY_ID[rv.member_id]&&
     (!F.unit||BY_ID[rv.member_id].unit===F.unit));
-  const reqs=A.managerRequests||[];
   /* 「自分がやらなきゃいけない分」＝その人のUL欄・メンター欄に自分が入っているもの。
      全員ぶん見えることは変えず、自分の担当だけ数えて横に添える。 */
   const mineOf=l=>l.filter(r=>r.mine).length;
@@ -793,8 +797,6 @@ function vDash(){
   if(noMonthly.length) acts.push({t:'今月の振り返りが未提出',n:noMonthly.length+'人',
     s:periodLabel('monthly',monthlyPeriod())+'ぶん',
     m:mineOf(noMonthly),mu:'人',b:'リマインド文をコピー',act:'remind',v:'monthly'});
-  if(reqs.length) acts.push({t:MANAGER_LABEL+'になりたい人がいます',n:reqs.length+'件',
-    s:'承認するとメンバー全員の状況を見られるようになります',b:'設定で承認する',act:'tab',v:'settings'});
 
   /* 自分の担当ぶんを先に出す。誰の宿題かをはっきりさせるため */
   acts.sort((a,b)=>((b.m||0)>0?1:0)-((a.m||0)>0?1:0));
@@ -953,20 +955,6 @@ function remindText(kind){
   }
   if(!list.length) return null;
   return head+'\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+body+'\n'+APP_URL;
-}
-async function copyText(text,okMsg){
-  try{
-    await navigator.clipboard.writeText(text);
-    toast(okMsg||'コピーしました');
-  }catch(e){
-    /* 権限が無い環境向けの保険 */
-    const ta=document.createElement('textarea');
-    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-    document.body.appendChild(ta); ta.select();
-    try{ document.execCommand('copy'); toast(okMsg||'コピーしました'); }
-    catch(e2){ toast('コピーできませんでした','bad'); }
-    ta.remove();
-  }
 }
 const ALERT_LABEL={pending:['承認待ち','v'],delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],ywt:['YWT未提出','g'],monthly:['月次未提出','g'],atarimae:['アタリマエ✕','c']};
 function alertChip(a){ const x=ALERT_LABEL[a]||[a,'g']; return '<span class="chip '+x[1]+'">'+x[0]+'</span>'; }
@@ -1920,7 +1908,10 @@ function dwProfile(r){
     '<p class="tiny muted" style="margin:0 0 10px">パスワードを忘れた人はここでリセットします。'+
     'チェック・申し送り・テスト結果・振り返りは消えません。'+
     'このあと本人が本人画面で自分の名前を選ぶと、共通パスコードを入れて新しいパスワードを決め直せます。</p>'+
+    (r.m.auth_id==null? '<p class="tiny" style="margin:0 0 10px;color:var(--violet);font-weight:700">'+
+      'いまパスワード未設定です。本人が本人画面で名前を選ぶと決められます。</p>':'')+
     '<button class="btn ghost" data-act="resetLogin" data-id="'+r.id+'">ログインをリセットする</button>'+
+    '<button class="btn ghost" style="margin-left:8px" data-act="copyReset" data-id="'+r.id+'">本人に送る文をコピー</button>'+
     '</div>'+
     /* 本人画面から消せないようにした代わりに、ここに置いてある。
        取り消せない操作なので、名前を打ってもらってから実行する。 */
@@ -1945,6 +1936,17 @@ async function saveProfileFor(id){
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
 /* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す */
+/* リセットしたあと、本人に送る文。管理者ツールと本人画面で言い方をそろえる */
+function resetMessage(id){
+  const r=BY_ID[id];
+  const url=location.origin+location.pathname.replace(/admin\.html$/,'');
+  return (r?r.name+'さん\n':'')+
+    'STEPのログインをリセットしました。パスワードを決め直してください。\n'+
+    '1. '+url+' をひらく\n'+
+    '2. 自分の名前を入れて「パスワードを決める ›」を押す\n'+
+    '3. 共通パスコード（全員おなじもの）と、新しいパスワードを入れる\n'+
+    'これまでの記録（チェック・申し送り・テスト・振り返り）は消えていません。';
+}
 async function resetLoginFor(id){
   const r=BY_ID[id];
   if(!confirm((r?r.name:'この人')+' さんのログインをリセットします。\n\n'+
@@ -1953,7 +1955,20 @@ async function resetLoginFor(id){
   try{
     await Store.resetLogin(id);
     await loadAll(); render(); renderDrawer();
-    toast('リセットしました。本人に「本人画面から名前を選んでパスワードを設定して」と伝えてください','xp');
+    toast('リセットしました。本人に送る文をコピーできます','xp',6000);
+    /* 「で、本人に何て言えばいいの」で止まらないように、その場で文を出す */
+    setTimeout(()=>{
+      const box=document.getElementById('toasts');
+      if(!box) return;
+      const t=document.createElement('div');
+      t.className='toast';
+      t.style.cssText='pointer-events:auto;cursor:pointer;background:var(--violet)';
+      t.textContent='本人に送る文をコピーする';
+      t.onclick=()=>{ document.querySelector('[data-act="copyReset"][data-id="'+id+'"]')
+        ? null : null; copyResetText(id); t.remove(); };
+      box.appendChild(t);
+      setTimeout(()=>t.remove(),12000);
+    },50);
   }catch(e){ toast(e.message||'リセットに失敗しました','bad'); }
 }
 
@@ -1961,30 +1976,35 @@ async function resetLoginFor(id){
    8. 設定
    ============================================================ */
 function vSettings(){
-  const reqs=A.managerRequests||[];
   let h='<h1 class="h1 disp">設定</h1>'+
-    '<p class="lead">アラートの基準と、'+MANAGER_LABEL+'の追加をここで扱います。</p>';
+    '<p class="lead">アラートの基準と、ログインまわりをここで扱います。</p>';
 
-  /* 管理者になりたい人の承認 */
-  h+='<div class="card"><h2>'+MANAGER_LABEL+'の申請 <span class="cnt">'+reqs.length+'件</span></h2>';
-  if(!Store.caps.managerRequests){
-    h+='<p class="tiny muted" style="margin:0">管理者キーを入れた人がその場で'+MANAGER_LABEL+'になる設定のままです。'+
-      '承認制にするには supabase/schema.sql を貼り直してください。</p>';
-  }else if(!reqs.length){
-    h+='<div class="empty">申請はありません。</div>';
-  }else{
-    h+='<p class="tiny muted" style="margin:-4px 0 8px">承認すると、その人はメンバー全員の進捗・申し送りを見られるようになります。'+
-      '心当たりのない申請は承認しないでください。</p>';
-    reqs.forEach(q=>{
-      const r=BY_ID[q.member_id];
-      h+='<div class="act"><div class="act-b"><b>'+(r?esc(r.name):'（不明なメンバー）')+
-        ' <span class="chip s">'+roleName(q.want_role||'ul')+'として</span></b>'+
-        '<span class="tiny muted">'+(r?esc(r.unit):'')+' ・ 申請 '+relDays(q.requested_at)+'</span></div>'+
-        '<button class="btn vio sm" data-act="mreq" data-id="'+q.member_id+'" data-v="1">承認する</button>'+
-        '<button class="btn ghost sm" data-act="mreq" data-id="'+q.member_id+'" data-v="0">却下</button></div>';
-    });
-  }
-  h+='</div>';
+  /* パスワードを忘れた人の再設定。頼まれる頻度が高いので、探さずに済む場所に置く */
+  const unlinked=ROWS.filter(r=>r.m.slug && r.m.auth_id==null);
+  h+='<div class="card"><h2>パスワードを忘れた人の再設定'+
+      (unlinked.length?' <span class="cnt">いま'+unlinked.length+'人が設定待ち</span>':'')+'</h2>'+
+    '<div class="steps3">'+
+      '<div class="stp3"><i>1</i><div><b>ここでリセットする</b>'+
+        '<span>下から名前を選んで押すだけです。チェック・申し送り・テスト・振り返りは消えません。</span></div></div>'+
+      '<div class="stp3"><i>2</i><div><b>本人に伝える</b>'+
+        '<span>「本人画面で自分の名前を選んで、共通パスコードと新しいパスワードを入れて」と伝えます。'+
+        'リセットのあとに出る文をそのままコピーできます。</span></div></div>'+
+      '<div class="stp3"><i>3</i><div><b>本人が決め直す</b>'+
+        '<span>名前の右が「パスワードを決める ›」に変わっているので、そこから設定します。</span></div></div>'+
+    '</div>'+
+    '<div class="f" style="margin-bottom:0"><label>だれのログインをリセットしますか</label>'+
+      '<select id="rsWho"><option value="">選んでください</option>'+
+      ROWS.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja')).map(r=>
+        '<option value="'+r.id+'">'+esc(r.name)+(r.unit?'（'+esc(r.unit)+'）':'')+'</option>').join('')+
+      '</select></div>'+
+    '<button class="btn ghost" style="margin-top:10px" data-act="resetPick">ログインをリセットする</button>'+
+    (unlinked.length? '<p class="tiny muted" style="margin:10px 0 0">いまパスワード待ちの人：'+
+      unlinked.map(r=>esc(r.name)).join('、')+'</p>' : '')+
+    '<p class="tiny muted" style="margin:8px 0 0">'+
+      'メールでの再設定は使っていないので、本人にメールは届きません。'+
+      '共通パスコードだけで決め直せるようにはしていません（それだと、パスコードを知っている人が'+
+      '誰にでもなりすませてしまうため）。</p>'+
+    '</div>';
 
   /* アラートのしきい値 */
   h+='<div class="card"><h2>アラートの基準</h2>'+
@@ -2011,8 +2031,7 @@ function vSettings(){
   h+='<div class="card"><h2>この環境で使える機能</h2><div class="tiny muted">'+
     [['チェックの承認（申請中／承認済み）',caps.approval],
      ['ログイン画面の名前検索',caps.rosterSearch],
-     ['しきい値の共有',caps.settings],
-     [MANAGER_LABEL+'の承認制',caps.managerRequests]]
+     ['しきい値の共有',caps.settings]]
     .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/schema.sql の貼り直しで有効になります）')+'</div>').join('')+
     '</div></div>';
   return h;
@@ -2114,18 +2133,12 @@ document.addEventListener('click',async e=>{
     try{ await loadAll(); render(); toast('最新の状態にしました'); }
     catch(err){ toast(err.message||'更新に失敗しました','bad'); render(); }
   }
-  else if(a==='mreq'){
-    const ok=el.dataset.v==='1';
-    const r=BY_ID[el.dataset.id];
-    const q=(A.managerRequests||[]).find(x=>x.member_id===el.dataset.id);
-    if(ok && !confirm((r?r.name:'この人')+' さんを'+roleName((q&&q.want_role)||'ul')+
-      'にします。メンバー全員の進捗・申し送りが見られるようになります。よろしいですか？')) return;
-    try{
-      await Store.decideManagerRequest(el.dataset.id,ok);
-      await loadAll(); render();
-      toast(ok?'権限をつけました':'却下しました');
-    }catch(err){ toast(err.message||'処理に失敗しました','bad'); }
+  else if(a==='resetPick'){
+    const id=(document.getElementById('rsWho')||{}).value;
+    if(!id){ toast('だれのログインをリセットするか選んでください'); return; }
+    await resetLoginFor(id);
   }
+  else if(a==='copyReset'){ await copyText(resetMessage(el.dataset.id),'コピーしました。本人に送ってください'); }
   else if(a==='saveSettings'){
     const g=x=>(document.getElementById(x)||{}).value;
     const s={ stale_days:Math.max(1,+g('stStale')||14), delay_months:Math.max(0,+g('stDelay')||0) };
@@ -2253,7 +2266,7 @@ async function boot(){
   const s=await Store.restore();
   if(!s || !Store.isManager){
     await loadRoster();
-    showGate(s&&!Store.isManager?'このアカウントには管理者ツールを使う権限がありません。育成かULを選び、管理者キーを入れて申請してください':'');
+    showGate(s&&!Store.isManager?'このアカウントには管理者ツールを使う権限がありません。育成かULを選び、管理者キーを入れてください':'');
     return;
   }
   document.getElementById('gate').style.display='none';
