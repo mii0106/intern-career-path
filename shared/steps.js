@@ -367,7 +367,38 @@ function gPct(checks,gn){ return Math.round(gDone(checks,gn)/gTotal(gn)*100); }
 function gradeOf(id){ return +id.slice(1).split('.')[0]; }
 /* 挑戦中のグレード＝まだ埋まりきっていない最も低いグレード */
 function gCurrentGrade(checks){ for(const g of GRADES){ if(!gIsDone(checks,g.n)) return g.n; } return 10; }
-function gIsLocked(checks,gn){ return gn>gCurrentGrade(checks); }
+/* ロック：ひとつ下のグレードが埋まっていれば開く。
+   加えて「社内で認定されているグレード」以下は最初から開いている。
+   在籍が長い人に、終わったはずの下位グレードを埋め直させないため。 */
+function gIsLocked(checks,gn,certified){
+  if(certified && gn<=+certified) return false;
+  return gn>gCurrentGrade(checks);
+}
+/* 認定グレード以下＝すでに社内で認定されている範囲（画面で印を出すのに使う） */
+function gIsCertified(gn,certified){ return !!(certified && gn<=+certified); }
+
+/* ------------------------------------------------------------
+   チェックの2段階
+     progress の1行は「本人が押した（申請中）」か「ULが承認した」のどちらか。
+     raw は {項目id: {at, approved}} か、旧形式の {項目id: 日時 or true}。
+     旧形式（承認列がまだ無いDB）のときは、すべて承認済みとして扱う。
+   ------------------------------------------------------------ */
+function splitChecks(raw){
+  const all={}, approved={}, pending=[];
+  Object.keys(raw||{}).forEach(k=>{
+    const v=raw[k];
+    if(!v) return;
+    all[k]=true;
+    if(typeof v==='object'){ if(v.approved) approved[k]=true; else pending.push(k); }
+    else approved[k]=true;   /* 旧形式：押した＝達成 */
+  });
+  return {all:all, approved:approved, pending:pending};
+}
+/* 承認待ちの件数（グレードを指定すればそのグレードの分だけ） */
+function gPendingCount(all,approved,gn){
+  const list = gn? ITEMS[gn] : ALL_ITEMS;
+  return list.filter(i=>all[i.id]&&!approved[i.id]).length;
+}
 function gClearedCount(checks){ return GRADES.filter(g=>gIsDone(checks,g.n)).length; }
 function gStage(checks){ return Math.min(gClearedCount(checks)+1,10); }
 function gTotalChecked(checks){ return ALL_ITEMS.filter(i=>checks[i.id]).length; }
@@ -382,6 +413,23 @@ function secStats(checks,gn,si){
 function visStats(checks,gn){
   const its=ITEMS[gn].filter(i=>i.id.split('.')[1]==='v');
   return {t:its.length, d:its.filter(i=>checks[i.id]).length};
+}
+/* ------------------------------------------------------------
+   項目が属するセクション（「スタンス」「タスク管理」など）を引く。
+   グレード全体は長いので、セクションを1つ埋めたところで小さく褒めるのに使う。
+   ------------------------------------------------------------ */
+function sectionKeyOf(id){ const p=String(id).split('.'); return p[0]+'.'+p[1]; }
+function sectionItems(id){ const k=sectionKeyOf(id); return ALL_ITEMS.filter(i=>sectionKeyOf(i.id)===k); }
+function sectionTitleOf(id){
+  const p=String(id).split('.'), gn=+p[0].slice(1);
+  if(p[1]==='v') return 'なりたい姿';
+  const s=GRADES[gn-1].sections[+p[1]];
+  return s? s.title : '';
+}
+/* その項目を入れたことでセクションが埋まりきったか */
+function sectionJustDone(checks,id){
+  const its=sectionItems(id);
+  return its.length>1 && its.every(i=>checks[i.id]);
 }
 function subLabel(title,cat){
   let r=title.slice(cat.length);

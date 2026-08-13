@@ -356,10 +356,61 @@ main{padding:0 16px}
   #toasts{bottom:28px}
 }
 @media (min-width:1400px){ #app{max-width:1340px} }
-/* ---------- tabbar：タブが6つになったので幅を詰める ---------- */
-.tabbar{grid-template-columns:repeat(6,1fr)}
-.tabbar button{font-size:9.5px;gap:2px;padding:0 2px}
-.tabbar svg{width:20px;height:20px}
+/* ---------- tabbar：4つに絞ったので、指で押しやすい大きさに戻す ---------- */
+.tabbar{grid-template-columns:repeat(4,1fr)}
+.tabbar button{font-size:10.5px;gap:3px;padding:0 4px;position:relative}
+.tabbar svg{width:22px;height:22px}
+.tabbadge{position:absolute;top:8px;left:calc(50% + 8px);min-width:16px;height:16px;border-radius:99px;
+  background:var(--coral);color:#fff;font-size:9.5px;line-height:16px;padding:0 4px;font-weight:700}
+
+/* ---------- チェックの2段階（申請中／承認済み） ---------- */
+.box.pend{border-color:var(--amber);background:var(--amber-soft)}
+.box.pend svg{opacity:1;transform:scale(1)}
+.box.pend svg path{stroke:var(--amber)}
+.item.pend .txt{color:var(--ink)}
+.tag-pend{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;color:#B0700A;
+  background:var(--amber-soft);border-radius:99px;padding:1px 7px;vertical-align:1px}
+.stamp{display:block;margin-top:3px;font-size:10.5px;color:var(--mint)}
+.pendline{margin-top:10px;font-size:11.5px;line-height:1.6;color:#B0700A;background:var(--amber-soft);
+  border-radius:12px;padding:8px 11px}
+.bar{position:relative}
+.bar > i.bar-pend{position:absolute;top:0;height:100%;opacity:.28}
+
+/* ---------- 今週やること・ピン留め ---------- */
+.item-row,.next-row{display:flex;align-items:flex-start;gap:2px;border-top:1px solid var(--line)}
+.item-row:first-of-type,.next-row:first-of-type{border-top:0}
+.item-row > .item,.next-row > .next-item{border-top:0;flex:1;min-width:0}
+.item-row.sub{padding-left:30px}
+.pinbtn{flex:0 0 auto;width:34px;align-self:center;font-size:14px;opacity:.28;filter:grayscale(1);
+  padding:8px 0;border-radius:10px;transition:.15s}
+.pinbtn.on{opacity:1;filter:none}
+.pinbtn:hover{opacity:.7}
+.alertcard{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;background:var(--violet);
+  color:#fff;border-radius:16px;padding:13px 15px;margin-bottom:14px;box-shadow:var(--shadow)}
+.alertcard b{font-size:13.5px}
+.alertcard .tiny{opacity:.85}
+.badge{display:inline-block;margin-left:6px;min-width:16px;height:16px;border-radius:99px;background:var(--coral);
+  color:#fff;font-size:9.5px;line-height:16px;text-align:center;padding:0 4px;letter-spacing:0}
+
+/* ---------- 保存できなかったとき／オフライン ---------- */
+#failbar{position:fixed;left:0;right:0;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));z-index:70;display:none;padding:0 10px 10px}
+#failbar.on{display:block}
+.fb-in{max-width:460px;margin:0 auto;background:var(--ink);color:#fff;border-radius:14px;padding:11px 12px;
+  display:flex;align-items:center;gap:10px;box-shadow:0 12px 28px -10px rgba(24,18,64,.6)}
+.fb-msg{flex:1;min-width:0;font-size:12.5px;line-height:1.5}
+.fb-detail{display:block;font-size:10.5px;opacity:.7;margin-top:2px}
+.fb-btn{flex:0 0 auto;background:#fff;color:var(--ink);font-weight:700;font-size:12px;padding:7px 11px;border-radius:10px}
+.fb-x{flex:0 0 auto;color:#fff;opacity:.6;font-size:14px;padding:4px}
+.offbar{background:var(--amber-soft);color:#8A5606;border-radius:12px;padding:9px 12px;font-size:11.5px;margin-bottom:12px}
+
+/* ---------- ずかん（相棒を押すと開く） ---------- */
+.buddy-btn{display:block;padding:0;background:none;width:100%}
+#dex{position:fixed;inset:0;z-index:75;display:none;padding:18px;overflow-y:auto;background:rgba(19,14,52,.7);
+  backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+#dex.on{display:block}
+.dex-card{position:relative;max-width:460px;margin:24px auto;background:var(--base);border-radius:24px;padding:16px 16px 22px}
+.dex-close{position:absolute;top:10px;right:12px;width:32px;height:32px;border-radius:50%;background:#fff;
+  color:var(--ink2);display:grid;place-items:center;z-index:2}
 
 /* ---------- ログイン ---------- */
 #gate{min-height:100vh;display:none;place-items:center;padding:22px}
@@ -439,8 +490,9 @@ main{padding:0 16px}
   <main id="view"></main>
   <nav class="tabbar" id="tabbar"></nav>
 </div>
-<input type="file" id="importFile" accept="application/json" style="display:none">
-<div id="toasts"></div>
+<div id="toasts" role="status" aria-live="polite"></div>
+<div id="failbar"></div>
+<div id="dex"></div>
 <div id="evo"></div>
 <script src="shared/config.js"></script>
 <script src="shared/steps.js"></script>
@@ -457,21 +509,49 @@ const DEFAULT={
   profile:{name:'',join:'',grade:'',unit:'',ul:'',mentor:''}, buddy:'', sound:true,
   goals:{basic:'',skill:''},
   creed:[{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0},{t:'',s:0}],
-  atarimae:{}, checks:{}, custom:{}, log:[], seen:[]
+  atarimae:{}, checks:{}, appr:{}, meta:{}, custom:{}, log:[], seen:[]
 };
 let D=JSON.parse(JSON.stringify(DEFAULT));
 let view='home', openG=null, ready=false, profileDirty=false;
+let stepSeg='grades';       /* ステップタブの中身：grades（一覧）／map（横並び） */
+let sheetSeg='sheet';       /* マイシートタブの中身：sheet（記入）／settings（設定） */
+let dexOpen=false;          /* ずかんは相棒を押したときだけ開く */
+let failedSave=null;        /* 保存できなかった操作。下部のバーからやり直せる */
 /* 記録タブ */
 let ROSTER=[];   /* 既存のUnit・UL・メンターを選択肢に出すために使う */
 let LOG={ seg:'notes', rkind:'ywt', notes:[], scores:[], reviews:[], loaded:false,
           ywtPeriod:ywtPeriod(), monthPeriod:monthlyPeriod(), draft:{}, saving:false };
+
+/* ------------------------------------------------------------
+   custom（自由入力のかたまり）に相乗りしている設定
+     __pins    … ホームに出す「今週やること」の項目ID
+     __read    … 共有事項・ULコメントをどこまで読んだか
+     __concern … アタリマエで気になっていること（本人の申告）
+   ------------------------------------------------------------ */
+function pins(){ const p=D.custom.__pins; return Array.isArray(p)?p:[]; }
+function setPins(list){ D.custom.__pins=list.slice(0,3); save(); }
+function isPinned(id){ return pins().indexOf(id)>=0; }
+function readMark(){ return Object.assign({notes:0,reviews:0},D.custom.__read||{}); }
+function markRead(kind){
+  const r=readMark(); r[kind]=Date.now();
+  D.custom.__read=r; save();
+}
+function concern(){ return D.custom.__concern||''; }
+
+/* 承認まわり。サーバーが対応していない環境では「押した＝達成」のまま */
+function approvalOn(){ return !!(Store.caps&&Store.caps.approval); }
+function isApproved(id){ return !!D.appr[id]; }
+function isPending(id){ return !!D.checks[id] && !D.appr[id]; }
+function pendingIds(gn){ return ITEMS[gn].filter(i=>isPending(i.id)).map(i=>i.id); }
 
 async function load(){
   const d=await Store.myData();
   D=JSON.parse(JSON.stringify(DEFAULT));
   D.profile={ name:d.member.name||'', join:d.member.join_date||'', grade:d.member.certified_grade||'',
               unit:d.member.unit||'', ul:d.member.ul||'', mentor:d.member.mentor||'' };
-  Object.keys(d.checks).forEach(k=>{ if(d.checks[k]) D.checks[k]=true; });
+  const sp=splitChecks(d.checks);
+  D.checks=sp.all; D.appr=sp.approved;
+  Object.keys(d.checks).forEach(k=>{ const v=d.checks[k]; if(v&&typeof v==='object') D.meta[k]=v; });
   const s=d.state||{};
   D.buddy=s.buddy||'';
   D.goals=Object.assign({basic:'',skill:''},s.goals||{});
@@ -481,46 +561,92 @@ async function load(){
   ready=true;
 }
 
-let saveT=null;
+let saveT=null, pendingSave=false;
 /* 入力は少し待ってからまとめて保存する（打っている途中で毎回通信しない） */
 function save(){
+  pendingSave=true;
   clearTimeout(saveT);
-  saveT=setTimeout(async()=>{
-    try{
-      await Store.saveState({ buddy:D.buddy, goals:D.goals, creed:D.creed,
-        atarimae:D.atarimae, custom:D.custom, seen:D.seen, sound:D.sound });
-      if(profileDirty){
-        await Store.saveProfile({ name:D.profile.name, join_date:D.profile.join||null,
-          certified_grade:D.profile.grade?+D.profile.grade:null,
-          unit:D.profile.unit||null, ul:D.profile.ul||null, mentor:D.profile.mentor||null });
-        profileDirty=false;
-      }
-      flash('ok');
-    }catch(e){ flash('err',e.message); }
-  },450);
+  saveT=setTimeout(()=>{ runSave(); },450);
+}
+async function runSave(){
+  try{
+    await Store.saveState({ buddy:D.buddy, goals:D.goals, creed:D.creed,
+      atarimae:D.atarimae, custom:D.custom, seen:D.seen, sound:D.sound });
+    if(profileDirty){
+      await Store.saveProfile({ name:D.profile.name, join_date:D.profile.join||null,
+        certified_grade:D.profile.grade?+D.profile.grade:null,
+        unit:D.profile.unit||null, ul:D.profile.ul||null, mentor:D.profile.mentor||null });
+      profileDirty=false;
+    }
+    pendingSave=false;
+    clearFail();
+    flash('ok');
+  }catch(e){
+    pendingSave=false;
+    showFail('入力内容を保存できませんでした',()=>runSave(),e.message);
+  }
 }
 function flash(kind,msg){
   const el=document.getElementById('saved');
-  if(kind==='err'){ el.textContent=msg||'保存できませんでした'; el.style.color='var(--coral)'; el.classList.add('on');
-    setTimeout(()=>el.classList.remove('on'),3000); return; }
+  if(kind==='err'){ showFail(msg||'保存できませんでした',null); return; }
   el.style.color='';
-  el.textContent = '保存しました';
+  el.textContent='保存しました';
   el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),1200);
+}
+/* ------------------------------------------------------------
+   保存できなかったときは、消えるトーストではなく画面下に残す。
+   電車の中などで気づかないまま閉じてしまうのを防ぐ。
+   ------------------------------------------------------------ */
+function showFail(msg,retry,detail){
+  failedSave={msg:msg,retry:retry,detail:detail};
+  const bar=document.getElementById('failbar');
+  bar.innerHTML='<div class="fb-in"><span class="fb-msg"><b>'+esc(msg)+'</b>'+
+    (detail?'<span class="fb-detail">'+esc(detail)+'</span>':'')+'</span>'+
+    (retry?'<button class="fb-btn" data-act="retrySave">もう一度保存</button>':'')+
+    '<button class="fb-x" data-act="closeFail" aria-label="閉じる">✕</button></div>';
+  bar.classList.add('on');
+}
+function clearFail(){
+  failedSave=null;
+  const bar=document.getElementById('failbar');
+  if(bar){ bar.classList.remove('on'); bar.innerHTML=''; }
+}
+/* 未保存のまま閉じようとしたら止める */
+window.addEventListener('beforeunload',e=>{
+  if(pendingSave||failedSave){ e.preventDefault(); e.returnValue=''; }
+});
+/* オフラインで押したチェックが残っているあいだは、そのことを出しておく */
+function offlineNote(){
+  const n=Store.queued||0;
+  if(!n) return '';
+  return '<div class="offbar">オフラインのため未送信のチェックが '+n+' 件あります。電波が戻ると自動で送ります。</div>';
 }
 
 /* ============================================================
    MODEL HELPERS
    計算式は shared/steps.js にひとつだけ置いて、管理者画面と共通にしている。
    ============================================================ */
-function done(g){return gDone(D.checks,g);}
+/* 進捗は「承認済み」で数える。押しただけの項目（申請中）は別に出す。
+   サーバーが承認に対応していない環境では、押した時点で承認済み扱いになる。 */
+function done(g){return gDone(D.appr,g);}
 function total(g){return gTotal(g);}
-function isDone(g){return gIsDone(D.checks,g);}
-function isLocked(n){return gIsLocked(D.checks,n);}
-function currentGrade(){return gCurrentGrade(D.checks);}
-function stage(){return gStage(D.checks);}
-function totalChecked(){return gTotalChecked(D.checks);}
+function isDone(g){return gIsDone(D.appr,g);}
+function isLocked(n){return gIsLocked(D.appr,n,D.profile.grade);}
+function isCertified(n){return gIsCertified(n,D.profile.grade);}
+function currentGrade(){return gCurrentGrade(D.appr);}
+function stage(){return gStage(D.appr);}
+function totalChecked(){return gTotalChecked(D.appr);}
 function totalItems(){return TOTAL_ITEMS;}
 function weekCount(){const wk=Date.now()-6048e5;return D.log.filter(t=>t>wk).length;}
+/* 未読の共有事項・ULコメントの件数 */
+function unreadNotes(){
+  const r=readMark();
+  return (LOG.notes||[]).filter(n=>new Date(n.created_at||n.occurred_on).getTime()>r.notes).length;
+}
+function unreadComments(){
+  const r=readMark();
+  return (LOG.reviews||[]).filter(v=>v.ul_comment&&new Date(v.updated_at||0).getTime()>r.reviews).length;
+}
 
 /* ============================================================
    SOUND
@@ -580,39 +706,56 @@ function dl(id,items){ return '<datalist id="'+id+'">'+items.map(v=>'<option val
 function vHome(){
   const cg=currentGrade(), g=GRADES[cg-1], t=tierOf(cg);
   const dn=done(cg), tt=total(cg), pct=Math.round(dn/tt*100);
+  const pend=gPendingCount(D.checks,D.appr,cg);
+  const pendPct=Math.round((dn+pend)/tt*100);
   const st=stage(), sg=STAGES[st-1];
   const rest=tt-dn;
   const nm=D.profile.name?esc(D.profile.name)+' さん':'名前を登録しよう';
-  const nexts=ITEMS[cg].filter(i=>!D.checks[i.id]).slice(0,3);
 
-  let h='<div class="home-grid"><div class="hg-l"><section class="hero">'+
+  let h=offlineNote()+'<div class="home-grid"><div class="hg-l"><section class="hero">'+
    '<div class="hero-top"><div>'+
      '<div class="hero-grade">GRADE '+cg+' ／ '+t.name+'（'+g.period+'）</div>'+
      '<div class="hero-title disp">'+(D.buddy?esc(D.buddy):'なまえ未設定')+'</div>'+
      '<div class="hero-name">'+nm+(D.buddy?'':' ・ <button data-act="tab" data-tab="sheet" style="color:var(--violet);font-weight:700;font-size:12px">名前をつける</button>')+'</div>'+
    '</div><div style="text-align:right"><div class="pct" style="color:'+t.hex+'">'+pct+'<small>%</small></div></div></div>'+
-   '<div class="capsule-wrap">'+porthole(st,pct,t.hex)+'</div>'+
-   '<div class="bar"><i style="width:'+pct+'%;background:linear-gradient(90deg,#C9202B,'+t.hex+')"></i></div>'+
+   '<div class="capsule-wrap"><button class="buddy-btn" data-act="openDex" aria-label="進化ずかんをひらく">'+porthole(st,pct,t.hex)+'</button></div>'+
+   '<div class="bar"><i class="bar-appr" style="width:'+pct+'%;background:linear-gradient(90deg,#C9202B,'+t.hex+')"></i>'+
+     (pend?'<i class="bar-pend" style="left:'+pct+'%;width:'+(pendPct-pct)+'%;background:'+t.hex+'"></i>':'')+'</div>'+
    '<div class="hero-foot"><span class="muted">'+dn+' / '+tt+' 項目 ・ 第'+st+'形態「'+sg.t+'」</span>'+
      '<b style="color:'+t.hex+'">'+(rest===0?'昇格条件クリア！':'あと '+rest+' 項目で進化')+'</b></div>'+
+   (approvalOn()&&pend?'<div class="pendline">ULの承認待ちが '+pend+' 件あります。定例で確認してもらいましょう。</div>':'')+
    '</section>';
 
   h+='<div class="stats">'+
-    '<div class="stat"><b style="color:var(--violet)">Lv.'+(Math.floor(totalChecked()/5)+1)+'</b><span>レベル</span></div>'+
-    '<div class="stat"><b>'+totalChecked()+'</b><span>達成した項目</span></div>'+
+    '<div class="stat"><b>'+totalChecked()+'</b><span>承認された項目</span></div>'+
+    (approvalOn()
+      ? '<div class="stat"><b style="color:var(--amber)">'+gPendingCount(D.checks,D.appr)+'</b><span>承認待ち</span></div>'
+      : '<div class="stat"><b>'+GRADES.filter(x=>isDone(x.n)).length+'</b><span>達成グレード</span></div>')+
     '<div class="stat"><b style="color:var(--mint)">+'+weekCount()+'</b><span>今週の達成</span></div>'+
   '</div>';
 
   h+='</div><div class="hg-r">';
-  h+='<div class="sec-label">つぎの一歩</div><div class="card">';
-  if(nexts.length===0){
+
+  /* ULからのコメントは、届いたことが分かるように最上部へ */
+  const uc=unreadComments();
+  if(uc){
+    h+='<button class="alertcard" data-act="toComments">'+
+      '<b>ULからコメントが届いています（'+uc+'件）</b>'+
+      '<span class="tiny">記録タブの振り返りで読めます →</span></button>';
+  }
+
+  /* 今週やること。面談で決めた3件をピン留めして、ここに固定する */
+  const pinIds=pins().filter(id=>ITEM_BY_ID[id]&&!D.checks[id]);
+  const auto=ITEMS[cg].filter(i=>!D.checks[i.id]).slice(0,3);
+  const list=pinIds.length? pinIds.map(id=>ITEM_BY_ID[id]) : auto;
+  h+='<div class="sec-label">今週やること'+(pinIds.length?'':'<span class="muted" style="letter-spacing:0;font-weight:400"> ※おすすめ</span>')+'</div><div class="card">';
+  if(!ITEMS[cg].some(i=>!D.checks[i.id])){
     h+='<div style="text-align:center;padding:10px 0"><b style="font-size:15px">Grade '+cg+' はコンプリート！</b>'+
        '<p class="tiny muted" style="margin:6px 0 0">メンターとの定例で昇格を相談しよう。</p></div>';
   }else{
-    nexts.forEach(i=>{
-      h+='<button class="next-item" data-act="toggle" data-id="'+i.id+'"><span class="box">'+CHECK+'</span>'+
-         '<span class="txt"><span class="cat">'+esc(i.cat)+'</span>'+esc(i.t)+'</span></button>';
-    });
+    list.forEach(i=>{ h+=nextItemHTML(i); });
+    if(!pinIds.length) h+='<p class="tiny muted" style="margin:8px 2px 0">'+
+      'ステップの項目の右にある📌を押すと、定例で決めた3件をここに固定できます。</p>';
     h+='<button class="next-item" data-act="openGrade" data-g="'+cg+'" style="border-top:1px solid var(--line);color:var(--violet);font-weight:700;font-size:13px;justify-content:center;padding-top:14px">Grade '+cg+' の項目をすべて見る →</button>';
   }
   h+='</div>';
@@ -620,7 +763,8 @@ function vHome(){
   /* ULやメンターからの共有事項。あれば新しいものを2件だけ出す */
   const sn=(LOG.notes||[]).slice(0,2);
   if(sn.length){
-    h+='<div class="sec-label">ULからの共有</div><div class="card">';
+    const un=unreadNotes();
+    h+='<div class="sec-label">ULからの共有'+(un?'<span class="badge">'+un+'</span>':'')+'</div><div class="card">';
     sn.forEach(n=>{
       const k=NOTE_KIND[n.kind]||NOTE_KIND.memo;
       h+='<div class="nt"><div class="top"><b style="font-size:12.5px">'+fmtDateFull(n.occurred_on)+'</b>'+
@@ -638,35 +782,64 @@ function vHome(){
    '</div></div></div>';
   return h;
 }
+/* 「今週やること」の1行。チェックとピン留めの解除ができる */
+function nextItemHTML(i){
+  const on=!!D.checks[i.id], ap=isApproved(i.id);
+  return '<div class="next-row">'+
+    '<button class="next-item" data-act="toggle" data-id="'+i.id+'" role="checkbox" aria-checked="'+(on?'true':'false')+'">'+
+      '<span class="box'+(ap?' on':(on?' pend':''))+'">'+CHECK+'</span>'+
+      '<span class="txt"><span class="cat">'+esc(i.cat)+(on&&!ap?' ・ 承認待ち':'')+'</span>'+esc(i.t)+'</span></button>'+
+    '<button class="pinbtn'+(isPinned(i.id)?' on':'')+'" data-act="pin" data-id="'+i.id+'" '+
+      'aria-pressed="'+(isPinned(i.id)?'true':'false')+'" aria-label="今週やることに固定">📌</button>'+
+  '</div>';
+}
 
 function vGrades(){
-  let h='<div class="sec-label">キャリアステップ</div>'+
-   '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。チェックボックスがすべて埋まったら昇格を検討します。</div>'+
+  let h=stepHead()+
+   '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
+   (approvalOn()?'押したチェックは「申請中」になり、ULが承認すると達成として数えます。':'チェックボックスがすべて埋まったら昇格を検討します。')+
+   '</div>'+
    '<div class="glist">';
   const cg=currentGrade();
   GRADES.forEach(g=>{
     const t=tierOf(g.n), dn=done(g.n), tt=total(g.n), pct=Math.round(dn/tt*100);
-    const dd=dn===tt, lk=isLocked(g.n);
+    const dd=dn===tt, lk=isLocked(g.n), ct=isCertified(g.n);
+    const pend=gPendingCount(D.checks,D.appr,g.n);
     h+='<button class="gcard'+(dd?' done':'')+(lk?' lk':'')+'" data-act="openGrade" data-g="'+g.n+'">'+
       ring(pct,dd?'#17B98A':(lk?'#C9C5DE':t.hex),dd?'✓':pct)+
       '<span style="flex:1">'+
         '<span class="gnum" style="color:'+(lk?'#A5A0C0':t.hex)+'">GRADE '+g.n+(lk?' 🔒':'')+'</span>'+
+        (ct?'<span class="pill s" style="margin-left:6px">認定済み</span>':'')+
         '<div class="gtitle">'+t.name+'<span class="muted" style="font-weight:400;font-size:12px">（'+g.period+'）</span></div>'+
-        '<div class="gmeta">'+(lk?'Grade '+(g.n-1)+' を埋めると開く':dn+' / '+tt+' 項目'+(g.n===cg?' ・ 挑戦中':''))+'</div>'+
+        '<div class="gmeta">'+(lk?'Grade '+(g.n-1)+' を埋めると開く':
+          dn+' / '+tt+' 項目'+(pend?' ・ 承認待ち'+pend:'')+(g.n===cg?' ・ 挑戦中':''))+'</div>'+
       '</span>'+
       '<span style="color:var(--ink3);font-size:18px">›</span></button>';
   });
   return h+'</div>';
 }
+/* ステップタブの見出し。一覧と横並びマップを切り替える */
+function stepHead(){
+  return '<div class="sec-label">キャリアステップ</div>'+
+    '<div class="segs">'+
+      [['grades','グレード一覧'],['map','ステップ一覧']].map(x=>
+        '<button data-act="stepSeg" data-s="'+x[0]+'" class="'+(stepSeg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+
+    '</div>';
+}
 
 function vDetail(n){
   const g=GRADES[n-1], t=tierOf(n), dn=done(n), tt=total(n), pct=Math.round(dn/tt*100), lk=isLocked(n);
+  const pend=gPendingCount(D.checks,D.appr,n);
   let h='<div class="dhead"><button class="back" data-act="back">‹ グレード一覧</button>'+
     '<div class="gnum" style="color:'+t.hex+'">GRADE '+n+' ／ '+g.period+'</div>'+
     '<div class="dtitle disp">'+t.name+'</div>'+
     '<div class="bar"><i style="width:'+pct+'%;background:'+t.hex+'"></i></div>'+
-    '<div class="hero-foot"><span class="tiny muted">'+dn+' / '+tt+' 項目</span><b class="tiny" style="color:'+t.hex+'">'+pct+'%</b></div></div>';
+    '<div class="hero-foot"><span class="tiny muted">'+dn+' / '+tt+' 項目'+(pend?' ・ 承認待ち '+pend:'')+'</span>'+
+    '<b class="tiny" style="color:'+t.hex+'">'+pct+'%</b></div></div>';
 
+  if(isCertified(n)&&n<currentGrade())
+    h+='<div class="note" style="background:var(--sky-soft)">このグレードは社内で認定済みです。'+
+       'チェックは埋め直さなくても構いません（記録として残したい場合だけ入れてください）。</div>';
   if(lk) h+='<div class="note lockbox">Grade '+(n-1)+' がすべて埋まると、ここにチェックを入れられます。内容の確認は先にできます。</div>';
   if(g.note) h+='<div class="note">'+esc(g.note)+'</div>';
 
@@ -694,32 +867,53 @@ function vDetail(n){
   h+='</div>';
   return h;
 }
+/* 承認した人の名前（名簿から引く。取れないときは出さない） */
+function approverName(id){
+  const m=D.meta[id];
+  if(!m||!m.approvedBy) return '';
+  const who=ROSTER.find(x=>String(x.id)===String(m.approvedBy));
+  return who? who.name : '';
+}
 function itemHTML(id,txt,link,sub,lk){
-  const on=!!D.checks[id];
-  return '<button class="item'+(on?' on':'')+(sub?' sub':'')+(lk&&!on?' lk':'')+'" data-act="toggle" data-id="'+id+'">'+
-    '<span class="box'+(on?' on':'')+'">'+(lk&&!on?LOCK:CHECK)+'</span>'+
-    '<span class="txt">'+esc(txt)+(link?'<br><a href="'+link+'" target="_blank" rel="noopener" class="tiny">クイズを開く →</a>':'')+'</span></button>';
+  const on=!!D.checks[id], ap=isApproved(id), pend=on&&!ap;
+  const who=ap?approverName(id):'';
+  const stamp = ap&&D.meta[id]&&D.meta[id].approvedAt
+    ? '<span class="stamp">'+fmtDate(D.meta[id].approvedAt)+(who?' '+esc(who)+' が承認':' 承認済み')+'</span>' : '';
+  return '<div class="item-row'+(sub?' sub':'')+'">'+
+    '<button class="item'+(ap?' on':'')+(pend?' pend':'')+(lk&&!on?' lk':'')+'" data-act="toggle" data-id="'+id+'"'+
+      ' role="checkbox" aria-checked="'+(ap?'true':(pend?'mixed':'false'))+'">'+
+      '<span class="box'+(ap?' on':'')+(pend?' pend':'')+'">'+(lk&&!on?LOCK:CHECK)+'</span>'+
+      '<span class="txt">'+esc(txt)+
+        (pend&&approvalOn()?'<span class="tag-pend">承認待ち</span>':'')+stamp+
+        (link?'<br><a href="'+link+'" target="_blank" rel="noopener" class="tiny">クイズを開く →</a>':'')+
+      '</span></button>'+
+    (on?'':'<button class="pinbtn'+(isPinned(id)?' on':'')+'" data-act="pin" data-id="'+id+'"'+
+      ' aria-pressed="'+(isPinned(id)?'true':'false')+'" aria-label="今週やることに固定">📌</button>')+
+  '</div>';
 }
 function customHTML(id,label,lk){
-  const on=!!D.checks[id];
+  const on=!!D.checks[id], ap=isApproved(id);
   return '<div style="padding:11px 0;border-top:1px solid var(--line)">'+
-   '<div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:6px">'+esc(label)+'</div>'+
+   '<div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:6px">'+esc(label)+
+     (on&&!ap&&approvalOn()?'<span class="tag-pend">承認待ち</span>':'')+'</div>'+
    '<div style="display:flex;gap:10px;align-items:center">'+
-   '<button class="box'+(on?' on':'')+(lk&&!on?' lkbox':'')+'" data-act="toggle" data-id="'+id+'" aria-label="達成">'+(lk&&!on?LOCK:CHECK)+'</button>'+
+   '<button class="box'+(ap?' on':'')+(on&&!ap?' pend':'')+(lk&&!on?' lkbox':'')+'" data-act="toggle" data-id="'+id+'"'+
+     ' role="checkbox" aria-checked="'+(ap?'true':(on?'mixed':'false'))+'" aria-label="達成">'+(lk&&!on?LOCK:CHECK)+'</button>'+
    '<input type="text" data-custom="'+id+'" value="'+esc(D.custom[id]||'')+'" placeholder="面談ですり合わせた内容を入力" style="flex:1;border:1.5px solid var(--line);background:#FBFAFF;border-radius:10px;padding:9px 11px;font-size:13.5px">'+
    '</div></div>';
 }
 
+/* マイシートは「面談で見せる記入欄」と「アプリの設定」を分ける。
+   毎回スクロールして目的の欄を探さなくていいように。 */
 function vSheet(){
-  const st=stage();
-  let h='<div class="sheetwrap"><div class="sec-label">相棒</div>'+
-   '<div class="card" style="display:flex;gap:14px;align-items:center">'+
-     '<div class="pod" style="width:84px;height:84px;flex:0 0 auto;margin:0">'+creature(st,74,'')+'</div>'+
-     '<div style="flex:1"><div class="field" style="margin:0"><label>相棒の名前（自分で決める・進化しても変わりません）</label>'+
-     '<input type="text" data-field="buddy" value="'+esc(D.buddy)+'" placeholder="例：コスモ"></div>'+
-     '<div class="tiny muted" style="margin-top:6px">いま 第'+st+'形態「'+STAGES[st-1].t+'」</div></div>'+
-   '</div>';
-  h+='<div class="sec-label">マイシート</div>';
+  let h='<div class="sheetwrap"><div class="segs">'+
+    [['sheet','マイシート'],['settings','設定']].map(x=>
+      '<button data-act="sheetSeg" data-s="'+x[0]+'" class="'+(sheetSeg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+
+    '</div>';
+  return h+(sheetSeg==='settings'? vSettings() : vMySheet())+'</div>';
+}
+function vMySheet(){
+  let h='<div class="sec-label">マイシート</div>';
   h+='<div class="card">'+
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
    '<div class="field"><label>所属Unit</label><input type="text" data-field="profile.unit" list="dlUnit" value="'+esc(D.profile.unit)+'" placeholder="例：Unit A">'+dl('dlUnit',rosterUnits())+'</div>'+
@@ -744,45 +938,58 @@ function vSheet(){
   });
   h+='</div>';
 
-  h+='<div class="sec-label">アタリマエ評価<span class="muted" style="letter-spacing:0;font-weight:400"> ※自己申告</span></div><div class="card">';
+  /* アタリマエは、○✕の判定をULが入れる。
+     本人が自己申告すると「正直に✕を付けるほど不利」になり、全員○になってしまうため。
+     本人側は「気になっていること」を書く欄にしている。 */
+  h+='<div class="sec-label">アタリマエ<span class="muted" style="letter-spacing:0;font-weight:400"> ※判定はUL・メンターが入れます</span></div><div class="card">';
   ATARIMAE.forEach(a=>{
     const v=D.atarimae[a.k];
-    h+='<div class="atari"><div class="h"><b>'+a.n+'</b><span class="seg">'+
-      '<button class="ok'+(v==='ok'?' on':'')+'" data-act="atari" data-k="'+a.k+'" data-v="ok">○</button>'+
-      '<button class="ng'+(v==='ng'?' on':'')+'" data-act="atari" data-k="'+a.k+'" data-v="ng">✕</button></span></div>'+
-      '<p>'+esc(a.d)+'</p></div>';
+    h+='<div class="atari"><div class="h"><b>'+a.n+'</b>'+
+      (v==='ok'?'<span class="pill m">○</span>':v==='ng'?'<span class="pill c">✕</span>':'<span class="pill g">未評価</span>')+
+      '</div><p>'+esc(a.d)+'</p></div>';
   });
+  h+='<div class="field" style="margin:12px 0 0"><label>気になっていること（任意・ULに伝わります）</label>'+
+    '<textarea data-field="custom.__concern" placeholder="例：今月は遅刻が1回あった。シフトの組み方を相談したい">'+esc(concern())+'</textarea></div>';
   h+='</div>';
 
   h+='<div class="note" style="background:var(--coral-soft)">※ 4ヶ月スターターから上がれない場合は、アカウント運用ができなくなります。<br>※ プレイヤーに上がった後でも、アタリマエが著しく伴わない場合は降格します。</div>';
+  return h;
+}
+
+/* ---------- 設定（めったに触らないもの） ---------- */
+function vSettings(){
+  const st=stage();
+  let h='<div class="sec-label">相棒</div>'+
+   '<div class="card" style="display:flex;gap:14px;align-items:center">'+
+     '<div class="pod" style="width:84px;height:84px;flex:0 0 auto;margin:0">'+creature(st,74,'')+'</div>'+
+     '<div style="flex:1"><div class="field" style="margin:0"><label>相棒の名前（自分で決める・進化しても変わりません）</label>'+
+     '<input type="text" data-field="buddy" value="'+esc(D.buddy)+'" placeholder="例：コスモ"></div>'+
+     '<div class="tiny muted" style="margin-top:6px">いま 第'+st+'形態「'+STAGES[st-1].t+'」</div></div>'+
+   '</div>';
   h+='<div class="sec-label">効果音</div><div class="card">'+
    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
      '<div><b style="font-size:13.5px">昇格の演出とチェック音</b>'+
      '<p class="tiny muted" style="margin:4px 0 0">まわりに人がいるときはオフにできます。</p></div>'+
-     '<span class="seg"><button class="ok'+(D.sound?' on':'')+'" data-act="sfx">ON</button>'+
-     '<button class="ng'+(D.sound?'':' on')+'" data-act="sfx">OFF</button></span>'+
+     '<span class="seg"><button class="ok'+(D.sound?' on':'')+'" data-act="sfx" aria-pressed="'+(D.sound?'true':'false')+'">ON</button>'+
+     '<button class="ng'+(D.sound?'':' on')+'" data-act="sfx" aria-pressed="'+(D.sound?'false':'true')+'">OFF</button></span>'+
    '</div></div>';
   if(!Store.isManager){
     h+='<div class="sec-label">管理者の方へ</div><div class="card">'+
-     '<p class="tiny muted" style="margin:0 0 10px">UL・メンターの方は、管理者キーを入れると'+
-     'メンバー全員の状況を見られる管理画面が使えるようになります。キーはUL間で共有されているものです。</p>'+
+     '<p class="tiny muted" style="margin:0 0 10px">UL・メンターの方は、管理者キーを入れて申請してください。'+
+     'いまいる管理者が承認すると、メンバー全員の状況を見られる管理画面が使えるようになります。'+
+     '（管理者がまだ1人もいないあいだは、そのまま管理者になります）</p>'+
      '<div class="field" style="margin-bottom:8px"><input type="password" id="adminKey" placeholder="管理者キー"></div>'+
-     '<button class="savebtn" data-act="claimManager">管理者になる</button></div>';
-  }
-  if(Store.isManager){
+     '<button class="savebtn" data-act="claimManager">管理者になることを申請する</button></div>';
+  }else{
     h+='<div class="sec-label">管理画面</div><div class="card">'+
      '<p class="tiny muted" style="margin:0 0 10px">あなたは管理者（'+(Store.me.member.role==='admin'?'admin':'UL')+'）です。</p>'+
      '<a class="savebtn" href="admin.html" style="display:block;text-align:center;text-decoration:none">管理画面をひらく →</a></div>';
   }
   h+='<div class="sec-label">ログイン</div><div class="card">'+
    '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
-   '共有された申し送りや面談メモは「記録」タブから見られます。</p>'+
-   '<div style="display:flex;gap:8px;margin-bottom:10px">'+
-     '<button data-act="export" style="flex:1;padding:12px;border-radius:12px;background:#fff;border:1.5px solid var(--line);font-weight:700;font-size:13px">記録を書き出す</button>'+
-     '<button data-act="import" style="flex:1;padding:12px;border-radius:12px;background:#fff;border:1.5px solid var(--line);font-weight:700;font-size:13px">ファイルから読み込む</button>'+
-   '</div>'+
+   'チェックを消したいときや、記録の控えが必要なときはULに相談してください。</p>'+
    '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
-  h+='<button class="danger" data-act="reset">入力内容をすべて消去する</button><div style="height:8px"></div></div>';
+  h+='<div style="height:8px"></div>';
   return h;
 }
 
@@ -811,8 +1018,7 @@ function roadmap(showBuddy){
 
 function vMap(){
   const cg=currentGrade();
-  let h='<div class="sec-label">現在地</div><div class="card roadcard">'+roadmap(true)+'</div>'+
-   '<div class="sec-label">ステップ一覧</div>'+
+  let h=stepHead()+'<div class="card roadcard">'+roadmap(true)+'</div>'+
    '<div class="note" style="background:var(--violet-soft)">いま埋めている項目が、次のグレードでどう発展するかを横に並べています。セルを押すとそのグレードの詳細に飛べます。</div>'+
    '<div class="maprail"><div class="mapgrid">';
   h+='<div class="mh mh-cat">カテゴリ</div>';
@@ -830,12 +1036,12 @@ function vMap(){
       const lk=isLocked(g.n);
       let cells=[], dn=0, tt=0;
       if(c.k==='vision'){
-        const st=visStats(D.checks,g.n); dn=st.d; tt=st.t;
+        const st=visStats(D.appr,g.n); dn=st.d; tt=st.t;
         if(tt) cells.push(g.vision.join(' / '));
       }else{
         g.sections.forEach((sec,si)=>{
           if(sec.title.indexOf(c.k)!==0) return;
-          const st=secStats(D.checks,g.n,si); dn+=st.d; tt+=st.t;
+          const st=secStats(D.appr,g.n,si); dn+=st.d; tt+=st.t;
           cells.push(subLabel(sec.title,c.k));
         });
       }
@@ -1053,40 +1259,53 @@ async function saveReview(kind,period){
 /* ============================================================
    RENDER + EVENTS
    ============================================================ */
+/* タブは4つ。同じ進捗を別の見た目で3回出していたぶんは、
+   ステップタブの中の切り替えとずかんモーダルに寄せた。 */
 const TABS=[
   {k:'home',n:'ホーム',i:'<path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
-  {k:'map',n:'<span class="lbl-full">ステップ一覧</span><span class="lbl-short">ステップ</span>',i:'<path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
-  {k:'grades',n:'グレード',i:'<path d="M4 18h4v3H4zM10 12h4v9h-4zM16 6h4v15h-4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
+  {k:'step',n:'ステップ',i:'<path d="M4 18h4v3H4zM10 12h4v9h-4zM16 6h4v15h-4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'},
   {k:'log',n:'記録',i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
-  {k:'dex',n:'ずかん',i:'<path d="M12 3l2.2 5.2 5.8.5-4.4 3.8 1.3 5.6L12 15.2 7.1 18.1l1.3-5.6L4 8.7l5.8-.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>'},
   {k:'sheet',n:'<span class="lbl-full">マイシート</span><span class="lbl-short">シート</span>',i:'<circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4.5 20c1.2-3.7 4-5.6 7.5-5.6S18.3 16.3 19.5 20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'}
 ];
 function renderTabs(){
   const st=stage(), cg=currentGrade(), dn=done(cg), tt=total(cg), tc=tierOf(cg);
+  const un=unreadNotes()+unreadComments();
   document.getElementById('tabbar').innerHTML=
    '<div class="side-buddy">'+
-     '<div class="pod" style="width:96px;height:96px;margin:0 auto">'+creature(st,84,'float')+'</div>'+
+     '<button class="pod buddy-btn" style="width:96px;height:96px;margin:0 auto" data-act="openDex" aria-label="進化ずかんをひらく">'+creature(st,84,'float')+'</button>'+
      '<div class="sb-name">'+(D.buddy?esc(D.buddy):'なまえ未設定')+'</div>'+
      '<div class="sb-meta">Grade '+cg+'／'+tc.name+' ・ 第'+st+'形態</div>'+
      '<div class="bar" style="margin-top:9px"><i style="width:'+Math.round(dn/tt*100)+'%;background:'+tc.hex+'"></i></div>'+
      '<div class="sb-meta" style="margin-top:6px">'+dn+' / '+tt+' 項目</div>'+
    '</div>'+
    TABS.map(t=>
-    '<button data-act="tab" data-tab="'+t.k+'" class="'+(view===t.k&&openG===null?'on':'')+'">'+
-    '<svg viewBox="0 0 24 24">'+t.i+'</svg>'+t.n+'</button>').join('');
+    '<button data-act="tab" data-tab="'+t.k+'" class="'+(view===t.k&&openG===null?'on':'')+'"'+
+    (view===t.k?' aria-current="page"':'')+'>'+
+    '<svg viewBox="0 0 24 24">'+t.i+'</svg>'+t.n+
+    (t.k==='log'&&un?'<span class="tabbadge">'+un+'</span>':'')+'</button>').join('');
 }
 function render(keepScroll){
+  if(isComposing()) return;   /* 日本語を変換している最中は描き替えない */
   const y=window.scrollY;
-  const v=document.getElementById('view');
-  if(openG) v.innerHTML=vDetail(openG);
-  else if(view==='home') v.innerHTML=vHome();
-  else if(view==='grades') v.innerHTML=vGrades();
-  else if(view==='map') v.innerHTML=vMap();
-  else if(view==='dex') v.innerHTML=vDex();
-  else if(view==='log') v.innerHTML=vLog();
-  else v.innerHTML=vSheet();
-  renderTabs();
+  withFocus(()=>{
+    const v=document.getElementById('view');
+    if(openG) v.innerHTML=vDetail(openG);
+    else if(view==='home') v.innerHTML=vHome();
+    else if(view==='step') v.innerHTML=(stepSeg==='map'?vMap():vGrades());
+    else if(view==='log') v.innerHTML=vLog();
+    else v.innerHTML=vSheet();
+    renderTabs();
+    renderDex();
+  });
   if(keepScroll) window.scrollTo(0,y); else window.scrollTo(0,0);
+}
+/* ずかんは相棒を押したときだけ開く（タブを1つ使うほどの出番はない） */
+function renderDex(){
+  const box=document.getElementById('dex');
+  if(!dexOpen){ box.classList.remove('on'); box.innerHTML=''; return; }
+  box.innerHTML='<div class="dex-card" role="dialog" aria-modal="true" aria-label="進化ずかん">'+
+    '<button class="dex-close" data-act="closeDex" aria-label="閉じる">✕</button>'+vDex()+'</div>';
+  box.classList.add('on');
 }
 
 document.addEventListener('click',async e=>{
@@ -1094,27 +1313,51 @@ document.addEventListener('click',async e=>{
   const a=el.dataset.act;
   if(a==='tab'){
     view=el.dataset.tab; openG=null; render();
-    if(view==='log'&&!LOG.loaded){ await loadLog(); render(); }
+    if(view==='log'){
+      if(!LOG.loaded){ await loadLog(); render(); }
+      markRead('notes');            /* 開いた時点で共有事項は読んだものとして扱う */
+      renderTabs();
+    }
   }
-  else if(a==='openGrade'){ openG=+el.dataset.g; view='grades'; render(); }
+  else if(a==='stepSeg'){ stepSeg=el.dataset.s; render(); }
+  else if(a==='sheetSeg'){ sheetSeg=el.dataset.s; render(); }
+  else if(a==='openDex'){ dexOpen=true; renderDex(); }
+  else if(a==='closeDex'){ dexOpen=false; renderDex(); }
+  else if(a==='toComments'){
+    view='log'; LOG.seg='reviews'; openG=null;
+    if(!LOG.loaded) await loadLog();
+    markRead('reviews'); render();
+  }
+  else if(a==='openGrade'){ openG=+el.dataset.g; view='step'; render(); }
   else if(a==='back'){ openG=null; render(); }
   else if(a==='toggle'){ toggle(el.dataset.id); }
+  else if(a==='pin'){
+    const id=el.dataset.id, list=pins().slice();
+    const at=list.indexOf(id);
+    if(at>=0){ list.splice(at,1); toast('今週やることから外しました'); }
+    else if(list.length>=3){ toast('今週やることは3つまでです'); return; }
+    else { list.push(id); toast('今週やることに固定しました'); }
+    setPins(list); render(true);
+  }
   else if(a==='creed'){ const i=+el.dataset.i,v=+el.dataset.v; D.creed[i].s=(D.creed[i].s===v?0:v); save(); render(true); }
-  else if(a==='atari'){ const k=el.dataset.k,v=el.dataset.v; D.atarimae[k]=(D.atarimae[k]===v?null:v); save(); render(true); }
   else if(a==='sfx'){
     D.sound=!D.sound; save();
     if(el.dataset.icon){ el.innerHTML=D.sound?SPK_ON:SPK_OFF; if(D.sound) blip(.7); }
     else { if(D.sound) blip(.7); render(true); }
   }
-  else if(a==='seg'){ LOG.seg=el.dataset.s; render(); }
+  else if(a==='seg'){
+    LOG.seg=el.dataset.s;
+    if(LOG.seg==='reviews') markRead('reviews');
+    render();
+  }
   else if(a==='rkind'){ LOG.rkind=el.dataset.k; render(); }
   else if(a==='pick'){
     if(el.dataset.kind==='ywt') LOG.ywtPeriod=el.dataset.p; else LOG.monthPeriod=el.dataset.p;
     render(true);
   }
   else if(a==='saveReview'){ await saveReview(el.dataset.kind,el.dataset.p); }
-  else if(a==='export'){ exportData(); }
-  else if(a==='import'){ document.getElementById('importFile').click(); }
+  else if(a==='retrySave'){ el.disabled=true; el.textContent='送信中…'; await runSave(); }
+  else if(a==='closeFail'){ clearFail(); }
   else if(a==='logout'){
     if(!confirm('ログアウトします。よろしいですか？')) return;
     await Store.signOut(); location.reload();
@@ -1125,22 +1368,15 @@ document.addEventListener('click',async e=>{
     if(!key){ toast('管理者キーを入力してください'); return; }
     el.disabled=true; el.textContent='確認しています…';
     try{
-      await Store.claimManager(key);
-      toast('管理者になりました','xp');
-      location.href='admin.html';
-    }catch(err){ el.disabled=false; el.textContent='管理者になる'; toast(err.message||'管理者キーが違います'); }
-  }
-  else if(a==='reset'){
-    if(confirm('チェック・入力内容をすべて消去します。よろしいですか？')){
-      const ids=Object.keys(D.checks);
-      for(const id of ids) await Store.setCheck(id,false);
-      D=JSON.parse(JSON.stringify(DEFAULT)); profileDirty=true; save(); render(); toast('リセットしました');
-    }
+      const status=await Store.requestManager(key);
+      if(status==='approved'){ toast('管理者になりました','xp'); location.href='admin.html'; }
+      else{
+        el.textContent='申請しました';
+        toast('申請しました。いまいる管理者が承認すると使えるようになります','xp',5000);
+      }
+    }catch(err){ el.disabled=false; el.textContent='管理者になることを申請する'; toast(err.message||'管理者キーが違います',null,5000); }
   }
   else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
-});
-document.addEventListener('change',e=>{
-  if(e.target.id==='importFile'&&e.target.files[0]){ importData(e.target.files[0]); e.target.value=''; }
 });
 document.addEventListener('input',e=>{
   const t=e.target;
@@ -1161,21 +1397,52 @@ async function toggle(id){
     toast('Grade '+(gn-1)+' を埋めると開きます');
     return;
   }
+  if(approvalOn() && isApproved(id)){
+    toast('ULが承認した項目です。取り消したいときは相談してください',null,4000);
+    return;
+  }
   const before=GRADES.filter(g=>isDone(g.n)).map(g=>g.n), st0=stage();
   const now=!D.checks[id];
-  if(now){ D.checks[id]=true; D.log.push(Date.now()); if(D.log.length>400) D.log=D.log.slice(-400); }
-  else delete D.checks[id];
+  if(now){
+    D.checks[id]=true;
+    if(!approvalOn()) D.appr[id]=true;   /* 承認のしくみが無い環境では、押した時点で達成 */
+    D.log.push(Date.now()); if(D.log.length>400) D.log=D.log.slice(-400);
+  }else{
+    delete D.checks[id]; delete D.appr[id];
+  }
   const after=GRADES.filter(g=>isDone(g.n)).map(g=>g.n);
   const newly=after.filter(n=>!before.includes(n)&&!D.seen.includes(n));
+  /* ピン留めしていた項目は、押したら外す */
+  if(now && isPinned(id)) D.custom.__pins=pins().filter(p=>p!==id);
   render(true);
   if(newly.length){ newly.forEach(n=>D.seen.push(n)); save(); evolve(Math.max.apply(null,newly),st0,stage()); }
-  else if(now){ blip(done(gn)/total(gn)); toast('+10 XP','xp'); }
-  try{ await Store.setCheck(id,now); flash('ok'); }
+  else if(now){
+    blip(done(gn)/total(gn));
+    /* グレード全体は長いので、区切り（セクション）を埋めたところで褒める */
+    if(sectionJustDone(D.checks,id)) toast('「'+cutTxt(sectionTitleOf(id).split('｜')[0],14)+'」を全部うめました','xp',4000);
+    else toast(approvalOn()?'申請しました':'チェックしました','xp');
+  }
+  try{
+    const r=await Store.setCheck(id,now);
+    if(r&&r.queued){ toast('オフラインのため、あとで送ります',null,4000); render(true); }
+    else flash('ok');
+  }
   catch(e){
     /* 保存できなかったら画面も元に戻す（ズレたまま進まないように） */
-    if(now) delete D.checks[id]; else D.checks[id]=true;
-    render(true); flash('err',e.message);
+    if(now){ delete D.checks[id]; delete D.appr[id]; }
+    else { D.checks[id]=true; }
+    render(true);
+    showFail('チェックを保存できませんでした',null,e.message);
   }
+}
+/* ログインし直したときに、承認によって埋まったグレードの演出を出す */
+function checkEvolution(){
+  const cleared=GRADES.filter(g=>isDone(g.n)).map(g=>g.n);
+  const newly=cleared.filter(n=>!D.seen.includes(n));
+  if(!newly.length) return;
+  const top=Math.max.apply(null,newly);
+  newly.forEach(n=>D.seen.push(n)); save();
+  evolve(top, Math.max(1,stage()-newly.length), stage());
 }
 
 function evolve(gradeN,oldSt,newSt){
@@ -1210,25 +1477,8 @@ function evolve(gradeN,oldSt,newSt){
   fanfare(fin);
 }
 
-/* ============================================================
-   バックアップ（機種変更のときや、手元に控えを持っておきたいとき）
-   ============================================================ */
-function exportData(){
-  downloadBlob('careerstep-backup-'+todayStr()+'.json',JSON.stringify(D,null,2),'application/json');
-  toast('書き出しました');
-}
-async function importData(file){
-  try{
-    const txt=await file.text();
-    const j=JSON.parse(txt);
-    if(!j||typeof j!=='object') throw new Error('形式が違います');
-    if(!confirm('いまの入力内容をこのファイルの内容で置きかえます。よろしいですか？')) return;
-    D=Object.assign(JSON.parse(JSON.stringify(DEFAULT)),j);
-    profileDirty=true;
-    for(const id of Object.keys(D.checks)) if(D.checks[id]) await Store.setCheck(id,true);
-    save(); render(); toast('読み込みました');
-  }catch(e){ toast('読み込めませんでした'); }
-}
+/* 記録はSupabaseに集約されているので、端末ごとの書き出し・読み込みは持たない。
+   （読み込みは「チェックを外した状態」を反映できず、管理画面と数字がずれるため） */
 
 /* ============================================================
    ログイン
@@ -1246,11 +1496,39 @@ async function importData(file){
    共通パスコードは「登録していい人か」を確かめるためのもので、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
-let GATE={ roster:[], picked:null, q:'', mode:'pick', offline:false,
+let GATE={ hits:[], units:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
-function gUnits(){ return uniqSorted(GATE.roster.map(m=>m.unit)); }
-function gUls(){   return uniqSorted(GATE.roster.map(m=>m.ul)); }
-function gNames(){ return uniqSorted(GATE.roster.map(m=>m.name)); }
+function gUnits(){ return uniqSorted(GATE.units); }
+/* 名前で探す。2文字以上入れたときだけサーバーに聞く（一覧は最初から出さない） */
+let searchT=null;
+function searchRoster(q){
+  GATE.q=q;
+  clearTimeout(searchT);
+  if(String(q).trim().length<2){ GATE.hits=[]; GATE.searching=false; paintHits(); return; }
+  GATE.searching=true; paintHits();
+  searchT=setTimeout(async()=>{
+    try{ GATE.hits=await Store.searchRoster(q); }
+    catch(e){ GATE.hits=[]; }
+    GATE.searching=false; paintHits();
+  },260);
+}
+/* 検索結果だけを描き替える（入力欄を作り直さないのでカーソルが飛ばない） */
+function paintHits(){
+  const box=document.getElementById('gHits');
+  if(!box) return;
+  const q=String(GATE.q).trim();
+  if(q.length<2){ box.innerHTML='<p class="tiny muted" style="margin:10px 2px">名前を2文字以上入れてください。</p>'; return; }
+  if(GATE.searching){ box.innerHTML='<p class="tiny muted" style="margin:10px 2px">探しています…</p>'; return; }
+  if(!GATE.hits.length){
+    box.innerHTML='<p class="tiny muted" style="margin:10px 2px">見つかりませんでした。'+
+      'はじめて使う場合は下の「はじめて使う」から登録してください。</p>';
+    return;
+  }
+  box.innerHTML='<div class="glist">'+GATE.hits.map(m=>
+    '<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
+    (m.unit?'<span class="tiny muted" style="margin-left:8px">'+esc(m.unit)+'</span>':'')+
+    '<span>'+(m.linked?'選ぶ ›':'パスワード設定 ›')+'</span></button>').join('')+'</div>';
+}
 
 const PW_HINT='<p class="tiny muted" style="margin:4px 0 0">6文字以上。次回からはこのパスワードでログインします。'+
   '忘れたときはULに言えば設定し直せます（記録は消えません）。</p>';
@@ -1283,10 +1561,7 @@ function showGate(err){
 
   if(GATE.mode==='reg'){
     lead.textContent='はじめての人は、自分の情報を登録してください。';
-    const dup=GATE.roster.some(m=>String(m.name).replace(/[\s　]/g,'')===GATE.reg.name.replace(/[\s　]/g,'')&&GATE.reg.name.trim());
     body.innerHTML=
-      (dup?'<div class="gerr" style="background:var(--amber-soft);color:#8A5606">同じ名前がすでに登録されています。'+
-        'もう登録した人は「登録した人はこちら」から入ってください。</div>':'')+
       '<div class="field"><label>氏名<span style="color:var(--coral)"> ※必須</span></label>'+
         '<input type="text" id="rName" value="'+esc(GATE.reg.name)+'" placeholder="山田 太郎"></div>'+
       '<div class="field"><label>所属Unit</label>'+
@@ -1294,9 +1569,9 @@ function showGate(err){
         dl('rdUnit',gUnits())+
         '<p class="tiny muted" style="margin:4px 0 0">'+(gUnits().length?'入力欄を押すと、登録済みのUnitから選べます。':'最初の人なので、そのまま入力してください。')+'</p></div>'+
       '<div class="field"><label>UL（ユニットリーダー）</label>'+
-        '<input type="text" id="rUl" list="rdUl" value="'+esc(GATE.reg.ul)+'" placeholder="ULの名前">'+dl('rdUl',gUls())+'</div>'+
+        '<input type="text" id="rUl" value="'+esc(GATE.reg.ul)+'" placeholder="ULの名前"></div>'+
       '<div class="field"><label>メンター</label>'+
-        '<input type="text" id="rMentor" list="rdName" value="'+esc(GATE.reg.mentor)+'" placeholder="メンターの名前">'+dl('rdName',gNames())+'</div>'+
+        '<input type="text" id="rMentor" value="'+esc(GATE.reg.mentor)+'" placeholder="メンターの名前"></div>'+
       '<div class="field"><label>入社日<span class="muted" style="font-weight:400">（昇格予定の計算に使います）</span></label>'+
         '<input type="date" id="rJoin" value="'+esc(GATE.reg.join)+'"></div>'+
       '<div class="field"><label>いま認定されているGrade</label>'+
@@ -1324,32 +1599,15 @@ function showGate(err){
   }
 
   if(GATE.mode==='pick'){
-    lead.textContent='自分の名前を選んでください。';
-    const q=GATE.q.trim();
-    const list=GATE.roster.filter(m=>!q||String(m.name).indexOf(q)>=0||String(m.unit||'').indexOf(q)>=0);
-    let h='';
-    if(GATE.roster.length){
-      h+='<input class="who" id="gq" placeholder="名前で絞り込む" value="'+esc(GATE.q)+'">';
-      h+='<div class="glist">';
-      if(!list.length) h+='<div style="padding:22px 12px;text-align:center" class="tiny muted">見つかりませんでした。</div>';
-      let lastUnit='__';
-      list.forEach(m=>{
-        const u=m.unit||'（Unit未設定）';
-        if(u!==lastUnit){ lastUnit=u; h+='<div class="gunit">'+esc(u)+'</div>'; }
-        h+='<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
-           '<span>'+(m.linked?'選ぶ ›':'パスワード設定 ›')+'</span></button>';
-      });
-      h+='</div>';
-    }else{
-      h+='<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
-         'まだ誰も登録していません。あなたが最初の登録者です。</div>';
-    }
-    h+='<button class="gbtn'+(GATE.roster.length?' alt':'')+'" data-act="toReg">'+
-       (GATE.roster.length?'はじめて使う（新規登録）':'はじめる（新規登録）')+'</button>';
-    body.innerHTML=h;
+    lead.textContent='自分の名前を入力してください。';
+    body.innerHTML=
+      '<input class="who" id="gq" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'">'+
+      '<div id="gHits"></div>'+
+      '<button class="gbtn alt" data-act="toReg">はじめて使う（新規登録）</button>';
     const gq=document.getElementById('gq');
-    if(gq) gq.oninput=e=>{ GATE.q=e.target.value; const p=e.target.selectionStart; showGate();
-      const n=document.getElementById('gq'); n.focus(); try{ n.setSelectionRange(p,p); }catch(x){} };
+    gq.oninput=e=>searchRoster(e.target.value);
+    gq.focus();
+    paintHits();
     return;
   }
 
@@ -1436,6 +1694,15 @@ async function doRegister(){
   if(!code){ showGate('部署共通のパスコードを入力してください'); return; }
   const bad=checkPw(pw,pw2);
   if(bad){ showGate(bad); return; }
+  /* 同じ名前がすでに登録されていないか（二重登録でデータが分かれるのを防ぐ） */
+  try{
+    const norm=s=>String(s).replace(/[\s　]/g,'');
+    const hits=await Store.searchRoster(r.name);
+    if(hits.some(m=>norm(m.name)===norm(r.name))){
+      showGate('同じ名前がすでに登録されています。登録済みの方は「登録した人はこちら」から入ってください');
+      return;
+    }
+  }catch(e){ /* 検索できなくても登録は進める */ }
   gateBusy('[data-act="register"]','登録しています…');
   try{
     await Store.registerMember(r,code,pw);
@@ -1448,7 +1715,7 @@ document.addEventListener('click',async e=>{
   const el=e.target.closest('#gate [data-act]'); if(!el) return;
   const a=el.dataset.act;
   if(a==='pick'){
-    GATE.picked=GATE.roster.find(m=>String(m.id)===el.dataset.id);
+    GATE.picked=GATE.hits.find(m=>String(m.id)===el.dataset.id);
     GATE.mode = GATE.picked && GATE.picked.linked ? 'pass' : 'setpw';
     showGate();
   }
@@ -1468,10 +1735,11 @@ async function boot(){
   document.getElementById('app').style.display='';
   await load();
   render();
+  checkEvolution();   /* 前回から承認が進んでいたら、ここで進化を見せる */
   /* 共有事項とテスト結果は裏で読んで、記録タブを開いたときに待たせない */
   loadLog().then(()=>render(true)).catch(()=>{});
-  /* Unit・UL・メンターの選択肢に使う名簿。失敗しても画面は動く */
-  Store.roster().then(r=>{ ROSTER=r||[]; if(view==='sheet') render(true); }).catch(()=>{});
+  /* Unit・UL・メンターの選択肢と、承認者の名前に使う名簿。失敗しても画面は動く */
+  Store.roster().then(r=>{ ROSTER=r||[]; render(true); }).catch(()=>{});
 }
 (async()=>{
   /* 電波が悪くてSDKやサーバーに届かないことは普通に起きる。
@@ -1481,13 +1749,18 @@ async function boot(){
     if(Store.mode!=='cloud'){ showGate(''); return; }
     const me=await Store.restore();
     if(me){ await boot(); return; }   /* 前回のログインが残っている */
-    GATE.roster=await Store.roster();
+    Store.rosterUnits().then(u=>{ GATE.units=u||[]; }).catch(()=>{});
     showGate('');
   }catch(e){
     GATE.offline=true;
     showGate(String((e&&e.message)||e));
   }
 })();
+
+/* 画面のキャッシュ。電波が無いところでも開ける */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
 
 </script>
 </body>

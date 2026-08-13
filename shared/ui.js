@@ -88,10 +88,50 @@ function ring(pct,color,label){
    '</svg><b style="color:'+color+'">'+(label!=null?label:pct)+'</b></div>';
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function toast(msg,cls){
+/* トーストは読み上げにも乗せる。表示は3秒（1.5秒だと読み終わらない） */
+function toast(msg,cls,ms){
+  const box=document.getElementById('toasts');
+  if(!box) return;
   const t=document.createElement('div');t.className='toast '+(cls||'');t.textContent=msg;
-  document.getElementById('toasts').appendChild(t);
-  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),320);},1500);
+  box.appendChild(t);
+  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),320);},ms||3000);
+}
+
+/* ============================================================
+   再描画のときに、入力中の場所を保つ
+   ------------------------------------------------------------
+   どちらの画面も innerHTML を丸ごと書き替えているので、
+   そのままだと入力欄のフォーカスとカーソル位置が飛ぶ。
+   日本語を変換している最中（IME）は、描画そのものを見送る。
+   ============================================================ */
+let IME_ON=false;
+if(typeof document!=='undefined'){
+  document.addEventListener('compositionstart',()=>{IME_ON=true;});
+  document.addEventListener('compositionend',()=>{IME_ON=false;});
+}
+function isComposing(){ return IME_ON; }
+/* 入力欄を特定するための目印。id か data-* のどれかがあれば戻せる */
+function focusKey(el){
+  if(!el||!el.tagName) return null;
+  const tag=el.tagName.toLowerCase();
+  if(tag!=='input'&&tag!=='textarea'&&tag!=='select') return null;
+  if(el.id) return '#'+el.id;
+  for(const a of ['data-draft','data-field','data-creed','data-custom']){
+    const v=el.getAttribute(a);
+    if(v!=null) return '['+a+'="'+v.replace(/"/g,'\\"')+'"]';
+  }
+  return null;
+}
+function withFocus(fn){
+  const el=document.activeElement;
+  const key=focusKey(el);
+  const pos=key&&el.selectionStart!=null? [el.selectionStart,el.selectionEnd] : null;
+  fn();
+  if(!key) return;
+  const next=document.querySelector(key);
+  if(!next) return;
+  next.focus();
+  if(pos){ try{ next.setSelectionRange(pos[0],pos[1]); }catch(e){} }
 }
 
 /* ============================================================

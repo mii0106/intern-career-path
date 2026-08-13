@@ -505,6 +505,255 @@ create policy reviews_delete on public.reviews for delete to authenticated
   using (public.is_manager());
 
 -- ============================================================
+-- 5.5 チェックの2段階（申請中 → 承認済み）
+--     ------------------------------------------------------------
+--     本人が押したチェックは「申請中」、UL・メンターが管理画面で
+--     承認したものだけが「承認済み」になります。
+--     昇格判断に使う進捗率は承認済みだけで数えます。
+--
+--     この節を実行する前でも、アプリはこれまでどおり
+--     「押した＝達成」として動きます（画面側で機能を検出しています）。
+-- ============================================================
+alter table public.progress add column if not exists checked_by  uuid references public.members(id) on delete set null;
+alter table public.progress add column if not exists approved_by uuid references public.members(id) on delete set null;
+alter table public.progress add column if not exists approved_at timestamptz;
+
+-- すでに入っているチェックは、承認済みとして扱う（導入時に全員が
+-- いきなり「申請中」に戻ると、それまでの評価が消えたように見えるため）。
+update public.progress set approved_at = checked_at where approved_at is null;
+
+-- 本人からの書き込みは関数経由に限定する。
+-- 直接 insert/update できると、本人が approved_at を自分で埋められてしまう。
+create or replace function public.set_my_check(p_item_id text, p_on boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_id uuid := public.current_member_id();
+begin
+  if v_id is null then raise exception 'not linked'; end if;
+  if p_on then
+    insert into public.progress(member_id, item_id, checked_at, checked_by)
+    values (v_id, p_item_id, now(), v_id)
+    on conflict (member_id, item_id) do nothing;   -- 承認済みを押し直しても状態は変えない
+  else
+    delete from public.progress
+     where member_id = v_id and item_id = p_item_id and approved_at is null;
+    if not found and exists (select 1 from public.progress where member_id = v_id and item_id = p_item_id) then
+      raise exception 'この項目はすでに承認されています。取り消しはULに相談してください';
+    end if;
+  end if;
+end $$;
+
+-- UL・メンターが承認する／戻す／外す。
+--   p_state: 'approved'（承認済み） / 'pending'（申請中に戻す） / 'off'（チェックを外す）
+create or replace function public.set_check_for(p_member_id uuid, p_item_id text, p_state text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_me uuid := public.current_member_id();
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  if p_state = 'off' then
+    delete from public.progress where member_id = p_member_id and item_id = p_item_id;
+  elsif p_state = 'pending' then
+    insert into public.progress(member_id, item_id, checked_at, checked_by)
+    values (p_member_id, p_item_id, now(), v_me)
+    on conflict (member_id, item_id) do update set approved_at = null, approved_by = null;
+  else
+    insert into public.progress(member_id, item_id, checked_at, checked_by, approved_at, approved_by)
+    values (p_member_id, p_item_id, now(), v_me, now(), v_me)
+    on conflict (member_id, item_id) do update set approved_at = now(), approved_by = v_me;
+  end if;
+end $$;
+
+-- 申請中のものをまとめて承認する（面談の最後に1回押す用）。
+create or replace function public.approve_items(p_member_id uuid, p_item_ids text[])
+returns int language plpgsql security definer set search_path = public as $$
+declare v_me uuid := public.current_member_id(); v_n int;
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  update public.progress
+     set approved_at = now(), approved_by = v_me
+   where member_id = p_member_id and approved_at is null
+     and (p_item_ids is null or item_id = any(p_item_ids));
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+
+-- 管理者がその人のチェックを全部消す（本人画面から消せないようにした代わり）。
+create or replace function public.admin_clear_progress(p_member_id uuid)
+returns int language plpgsql security definer set search_path = public as $$
+declare v_n int; v_name text;
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  delete from public.progress where member_id = p_member_id;
+  get diagnostics v_n = row_count;
+  select name into v_name from public.members where auth_id = auth.uid();
+  insert into public.notes(member_id, kind, occurred_on, body, author_id, author_name, visibility)
+  values (p_member_id, 'memo', current_date,
+          'チェックを全件消去しました（' || v_n || '件）。管理画面からの操作です。',
+          public.current_member_id(), v_name, 'admin');
+  return v_n;
+end $$;
+
+grant execute on function public.set_my_check(text, boolean)              to authenticated;
+grant execute on function public.set_check_for(uuid, text, text)          to authenticated;
+grant execute on function public.approve_items(uuid, text[])              to authenticated;
+grant execute on function public.admin_clear_progress(uuid)               to authenticated;
+
+-- 本人の直接書き込みを止める（上の関数だけを通す）。読み取りはそのまま。
+drop policy if exists progress_write  on public.progress;
+drop policy if exists progress_update on public.progress;
+drop policy if exists progress_delete on public.progress;
+create policy progress_write on public.progress for insert to authenticated
+  with check (public.is_manager());
+create policy progress_update on public.progress for update to authenticated
+  using (public.is_manager()) with check (public.is_manager());
+create policy progress_delete on public.progress for delete to authenticated
+  using (public.is_manager());
+
+-- ============================================================
+-- 5.6 ログイン画面の名前検索
+--     名簿の一覧をログイン前に丸ごと見せず、2文字以上を入れた人にだけ
+--     一致した数件を返す。
+--     ※この節を実行したあと、名簿ビューの anon 権限を落とすかどうかは
+--       SETUP.md「名簿を隠す」を参照（落とすと一覧表示は使えなくなります）。
+-- ============================================================
+create or replace function public.roster_search(p_q text, p_managers boolean default false)
+returns table(id uuid, name text, unit text, ul text, slug text, role text, linked boolean)
+language sql stable security definer set search_path = public as $$
+  select m.id, m.name, m.unit, m.ul, m.slug, m.role, (m.auth_id is not null)
+    from public.members m
+   where m.active
+     and length(coalesce(trim(p_q), '')) >= 2
+     and (not p_managers or m.role in ('ul','admin'))
+     and (m.name ilike '%' || trim(p_q) || '%' or coalesce(m.unit,'') ilike '%' || trim(p_q) || '%')
+   order by m.name
+   limit 10
+$$;
+grant execute on function public.roster_search(text, boolean) to anon, authenticated;
+
+-- 新規登録のときに Unit を選択肢として出すためだけの一覧。
+-- 個人名は含めない（表記ゆれを防ぐ目的にはUnit名だけあれば足りる）。
+create or replace function public.roster_units()
+returns table(unit text)
+language sql stable security definer set search_path = public as $$
+  select distinct m.unit from public.members m
+   where m.active and nullif(trim(m.unit),'') is not null
+   order by 1
+$$;
+grant execute on function public.roster_units() to anon, authenticated;
+
+-- ============================================================
+-- 5.7 管理者になるまでの流れを「申請 → 既存管理者の承認」に変える
+--     管理者キーだけで即昇格できると、キーが1度でも漏れた時点で
+--     全員分のデータが見られてしまうため。
+--     管理者がまだ1人もいないときだけ、キーでそのまま昇格できる（初回導入用）。
+-- ============================================================
+create table if not exists public.manager_requests (
+  member_id   uuid primary key references public.members(id) on delete cascade,
+  requested_at timestamptz not null default now(),
+  status      text not null default 'pending',   -- pending / approved / rejected
+  decided_by  uuid references public.members(id) on delete set null,
+  decided_at  timestamptz
+);
+alter table public.manager_requests enable row level security;
+drop policy if exists mreq_read on public.manager_requests;
+create policy mreq_read on public.manager_requests for select to authenticated
+  using (member_id = public.current_member_id() or public.is_manager());
+
+-- 管理者キーの連続失敗をロックする（総当り対策）。
+alter table public.members add column if not exists admin_key_fails int not null default 0;
+alter table public.members add column if not exists admin_key_locked_until timestamptz;
+
+create or replace function public.request_manager(p_code text)
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare v_id uuid := public.current_member_id(); v_hash text; v_lock timestamptz; v_managers int;
+begin
+  if v_id is null then raise exception 'not linked'; end if;
+  select admin_key_locked_until into v_lock from public.members where id = v_id;
+  if v_lock is not null and v_lock > now() then
+    raise exception '管理者キーの入力を続けて間違えたため、しばらく試せません（あと%分）',
+      ceil(extract(epoch from (v_lock - now())) / 60);
+  end if;
+
+  select admin_passcode into v_hash from public.app_config where id = 1;
+  if v_hash is null then raise exception '管理者キーがまだ設定されていません（SETUP.md 手順5）'; end if;
+
+  if v_hash <> crypt(coalesce(p_code,''), v_hash) then
+    update public.members
+       set admin_key_fails = admin_key_fails + 1,
+           admin_key_locked_until = case when admin_key_fails + 1 >= 5 then now() + interval '15 minutes' end
+     where id = v_id;
+    raise exception '管理者キーが違います';
+  end if;
+  update public.members set admin_key_fails = 0, admin_key_locked_until = null where id = v_id;
+
+  select count(*) into v_managers from public.members where role in ('ul','admin') and active;
+  if v_managers = 0 then
+    /* いちばん最初の管理者だけは、承認する人がいないのでそのまま昇格する */
+    update public.members set role = 'ul' where id = v_id and role = 'member';
+    insert into public.manager_requests(member_id, status, decided_at)
+    values (v_id, 'approved', now())
+    on conflict (member_id) do update set status = 'approved', decided_at = now();
+    return 'approved';
+  end if;
+
+  insert into public.manager_requests(member_id, status, requested_at)
+  values (v_id, 'pending', now())
+  on conflict (member_id) do update set status = 'pending', requested_at = now(),
+                                        decided_by = null, decided_at = null;
+  return 'pending';
+end $$;
+
+create or replace function public.decide_manager_request(p_member_id uuid, p_approve boolean)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_me uuid := public.current_member_id();
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  if p_member_id = v_me then raise exception '自分の申請は自分で承認できません'; end if;
+
+  update public.manager_requests
+     set status = case when p_approve then 'approved' else 'rejected' end,
+         decided_by = v_me, decided_at = now()
+   where member_id = p_member_id;
+  if not found then raise exception '申請が見つかりません'; end if;
+
+  if p_approve then
+    update public.members set role = 'ul' where id = p_member_id and role = 'member';
+  end if;
+  return case when p_approve then 'approved' else 'rejected' end;
+end $$;
+
+grant execute on function public.request_manager(text)                 to authenticated;
+grant execute on function public.decide_manager_request(uuid, boolean) to authenticated;
+
+-- 旧：キーだけで即昇格。承認制にしたので落とす。
+drop function if exists public.claim_manager(text);
+
+-- ============================================================
+-- 5.8 アラートのしきい値を画面から変えられるようにする
+--     「何日でチェックが止まっていたら停滞とみなすか」などを
+--     コードではなく管理画面から設定する。
+-- ============================================================
+alter table public.app_config add column if not exists settings jsonb not null default '{}'::jsonb;
+
+create or replace function public.get_app_settings()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select settings from public.app_config where id = 1 and public.is_manager()
+$$;
+
+create or replace function public.set_app_settings(p_settings jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  update public.app_config set settings = coalesce(p_settings, '{}'::jsonb), updated_at = now() where id = 1;
+  return (select settings from public.app_config where id = 1);
+end $$;
+
+-- 関数の実行権限は既定で PUBLIC に付くので、明示的に落としてから配り直す。
+revoke all on function public.get_app_settings()      from public;
+revoke all on function public.set_app_settings(jsonb) from public;
+grant execute on function public.get_app_settings()      to authenticated;
+grant execute on function public.set_app_settings(jsonb) to authenticated;
+
+-- ============================================================
 -- 6. 名簿について
 --    投入作業は不要です。各メンバーが自分で登録すると members に行が増えていき、
 --    そのまま管理者画面の一覧に反映されます。
