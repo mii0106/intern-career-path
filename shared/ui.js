@@ -1,6 +1,24 @@
 /* ============================================================
    STEP — 共通UIパーツ（相棒のSVG・リング・トースト・整形）
    ============================================================ */
+
+/* ------------------------------------------------------------
+   権限は3つ。member・mentor（育成）・ul。
+   育成とULでできることは同じで、管理者ツールで全員を見られる。
+   'admin' は旧「管理者」で、まだ role を移していないサーバーから
+   返ってくることがあるので、育成として扱う。
+   ------------------------------------------------------------ */
+const ROLES=[
+  {k:'member', n:'メンバー', s:'メンバー', d:'自分のシートだけ'},
+  {k:'mentor', n:'育成',     s:'育成',     d:'管理者ツールで全員を見られる'},
+  {k:'ul',     n:'UL',       s:'UL',       d:'管理者ツールで全員を見られる'}
+];
+function roleKey(role){ return role==='admin' ? 'mentor' : (role||'member'); }
+function isManagerRole(role){ const k=roleKey(role); return k==='mentor'||k==='ul'; }
+function roleName(role){ const k=roleKey(role); return (ROLES.find(r=>r.k===k)||ROLES[0]).n; }
+/* 育成とULをまとめて呼ぶときの言い方。画面の文言をここに集める */
+const MANAGER_LABEL='育成・UL';
+
 function star(cx,cy,r,f){
   return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
 }

@@ -39,9 +39,17 @@ create table if not exists public.members (
   active          boolean not null default true,
   created_at      timestamptz not null default now()
 );
+/* 権限は3つ。
+     member … インターン本人。自分の分だけ見える
+     mentor … 育成。管理者ツールで全員を見られる
+     ul     … ユニットリーダー。管理者ツールで全員を見られる
+   mentor と ul にできることの差はない（表示上の役割の違い）。
+   'admin' は旧「管理者」。中身は mentor と同じなので、下で mentor に寄せる。 */
+alter table public.members drop constraint if exists members_role_chk;
+update public.members set role = 'mentor' where role = 'admin';
 do $$ begin
   alter table public.members add constraint members_role_chk
-    check (role in ('member','ul','admin'));
+    check (role in ('member','mentor','ul'));
 exception when duplicate_object then null; end $$;
 
 -- チェックが入った項目。1行＝1項目。
@@ -146,7 +154,7 @@ create or replace function public.is_manager()
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.members
-    where auth_id = auth.uid() and role in ('ul','admin') and active
+    where auth_id = auth.uid() and role in ('mentor','ul') and active
   )
 $$;
 
@@ -622,7 +630,7 @@ language sql stable security definer set search_path = public as $$
     from public.members m
    where m.active
      and length(coalesce(trim(p_q), '')) >= 2
-     and (not p_managers or m.role in ('ul','admin'))
+     and (not p_managers or m.role in ('mentor','ul'))
      and (m.name ilike '%' || trim(p_q) || '%' or coalesce(m.unit,'') ilike '%' || trim(p_q) || '%')
    order by m.name
    limit 10
@@ -653,6 +661,10 @@ create table if not exists public.manager_requests (
   decided_by  uuid references public.members(id) on delete set null,
   decided_at  timestamptz
 );
+-- 育成として入りたいのか、ULとして入りたいのか。承認するとこの権限が付く。
+alter table public.manager_requests add column if not exists want_role text not null default 'ul';
+alter table public.manager_requests drop constraint if exists mreq_want_role_chk;
+alter table public.manager_requests add constraint mreq_want_role_chk check (want_role in ('mentor','ul'));
 alter table public.manager_requests enable row level security;
 drop policy if exists mreq_read on public.manager_requests;
 create policy mreq_read on public.manager_requests for select to authenticated
@@ -662,9 +674,12 @@ create policy mreq_read on public.manager_requests for select to authenticated
 alter table public.members add column if not exists admin_key_fails int not null default 0;
 alter table public.members add column if not exists admin_key_locked_until timestamptz;
 
-create or replace function public.request_manager(p_code text)
+-- 引数が1つだった頃の版が残っていると、どちらを呼ぶか決められなくなる。
+drop function if exists public.request_manager(text);
+create or replace function public.request_manager(p_code text, p_role text default 'ul')
 returns text language plpgsql security definer set search_path = public, extensions as $$
 declare v_id uuid := public.current_member_id(); v_hash text; v_lock timestamptz; v_managers int;
+        v_want text := case when p_role = 'mentor' then 'mentor' else 'ul' end;
 begin
   if v_id is null then raise exception 'not linked'; end if;
   select admin_key_locked_until into v_lock from public.members where id = v_id;
@@ -685,29 +700,30 @@ begin
   end if;
   update public.members set admin_key_fails = 0, admin_key_locked_until = null where id = v_id;
 
-  select count(*) into v_managers from public.members where role in ('ul','admin') and active;
+  select count(*) into v_managers from public.members where role in ('mentor','ul') and active;
   if v_managers = 0 then
-    /* いちばん最初の管理者だけは、承認する人がいないのでそのまま昇格する */
-    update public.members set role = 'ul' where id = v_id and role = 'member';
-    insert into public.manager_requests(member_id, status, decided_at)
-    values (v_id, 'approved', now())
-    on conflict (member_id) do update set status = 'approved', decided_at = now();
+    /* いちばん最初の1人だけは、承認する人がいないのでそのまま昇格する */
+    update public.members set role = v_want where id = v_id and role = 'member';
+    insert into public.manager_requests(member_id, status, want_role, decided_at)
+    values (v_id, 'approved', v_want, now())
+    on conflict (member_id) do update set status = 'approved', want_role = v_want, decided_at = now();
     return 'approved';
   end if;
 
-  insert into public.manager_requests(member_id, status, requested_at)
-  values (v_id, 'pending', now())
-  on conflict (member_id) do update set status = 'pending', requested_at = now(),
+  insert into public.manager_requests(member_id, status, want_role, requested_at)
+  values (v_id, 'pending', v_want, now())
+  on conflict (member_id) do update set status = 'pending', want_role = v_want, requested_at = now(),
                                         decided_by = null, decided_at = null;
   return 'pending';
 end $$;
 
 create or replace function public.decide_manager_request(p_member_id uuid, p_approve boolean)
 returns text language plpgsql security definer set search_path = public as $$
-declare v_me uuid := public.current_member_id();
+declare v_me uuid := public.current_member_id(); v_want text;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   if p_member_id = v_me then raise exception '自分の申請は自分で承認できません'; end if;
+  select want_role into v_want from public.manager_requests where member_id = p_member_id;
 
   update public.manager_requests
      set status = case when p_approve then 'approved' else 'rejected' end,
@@ -716,12 +732,13 @@ begin
   if not found then raise exception '申請が見つかりません'; end if;
 
   if p_approve then
-    update public.members set role = 'ul' where id = p_member_id and role = 'member';
+    update public.members set role = case when v_want = 'mentor' then 'mentor' else 'ul' end
+     where id = p_member_id and role = 'member';
   end if;
   return case when p_approve then 'approved' else 'rejected' end;
 end $$;
 
-grant execute on function public.request_manager(text)                 to authenticated;
+grant execute on function public.request_manager(text, text)           to authenticated;
 grant execute on function public.decide_manager_request(uuid, boolean) to authenticated;
 
 -- 旧：キーだけで即昇格。承認制にしたので落とす。
