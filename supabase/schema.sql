@@ -158,6 +158,15 @@ returns boolean language sql stable security definer set search_path = public as
   )
 $$;
 
+/* 卒業・退職（members.active = false）した本人からの書き込みを止めるためのガード。
+   記録（チェック・申し送り・テスト・振り返り）はそのまま残すが、
+   本人がその後もチェックを付け外ししたり、YWT・プロフィールを書き換えたりはできなくする。
+   読み取り（本人が自分の記録を見ること）はここでは制限しない。 */
+create or replace function public.is_active_member(p_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select active from public.members where id = p_id), false)
+$$;
+
 -- ============================================================
 -- 3. ログイン画面に出す名簿
 --    ログイン前（anon）でも名前を選べるようにするための最小限のビュー。
@@ -366,6 +375,7 @@ create or replace function public.update_my_profile(
 declare v_id uuid := public.current_member_id();
 begin
   if v_id is null then raise exception 'not linked'; end if;
+  if not public.is_active_member(v_id) then raise exception 'このアカウントは卒業・退職の扱いになっているため操作できません。心当たりがなければ育成・ULにご連絡ください'; end if;
   update public.members
      set name            = coalesce(nullif(trim(p_name),''), name),
          join_date       = coalesce(p_join_date, join_date),
@@ -384,6 +394,7 @@ create or replace function public.submit_review(
 declare v_id uuid := public.current_member_id(); v_row uuid;
 begin
   if v_id is null then raise exception 'not linked'; end if;
+  if not public.is_active_member(v_id) then raise exception 'このアカウントは卒業・退職の扱いになっているため操作できません。心当たりがなければ育成・ULにご連絡ください'; end if;
   if p_kind not in ('ywt','monthly') then raise exception 'bad kind'; end if;
 
   insert into public.reviews as r (member_id, kind, period, y, w, t, looking_back, next_goal, submitted_at, updated_at)
@@ -535,6 +546,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare v_id uuid := public.current_member_id();
 begin
   if v_id is null then raise exception 'not linked'; end if;
+  if not public.is_active_member(v_id) then raise exception 'このアカウントは卒業・退職の扱いになっているため操作できません。心当たりがなければ育成・ULにご連絡ください'; end if;
   if p_on then
     insert into public.progress(member_id, item_id, checked_at, checked_by, approved_at, approved_by)
     values (v_id, p_item_id, now(), v_id, now(), v_id)

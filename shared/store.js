@@ -556,6 +556,33 @@ const Store = (() => {
       return chk(r);
     },
 
+    /* ---------- UL・メンターの引き継ぎ ----------
+       ULやメンターが変わったとき、対象者ぶん1人ずつ設定タブを開き直さなくても
+       済むように、UL欄・メンター欄をまとめて付け替える。
+       付け替えた人ごとに申し送り（handover）を1件残す。 */
+    async reassignCharge(field,fromName,toName){
+      need();
+      const col = field==='mentor' ? 'mentor' : 'ul';
+      const from=String(fromName||'').trim(), to=String(toName||'').trim();
+      if(!from) throw new Error('引き継ぎ元を選んでください');
+      if(!to)   throw new Error('引き継ぎ先の名前を入力してください');
+      const patch={}; patch[col]=to;
+      /* 卒業・退職した人の過去の記録は書き換えない。対象は現役だけ */
+      const r=await sb.from('members').update(patch).eq(col,from).eq('active',true).select('id');
+      const rows=chk(r)||[];
+      if(rows.length){
+        const label = col==='ul' ? 'UL' : 'メンター';
+        const body = label+'を「'+from+'」から「'+to+'」に引き継ぎました。';
+        const now = todayISO();
+        const authorName=(me&&me.member.name)||null, authorId=me&&me.member.id;
+        chk(await sb.from('notes').insert(rows.map(row=>({
+          member_id:row.id, kind:'handover', occurred_on:now, body:body,
+          author_id:authorId, author_name:authorName, visibility:'shared'
+        }))));
+      }
+      return rows.length;
+    },
+
     /* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す。
        本人は次に名前を選んだとき「初回パスワード設定」に進む。 */
     async resetLogin(memberId){

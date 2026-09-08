@@ -834,6 +834,7 @@ function vGrades(){
   let h=stepHead()+
    '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
    'チェックを入れた時点で達成として数えます。チェックボックスがすべて埋まったら昇格を検討します。'+
+   '基準を満たしているか迷ったときは、ひとまず入れて大丈夫です。違っていたら定例でメンター・ULと一緒に確認して直せます。'+
    '</div>'+
    '<div class="glist">';
   const cg=currentGrade();
@@ -1566,9 +1567,11 @@ function paintHits(){
       'はじめて使う場合は下の「はじめて使う」から登録してください。</p>';
     return;
   }
+  /* 同姓同名がいても区別できるよう、Unitに加えてULも見せる */
   box.innerHTML='<div class="glist">'+GATE.hits.map(m=>
     '<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
-    (m.unit?'<span class="tiny muted" style="margin-left:8px">'+esc(m.unit)+'</span>':'')+
+    ((m.unit||m.ul)?'<span class="tiny muted" style="margin-left:8px">'+
+      esc([m.unit,m.ul].filter(Boolean).join(' ・ '))+'</span>':'')+
     '<span>'+(m.linked?'選ぶ ›':'パスワードを決める ›')+'</span></button>').join('')+'</div>';
 }
 
@@ -1767,13 +1770,19 @@ async function doRegister(){
   if(!code){ showGate('部署共通のパスコードを入力してください'); return; }
   const bad=checkPw(pw,pw2);
   if(bad){ showGate(bad); return; }
-  /* 同じ名前がすでに登録されていないか（二重登録でデータが分かれるのを防ぐ） */
+  /* 同じ名前の人がすでにいないか確認する。
+     同姓同名は実務で起こりうるので、見つかっただけでは止めない
+     （別人まで登録できなくなってしまうため）。
+     「自分もその中にいる＝二重登録」に気づけるよう、見つかった人のUnitを見せて確認する。 */
   try{
     const norm=s=>String(s).replace(/[\s　]/g,'');
-    const hits=await Store.searchRoster(r.name);
-    if(hits.some(m=>norm(m.name)===norm(r.name))){
-      showGate('同じ名前がすでに登録されています。登録済みの方は「登録した人はこちら」から入ってください');
-      return;
+    const hits=(await Store.searchRoster(r.name)).filter(m=>norm(m.name)===norm(r.name));
+    if(hits.length){
+      const list=hits.map(m=>m.name+(m.unit?'（'+m.unit+'）':'')).join('、');
+      const goOn=confirm('同じ名前の登録がすでにあります：'+list+'\n\n'+
+        'この中に自分がいる場合は「キャンセル」を押して、下の「登録した人はこちら」から入ってください。\n'+
+        '同姓同名の別人であれば「OK」でそのまま登録できます。');
+      if(!goOn) return;
     }
   }catch(e){ /* 検索できなくても登録は進める */ }
   gateBusy('[data-act="register"]','登録しています…');
