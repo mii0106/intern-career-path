@@ -741,9 +741,36 @@ function cutTxt(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 /* すでに登録されている表記を選択肢にする。表記ゆれを増やさないため */
 function uniqSorted(list){ return Array.from(new Set(list.filter(x=>x&&String(x).trim()))).sort((a,b)=>String(a).localeCompare(String(b),'ja')); }
 function rosterUnits(){ return uniqSorted(ROSTER.map(m=>m.unit)); }
-function rosterUls(){   return uniqSorted(ROSTER.map(m=>m.ul)); }
-function rosterNames(){ return uniqSorted(ROSTER.map(m=>m.name)); }
-function dl(id,items){ return '<datalist id="'+id+'">'+items.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>'; }
+/* UL・メンターの選択肢は、他の人が書いたUL欄の値（drift の元）ではなく、
+   実際に育成・ULとして登録されている人の氏名から出す。
+   これなら選んだ表記がその人の登録名と必ず一致し、管理者ツールの
+   「自分の担当」判定（氏名の一致で行っている）も確実に効く。 */
+function rosterManagerNames(){ return uniqSorted(ROSTER.filter(m=>isManagerRole(m.role)).map(m=>m.name)); }
+/* ------------------------------------------------------------
+   既存の登録済み表記から選ぶ／無ければ新しく入力する部品（マイシート用）。
+   ステップ側（pickerHTML）と違い、こちらは data-field の仕組みに乗せて
+   D.profile.* を自動保存させる。select 自体には data-field を付けず、
+   data-picker という別属性で拾って専用の change リスナーから
+   反映することで、既存の data-field 汎用ハンドラには影響を与えない。
+   ------------------------------------------------------------ */
+function pickerFieldHTML(label,key,value,options,placeholder,hint){
+  const val=String(value||'');
+  if(!options.length){
+    return '<div class="field"><label>'+label+'</label>'+
+      '<input type="text" data-field="'+key+'" value="'+esc(val)+'" placeholder="'+esc(placeholder)+'"></div>';
+  }
+  const isNew=!!val && options.indexOf(val)<0;
+  return '<div class="field"><label>'+label+'</label>'+
+    '<select data-picker="'+key+'">'+
+      '<option value=""'+(!val?' selected':'')+'>選んでください</option>'+
+      '<option value="__new__"'+(isNew?' selected':'')+'>＋ リストにない（新しく入力する）</option>'+
+      options.map(o=>'<option value="'+esc(o)+'"'+(val===o?' selected':'')+'>'+esc(o)+'</option>').join('')+
+    '</select>'+
+    '<input type="text" data-field="'+key+'" data-picker-input value="'+esc(isNew?val:'')+'" placeholder="'+esc(placeholder)+'" '+
+      'style="margin-top:8px'+(isNew?'':';display:none')+'">'+
+    (hint?'<p class="tiny muted" style="margin:6px 0 0">'+hint+'</p>':'')+
+  '</div>';
+}
 function vHome(){
   const cg=currentGrade(), g=GRADES[cg-1], t=tierOf(cg);
   const dn=done(cg), tt=total(cg), pct=Math.round(dn/tt*100);
@@ -941,11 +968,11 @@ function vMySheet(){
   let h='<div class="sec-label">マイシート</div>';
   h+='<div class="card">'+
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
-   '<div class="field"><label>所属Unit</label><input type="text" data-field="profile.unit" list="dlUnit" value="'+esc(D.profile.unit)+'" placeholder="例：Unit A">'+dl('dlUnit',rosterUnits())+'</div>'+
-   '<div class="field"><label>UL</label><input type="text" data-field="profile.ul" list="dlUl" value="'+esc(D.profile.ul)+'" placeholder="ユニットリーダーの名前">'+dl('dlUl',rosterUls())+'</div>'+
-   '<div class="field"><label>メンター</label><input type="text" data-field="profile.mentor" list="dlNames" value="'+esc(D.profile.mentor)+'" placeholder="メンターの名前">'+dl('dlNames',rosterNames())+
-     '<p class="tiny muted" style="margin:6px 0 0">ここに入れた2人が、管理者ツールで「あなたの担当」として出ます。'+
-     'YWTや月次への返信も、この2人が対応する人として表示されます。</p></div>'+
+   pickerFieldHTML('所属Unit','profile.unit',D.profile.unit,rosterUnits(),'例：Unit A')+
+   pickerFieldHTML('UL','profile.ul',D.profile.ul,rosterManagerNames(),'ユニットリーダーの名前')+
+   pickerFieldHTML('メンター','profile.mentor',D.profile.mentor,rosterManagerNames(),'メンターの名前',
+     'ここに入れた2人が、管理者ツールで「あなたの担当」として出ます。'+
+     'YWTや月次への返信も、この2人が対応する人として表示されます。登録済みの名前から選ぶと表記が揃います。')+
    '<div class="field"><label>入社日</label><input type="date" data-field="profile.join" value="'+esc(D.profile.join)+'"></div>'+
    '<div class="field" style="margin-bottom:0"><label>Grade（社内で認定されている現グレード）</label>'+
    '<select data-field="profile.grade"><option value="">未設定</option>'+
@@ -1432,6 +1459,26 @@ document.addEventListener('input',e=>{
   }else if(t.dataset.creed!=null){ D.creed[+t.dataset.creed].t=t.value; save(); }
   else if(t.dataset.custom){ D.custom[t.dataset.custom]=t.value; save(); }
 });
+/* pickerFieldHTML の select 専用（既存の data-field ハンドラとは独立させ、
+   氏名・目標などの入力には一切影響しないようにしている）。
+   「＋ リストにない」を選んだときは対になる自由入力欄を出して値は空にし、
+   実在の表記を選んだときは自由入力欄を隠して値をそこへ書き戻す。 */
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(!t.dataset.picker) return;
+  const wrap=t.closest('.field');
+  const input=wrap&&wrap.querySelector('[data-picker-input]');
+  const key=t.dataset.picker, k=key.split('.');
+  const val = t.value==='__new__' ? '' : t.value;
+  if(input){
+    input.style.display = t.value==='__new__' ? '' : 'none';
+    input.value=val;
+    if(t.value==='__new__') input.focus();
+  }
+  if(k.length===1) D[k[0]]=val; else D[k[0]][k[1]]=val;
+  if(k[0]==='profile') profileDirty=true;
+  save();
+});
 
 async function toggle(id){
   const gn=gradeOf(id);
@@ -1539,9 +1586,53 @@ function evolve(gradeN,oldSt,newSt){
    共通パスコードは「登録していい人か」を確かめるためのもので、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
-let GATE={ hits:[], units:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
+let GATE={ hits:[], units:[], uls:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 function gUnits(){ return uniqSorted(GATE.units); }
+function gUls(){ return uniqSorted(GATE.uls); }
+function gMentors(){ return uniqSorted(GATE.mentors); }
+/* ------------------------------------------------------------
+   既存の登録済み表記から選ぶ／無ければ新しく入力する部品。
+   Unit・UL・メンターは自己申告の自由入力なので、そのままだと
+   スペースの有無や別表記でばらつく。登録のたびに既存の表記から
+   選べるようにして、今後の表記ゆれを増やさないために使う。
+   ------------------------------------------------------------ */
+function pickerHTML(label,selId,inputId,value,options,placeholder){
+  const val=String(value||'');
+  if(!options.length){
+    return '<div class="field"><label>'+label+'</label>'+
+      '<input type="text" id="'+inputId+'" value="'+esc(val)+'" placeholder="'+esc(placeholder)+'">'+
+      '<p class="tiny muted" style="margin:4px 0 0">最初の人なので、そのまま入力してください。</p></div>';
+  }
+  const isNew=!!val && options.indexOf(val)<0;
+  return '<div class="field"><label>'+label+'</label>'+
+    '<select id="'+selId+'">'+
+      '<option value=""'+(!val?' selected':'')+'>選んでください</option>'+
+      '<option value="__new__"'+(isNew?' selected':'')+'>＋ リストにない（新しく入力する）</option>'+
+      options.map(o=>'<option value="'+esc(o)+'"'+(val===o?' selected':'')+'>'+esc(o)+'</option>').join('')+
+    '</select>'+
+    '<input type="text" id="'+inputId+'" value="'+esc(isNew?val:'')+'" placeholder="'+esc(placeholder)+'" '+
+      'style="margin-top:8px'+(isNew?'':';display:none')+'">'+
+    '<p class="tiny muted" style="margin:4px 0 0">登録済みの表記から選べます。無ければ「＋ リストにない」を選んで入力してください。</p>'+
+  '</div>';
+}
+/* select の変更を、対になる自由入力欄の表示切り替え＋値の同期に反映する。
+   自由入力欄そのものは既存の oninput 配線（GATE.reg・data-field 側）で
+   拾われるので、ここでは select 由来の値をその入力欄にも書き戻すだけでよい。 */
+function wirePicker(selId,inputId,onChange){
+  const sel=document.getElementById(selId);
+  if(!sel) return;
+  sel.onchange=ev=>{
+    const input=document.getElementById(inputId);
+    if(ev.target.value==='__new__'){
+      if(input){ input.value=''; input.style.display=''; input.focus(); }
+      onChange('');
+    }else{
+      if(input){ input.value=ev.target.value; input.style.display='none'; }
+      onChange(ev.target.value);
+    }
+  };
+}
 /* 名前で探す。2文字以上入れたときだけサーバーに聞く（一覧は最初から出さない） */
 let searchT=null;
 function searchRoster(q){
@@ -1609,14 +1700,9 @@ function showGate(err){
     body.innerHTML=
       '<div class="field"><label>氏名<span style="color:var(--coral)"> ※必須</span></label>'+
         '<input type="text" id="rName" value="'+esc(GATE.reg.name)+'" placeholder="山田 太郎"></div>'+
-      '<div class="field"><label>所属Unit</label>'+
-        '<input type="text" id="rUnit" list="rdUnit" value="'+esc(GATE.reg.unit)+'" placeholder="例：Unit A">'+
-        dl('rdUnit',gUnits())+
-        '<p class="tiny muted" style="margin:4px 0 0">'+(gUnits().length?'入力欄を押すと、登録済みのUnitから選べます。':'最初の人なので、そのまま入力してください。')+'</p></div>'+
-      '<div class="field"><label>UL（ユニットリーダー）</label>'+
-        '<input type="text" id="rUl" value="'+esc(GATE.reg.ul)+'" placeholder="ULの名前"></div>'+
-      '<div class="field"><label>メンター</label>'+
-        '<input type="text" id="rMentor" value="'+esc(GATE.reg.mentor)+'" placeholder="メンターの名前"></div>'+
+      pickerHTML('所属Unit','rUnitSel','rUnit',GATE.reg.unit,gUnits(),'例：Unit A')+
+      pickerHTML('UL（ユニットリーダー）','rUlSel','rUl',GATE.reg.ul,gUls(),'ULの名前')+
+      pickerHTML('メンター','rMentorSel','rMentor',GATE.reg.mentor,gMentors(),'メンターの名前')+
       '<div class="field"><label>入社日<span class="muted" style="font-weight:400">（昇格予定の計算に使います）</span></label>'+
         '<input type="date" id="rJoin" value="'+esc(GATE.reg.join)+'"></div>'+
       '<div class="field"><label>いま認定されているGrade</label>'+
@@ -1638,6 +1724,9 @@ function showGate(err){
     ['Unit','Ul','Mentor','Join','Grade'].forEach(k=>{
       const el=document.getElementById('r'+k);
       el.oninput=el.onchange=ev=>{ GATE.reg[k.toLowerCase()]=ev.target.value; };
+    });
+    ['Unit','Ul','Mentor'].forEach(k=>{
+      wirePicker('r'+k+'Sel','r'+k,v=>{ GATE.reg[k.toLowerCase()]=v; });
     });
     document.getElementById('rPw2').onkeydown=ev=>{ if(ev.key==='Enter') doRegister(); };
     return;
@@ -1842,6 +1931,8 @@ async function boot(){
     const me=await Store.restore();
     if(me){ await boot(); return; }   /* 前回のログインが残っている */
     Store.rosterUnits().then(u=>{ GATE.units=u||[]; }).catch(()=>{});
+    Store.rosterUls().then(u=>{ GATE.uls=u||[]; }).catch(()=>{});
+    Store.rosterMentors().then(u=>{ GATE.mentors=u||[]; }).catch(()=>{});
     showGate('');
   }catch(e){
     GATE.offline=true;

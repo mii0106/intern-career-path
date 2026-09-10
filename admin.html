@@ -1861,11 +1861,16 @@ function dwReviews(r){
 function dwProfile(r){
   return '<div class="card"><h2>名簿の情報</h2>'+
     '<div class="fr"><div class="f"><label>氏名</label><input type="text" id="pfName" value="'+esc(r.name)+'"></div>'+
-    '<div class="f"><label>Unit</label><input type="text" id="pfUnit" value="'+esc(r.m.unit||'')+'"></div></div>'+
+    '<div class="f"><label>Unit</label><input type="text" id="pfUnit" list="dlUnit" value="'+esc(r.m.unit||'')+'"></div></div>'+
+    '<datalist id="dlUnit">'+units().map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">同姓同名の人がいる場合は、区別のため氏名にUnitやイニシャルを添えても構いません。'+
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
-    '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" value="'+esc(r.m.ul||'')+'"></div>'+
-    '<div class="f"><label>メンター</label><input type="text" id="pfMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
+    '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+
+    '<div class="f"><label>メンター</label><input type="text" id="pfMentor" list="dlMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
+    '<datalist id="dlUl">'+currentCharges('ul').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<datalist id="dlMentor">'+currentCharges('mentor').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<p class="tiny muted" style="margin:-6px 0 10px">既存の表記から選ぶと、後で「UL・メンターの引き継ぎ」を使わずに済みます'+
+    '（入力欄を押すと候補が出ます）。</p>'+
     '<div class="fr"><div class="f"><label>入社日</label><input type="date" id="pfJoin" value="'+esc(r.m.join_date||'')+'"></div>'+
     '<div class="f"><label>認定グレード</label><select id="pfGrade"><option value="">未設定</option>'+
       GRADES.map(g=>'<option value="'+g.n+'"'+(String(r.certified)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
@@ -1960,9 +1965,12 @@ async function resetLoginFor(id){
    8. 設定
    ============================================================ */
 /* ---------- UL・メンターの引き継ぎ ----------
-   ULやメンターが変わったとき、対象者を1人ずつ開いて書き換えなくても
-   済むように、いまその名前が入っている人全員ぶんをまとめて付け替える。 */
-let HANDOVER={ field:'ul', from:'', to:'' };
+   ULやメンターが変わったときの付け替えに加えて、各自が自己申告で入力した
+   結果ばらついた表記（スペースの有無・旧字/新字・複数名の連記など）を
+   まとめて1つの表記に統一する「表記ゆれの解消」にも使う。
+   そのため引き継ぎ元は複数選べるようにしてある（選んだもの全部を、
+   1つの引き継ぎ先にまとめて付け替える）。 */
+let HANDOVER={ field:'ul', froms:[], to:'' };
 function currentCharges(field){
   const set=new Set();
   ROWS.forEach(r=>{ const v=r.m[field]; if(v&&String(v).trim()) set.add(String(v).trim()); });
@@ -1973,28 +1981,31 @@ function allMemberNames(){
 }
 function handoverCardHTML(){
   const list=currentCharges(HANDOVER.field);
-  const affected=HANDOVER.from? ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===HANDOVER.from):[];
-  return '<div class="card"><h2>UL・メンターの引き継ぎ</h2>'+
-    '<p class="tiny muted" style="margin:0 0 10px">担当が変わったとき、対象者ぶんまとめて付け替えます。'+
+  const affected=HANDOVER.froms.length
+    ? ROWS.filter(r=>HANDOVER.froms.indexOf(String(r.m[HANDOVER.field]||'').trim())>=0) : [];
+  return '<div class="card"><h2>UL・メンターの引き継ぎ・表記ゆれの統一</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">担当が変わったときの付け替えにも、各自の自己申告でばらついた表記'+
+    '（スペースの有無・同じ人の別表記など）を1つにまとめるのにも使えます。'+
+    '下から表記を<b>複数選ぶと</b>、それら全部をまとめて右の名前に付け替えます。'+
     '付け替えた人ごとに申し送り（本人にも見える「申し送り」種別）が1件残ります。</p>'+
     '<div class="f"><label>付け替えるもの</label><div class="radios">'+
       '<button data-act="hoField" data-f="ul" class="'+(HANDOVER.field==='ul'?'on':'')+'">UL</button>'+
       '<button data-act="hoField" data-f="mentor" class="'+(HANDOVER.field==='mentor'?'on':'')+'">メンター</button>'+
     '</div></div>'+
-    '<div class="fr">'+
-      '<div class="f"><label>引き継ぎ元（いまの名前）</label><select id="hoFrom">'+
-        '<option value="">選んでください</option>'+
-        list.map(n=>'<option value="'+esc(n)+'"'+(HANDOVER.from===n?' selected':'')+'>'+esc(n)+
-          '（'+ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===n).length+'人）</option>').join('')+
-      '</select></div>'+
-      '<div class="f"><label>引き継ぎ先（新しい名前）</label>'+
-        '<input type="text" id="hoTo" list="hoNames" value="'+esc(HANDOVER.to)+'" placeholder="新しく担当する人の名前">'+
-        '<datalist id="hoNames">'+allMemberNames().map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist>'+
-      '</div>'+
+    '<div class="f"><label>引き継ぎ元（いまの表記・複数選べます）</label>'+
+      (list.length? '<div class="radios">'+list.map(n=>{
+        const c=ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===n).length;
+        return '<button type="button" data-act="hoFrom" data-n="'+esc(n)+'" class="'+
+          (HANDOVER.froms.indexOf(n)>=0?'on':'')+'">'+esc(n)+'（'+c+'人）</button>';
+      }).join('')+'</div>' : '<p class="tiny muted" style="margin:0">まだ誰も登録していません。</p>')+
     '</div>'+
-    (HANDOVER.from? '<p class="tiny muted" style="margin:0 0 10px">対象：'+affected.length+'人'+
+    '<div class="f"><label>引き継ぎ先（統一後の名前）</label>'+
+      '<input type="text" id="hoTo" list="hoNames" value="'+esc(HANDOVER.to)+'" placeholder="新しく担当する人の名前、または統一したい表記">'+
+      '<datalist id="hoNames">'+allMemberNames().map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist>'+
+    '</div>'+
+    (HANDOVER.froms.length? '<p class="tiny muted" style="margin:0 0 10px">対象：'+affected.length+'人'+
       (affected.length? '（'+affected.slice(0,8).map(r=>esc(r.name)).join('、')+(affected.length>8?' ほか':'')+'）':'')+'</p>' : '')+
-    '<button class="btn vio" data-act="doHandover">引き継ぐ</button>'+
+    '<button class="btn vio" data-act="doHandover">引き継ぐ・統一する</button>'+
     '</div>';
 }
 function vSettings(){
@@ -2103,8 +2114,7 @@ function render(){
   const nk=document.getElementById('nkind'); if(nk) nk.onchange=e=>{ NFILTER.kind=e.target.value; render(); };
   const nv=document.getElementById('nvis');  if(nv) nv.onchange=e=>{ NFILTER.vis=e.target.value; render(); };
   const mu=document.getElementById('mtgUnit'); if(mu) mu.onchange=e=>{ V.mtgUnit=e.target.value; render(); };
-  const hf=document.getElementById('hoFrom'); if(hf) hf.onchange=e=>{ HANDOVER.from=e.target.value; render(); };
-  const ht=document.getElementById('hoTo');   if(ht) ht.oninput =e=>{ HANDOVER.to=e.target.value; };
+  const ht=document.getElementById('hoTo'); if(ht) ht.oninput=e=>{ HANDOVER.to=e.target.value; };
   if(V.drawer) renderDrawer();
 }
 
@@ -2159,19 +2169,24 @@ document.addEventListener('click',async e=>{
       toast(n?n+'件を消去しました':'消去しました');
     }catch(err){ toast(err.message||'消去に失敗しました','bad'); }
   }
-  else if(a==='hoField'){ HANDOVER={ field:el.dataset.f, from:'', to:'' }; render(); }
+  else if(a==='hoField'){ HANDOVER={ field:el.dataset.f, froms:[], to:'' }; render(); }
+  else if(a==='hoFrom'){
+    const n=el.dataset.n, i=HANDOVER.froms.indexOf(n);
+    if(i>=0) HANDOVER.froms.splice(i,1); else HANDOVER.froms.push(n);
+    render();
+  }
   else if(a==='doHandover'){
-    const from=(document.getElementById('hoFrom')||{}).value||'';
     const to=((document.getElementById('hoTo')||{}).value||'').trim();
-    if(!from){ toast('引き継ぎ元を選んでください','bad'); return; }
+    const froms=HANDOVER.froms.filter(f=>f!==to);
+    if(!froms.length){ toast('引き継ぎ元を選んでください（統一先と同じ表記だけが選ばれています）','bad'); return; }
     if(!to){ toast('引き継ぎ先の名前を入力してください','bad'); return; }
-    if(from===to){ toast('引き継ぎ元と引き継ぎ先が同じです','bad'); return; }
-    const n=ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===from).length;
-    if(!confirm((HANDOVER.field==='mentor'?'メンター':'UL')+'「'+from+'」を「'+to+'」に、'+
+    const n=ROWS.filter(r=>froms.indexOf(String(r.m[HANDOVER.field]||'').trim())>=0).length;
+    const fromLabel=froms.map(f=>'「'+f+'」').join('・');
+    if(!confirm((HANDOVER.field==='mentor'?'メンター':'UL')+' '+fromLabel+' を「'+to+'」に、'+
       n+'人ぶん一括で付け替えます。よろしいですか？')) return;
     try{
-      const cnt=await Store.reassignCharge(HANDOVER.field,from,to);
-      HANDOVER={ field:HANDOVER.field, from:'', to:'' };
+      const cnt=await Store.reassignCharge(HANDOVER.field,froms,to);
+      HANDOVER={ field:HANDOVER.field, froms:[], to:'' };
       await loadAll(); render();
       toast(cnt+'人分を引き継ぎました','xp');
     }catch(err){ toast(err.message||'引き継ぎに失敗しました','bad'); }

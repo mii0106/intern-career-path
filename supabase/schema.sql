@@ -170,9 +170,9 @@ $$;
 -- ============================================================
 -- 3. ログイン画面に出す名簿
 --    ログイン前（anon）でも名前を選べるようにするための最小限のビュー。
---    出るのは 表示名・Unit・UL・内部ID・権限・パスワード設定済みかどうか
+--    出るのは 表示名・Unit・UL・メンター・内部ID・権限・パスワード設定済みかどうか
 --    だけで、入社日や進捗は出ない。
---    Unit と UL は、新しく登録する人の選択肢としても使う
+--    Unit・UL・メンターは、新しく登録する人の選択肢としても使う
 --    （すでに誰かが登録した表記がそのまま選べるので、表記が揃う）。
 --
 --    role   … 管理者画面のログイン一覧で UL だけを出すために使う。
@@ -184,7 +184,7 @@ $$;
 -- ============================================================
 drop view if exists public.member_roster;
 create view public.member_roster with (security_invoker = false) as
-  select id, name, unit, ul, slug, role, (auth_id is not null) as linked
+  select id, name, unit, ul, mentor, slug, role, (auth_id is not null) as linked
     from public.members where active order by unit nulls last, name;
 grant select on public.member_roster to anon, authenticated;
 
@@ -641,8 +641,9 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.roster_search(text, boolean) to anon, authenticated;
 
--- 新規登録のときに Unit を選択肢として出すためだけの一覧。
--- 個人名は含めない（表記ゆれを防ぐ目的にはUnit名だけあれば足りる）。
+-- 新規登録のときに Unit・UL・メンターを選択肢として出すためだけの一覧。
+-- 個人名と紐付けない、値の集合だけを返す（表記ゆれを防ぐ目的にはそれで足りる。
+-- 「だれのUL・メンターか」は出さない）。
 create or replace function public.roster_units()
 returns table(unit text)
 language sql stable security definer set search_path = public as $$
@@ -651,6 +652,24 @@ language sql stable security definer set search_path = public as $$
    order by 1
 $$;
 grant execute on function public.roster_units() to anon, authenticated;
+
+create or replace function public.roster_uls()
+returns table(ul text)
+language sql stable security definer set search_path = public as $$
+  select distinct m.ul from public.members m
+   where m.active and nullif(trim(m.ul),'') is not null
+   order by 1
+$$;
+grant execute on function public.roster_uls() to anon, authenticated;
+
+create or replace function public.roster_mentors()
+returns table(mentor text)
+language sql stable security definer set search_path = public as $$
+  select distinct m.mentor from public.members m
+   where m.active and nullif(trim(m.mentor),'') is not null
+   order by 1
+$$;
+grant execute on function public.roster_mentors() to anon, authenticated;
 
 -- ============================================================
 -- 5.7 管理者になるまでの流れを「申請 → 既存管理者の承認」に変える
