@@ -741,11 +741,15 @@ function cutTxt(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 /* すでに登録されている表記を選択肢にする。表記ゆれを増やさないため */
 function uniqSorted(list){ return Array.from(new Set(list.filter(x=>x&&String(x).trim()))).sort((a,b)=>String(a).localeCompare(String(b),'ja')); }
 function rosterUnits(){ return uniqSorted(ROSTER.map(m=>m.unit)); }
-/* UL・メンターの選択肢は、他の人が書いたUL欄の値（drift の元）ではなく、
-   実際に育成・ULとして登録されている人の氏名から出す。
-   これなら選んだ表記がその人の登録名と必ず一致し、管理者ツールの
-   「自分の担当」判定（氏名の一致で行っている）も確実に効く。 */
+/* UL・メンターの選択肢。
+   実際に育成・UL権限に上がっている人の氏名（表記のブレがなく、選べば
+   管理者ツールの「自分の担当」判定＝氏名の完全一致も確実に効く）に加えて、
+   すでに誰かのUL・メンター欄に使われている値も候補に含める。
+   実務では、名ばかりのUL（本人はこのアプリで育成・ULに上がっていない）も
+   普通にいるため、権限で上がっている人だけに絞ると選べる人が少なすぎる。 */
 function rosterManagerNames(){ return uniqSorted(ROSTER.filter(m=>isManagerRole(m.role)).map(m=>m.name)); }
+function rosterUlOptions(){    return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.ul)).concat(knownUls())); }
+function rosterMentorOptions(){ return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.mentor))); }
 /* ------------------------------------------------------------
    既存の登録済み表記から選ぶ／無ければ新しく入力する部品（マイシート用）。
    ステップ側（pickerHTML）と違い、こちらは data-field の仕組みに乗せて
@@ -969,8 +973,8 @@ function vMySheet(){
   h+='<div class="card">'+
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
    pickerFieldHTML('所属Unit','profile.unit',D.profile.unit,rosterUnits(),'例：Unit A')+
-   pickerFieldHTML('UL','profile.ul',D.profile.ul,rosterManagerNames(),'ユニットリーダーの名前')+
-   pickerFieldHTML('メンター','profile.mentor',D.profile.mentor,rosterManagerNames(),'メンターの名前',
+   pickerFieldHTML('UL','profile.ul',D.profile.ul,rosterUlOptions(),'ユニットリーダーの名前')+
+   pickerFieldHTML('メンター','profile.mentor',D.profile.mentor,rosterMentorOptions(),'メンターの名前',
      'ここに入れた2人が、管理者ツールで「あなたの担当」として出ます。'+
      'YWTや月次への返信も、この2人が対応する人として表示されます。登録済みの名前から選ぶと表記が揃います。')+
    '<div class="field"><label>入社日</label><input type="date" data-field="profile.join" value="'+esc(D.profile.join)+'"></div>'+
@@ -1589,7 +1593,10 @@ function evolve(gradeN,oldSt,newSt){
 let GATE={ hits:[], units:[], uls:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 function gUnits(){ return uniqSorted(GATE.units); }
-function gUls(){ return uniqSorted(GATE.uls); }
+/* shared/config.js の KNOWN_ULS は、まだ誰のUL欄にも書かれていなくても
+   選べるようにしておきたい「正」の表記。ここで候補に足す。 */
+function knownUls(){ return ((window.STEP_CONFIG||{}).KNOWN_ULS)||[]; }
+function gUls(){ return uniqSorted(GATE.uls.concat(knownUls())); }
 function gMentors(){ return uniqSorted(GATE.mentors); }
 /* ------------------------------------------------------------
    既存の登録済み表記から選ぶ／無ければ新しく入力する部品。
