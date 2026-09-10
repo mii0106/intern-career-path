@@ -228,10 +228,12 @@ const Store = (() => {
     },
 
     /* ---------- 名簿（ログイン画面用） ----------
-       出るのは表示名・Unit・UL・内部ID・権限・パスワード設定済みかどうかだけ。 */
+       出るのは表示名・Unit・UL・メンター・内部ID・権限・パスワード設定済みかどうかだけ。
+       列名を明示せず select('*') にしているのは、schema.sql を貼り直す前の
+       古いビュー（mentor列が無い）でも列不足エラーにならないようにするため。 */
     async roster(){
       if(!CLOUD) return [];
-      const r=await sb.from('member_roster').select('id,name,unit,ul,slug,role,linked');
+      const r=await sb.from('member_roster').select('*');
       return chk(r)||[];
     },
 
@@ -253,7 +255,10 @@ const Store = (() => {
         (String(m.name).indexOf(s)>=0||String(m.unit||'').indexOf(s)>=0)).slice(0,10);
     },
 
-    /* 新規登録の Unit 候補。個人名は含まない */
+    /* 新規登録の Unit・UL・メンター候補。個人名とは紐付けない、値の集合だけ。
+       roster_uls / roster_mentors は roster_units より新しい関数なので、
+       roster_units 自体は caps.rosterSearch で判定しつつ、この2つは
+       毎回そのまま呼んで、無ければ（古いschemaのままなら）名簿から手元で作る。 */
     async rosterUnits(){
       if(!CLOUD) return [];
       if(caps.rosterSearch){
@@ -263,6 +268,24 @@ const Store = (() => {
       try{
         const all=await api.roster();
         return Array.from(new Set(all.map(m=>m.unit).filter(Boolean))).sort();
+      }catch(e){ return []; }
+    },
+    async rosterUls(){
+      if(!CLOUD) return [];
+      const r=await sb.rpc('roster_uls');
+      if(!r.error) return (chk(r)||[]).map(x=>x.ul).filter(Boolean);
+      try{
+        const all=await api.roster();
+        return Array.from(new Set(all.map(m=>m.ul).filter(Boolean))).sort();
+      }catch(e){ return []; }
+    },
+    async rosterMentors(){
+      if(!CLOUD) return [];
+      const r=await sb.rpc('roster_mentors');
+      if(!r.error) return (chk(r)||[]).map(x=>x.mentor).filter(Boolean);
+      try{
+        const all=await api.roster();
+        return Array.from(new Set(all.map(m=>m.mentor).filter(Boolean))).sort();
       }catch(e){ return []; }
     },
 

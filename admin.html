@@ -1861,11 +1861,16 @@ function dwReviews(r){
 function dwProfile(r){
   return '<div class="card"><h2>名簿の情報</h2>'+
     '<div class="fr"><div class="f"><label>氏名</label><input type="text" id="pfName" value="'+esc(r.name)+'"></div>'+
-    '<div class="f"><label>Unit</label><input type="text" id="pfUnit" value="'+esc(r.m.unit||'')+'"></div></div>'+
+    '<div class="f"><label>Unit</label><input type="text" id="pfUnit" list="dlUnit" value="'+esc(r.m.unit||'')+'"></div></div>'+
+    '<datalist id="dlUnit">'+units().map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">同姓同名の人がいる場合は、区別のため氏名にUnitやイニシャルを添えても構いません。'+
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
-    '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" value="'+esc(r.m.ul||'')+'"></div>'+
-    '<div class="f"><label>メンター</label><input type="text" id="pfMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
+    '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+
+    '<div class="f"><label>メンター</label><input type="text" id="pfMentor" list="dlMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
+    '<datalist id="dlUl">'+currentCharges('ul').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<datalist id="dlMentor">'+currentCharges('mentor').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<p class="tiny muted" style="margin:-6px 0 10px">既存の表記から選ぶと、後で「UL・メンターの引き継ぎ」を使わずに済みます'+
+    '（入力欄を押すと候補が出ます）。</p>'+
     '<div class="fr"><div class="f"><label>入社日</label><input type="date" id="pfJoin" value="'+esc(r.m.join_date||'')+'"></div>'+
     '<div class="f"><label>認定グレード</label><select id="pfGrade"><option value="">未設定</option>'+
       GRADES.map(g=>'<option value="'+g.n+'"'+(String(r.certified)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
