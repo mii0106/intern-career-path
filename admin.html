@@ -578,6 +578,9 @@ function units(){ return Array.from(new Set(ROWS.map(r=>r.unit))).sort(); }
 /* リーダー等級（G7）以上は在籍月数の標準期間という考え方がそぐわないため、
    「遅れ」の対象から外す。 */
 function isDelayed(r){ return r.delay!=null && r.delay>=DELAY_ALERT && !isSeniorTier(r.cg); }
+/* 「詰まり」も同じ理由でリーダー等級以上は対象外にする（表示・集計のみ。
+   棚卸し用CSVには実データを残したいので、そちらは r.stuck をそのまま使う）。 */
+function stuckDisplay(r){ return isSeniorTier(r.cg) ? [] : r.stuck; }
 function alertsOf(r){
   const out=[];
   if(isDelayed(r)) out.push('delay');
@@ -902,9 +905,10 @@ function vDash(){
       '<th class="nos">状況</th><th class="nos">いちばん詰まっているところ</th></tr></thead><tbody>';
     focus.forEach(x=>{
       const r=x.r;
+      const st=stuckDisplay(r);
       h+='<tr><td class="nm">'+memberLink(r)+'</td><td>'+esc(r.unit)+'</td><td>'+gradeChip(r.cg)+'</td>'+
         '<td class="num">'+r.pct+'%</td><td>'+x.a.map(a=>alertChip(a)).join(' ')+'</td>'+
-        '<td style="white-space:normal;max-width:340px" class="tiny">'+(r.stuck[0]?esc(r.stuck[0].cat.split('｜')[0])+'：'+esc(cut(r.stuck[0].t,46)):'—')+'</td></tr>';
+        '<td style="white-space:normal;max-width:340px" class="tiny">'+(st[0]?esc(st[0].cat.split('｜')[0])+'：'+esc(cut(st[0].t,46)):'—')+'</td></tr>';
     });
     h+='</tbody></table></div>';
   }
@@ -988,8 +992,8 @@ const COLDEF={
   charge:    {h:'担当',    sort:'charge', tip:'その人のマイシートに入っているUL・メンター。自分が入っていれば「自分」と出ます',
               cell:r=>chargeChips(r)},
   registered:{h:'登録日',  sort:'registered', cell:r=>r.registeredAt?fmtDateFull(r.registeredAt):'<span class="muted">—</span>'},
-  stuck:     {h:'いちばん詰まっているところ',
-              cell:r=>'<span class="wrap tiny">'+(r.stuck[0]?esc(r.stuck[0].cat.split('｜')[0])+'：'+esc(cut(r.stuck[0].t,42)):'—')+'</span>'}
+  stuck:     {h:'いちばん詰まっているところ', tip:'挑戦中グレードの未達項目（リーダー等級以上は対象外）',
+              cell:r=>{ const st=stuckDisplay(r); return '<span class="wrap tiny">'+(st[0]?esc(st[0].cat.split('｜')[0])+'：'+esc(cut(st[0].t,42)):'—')+'</span>'; }}
 };
 const PRESETS={
   meeting:{n:'面談用', cols:['unit','charge','cg','pct','stuck','stale']},
@@ -1128,9 +1132,9 @@ function vPromo(){
   }
   h+='</div>';
 
-  /* 詰まっている項目のランキング */
+  /* 詰まっている項目のランキング（リーダー等級以上は集計に含めない） */
   const tally={};
-  list.forEach(r=>r.stuck.forEach(it=>{
+  list.forEach(r=>stuckDisplay(r).forEach(it=>{
     const k=it.t;
     (tally[k]=tally[k]||{t:it.t,cat:it.cat,grades:{},who:[]});
     tally[k].grades[gradeOf(it.id)]=true;
@@ -1156,10 +1160,10 @@ function vPromo(){
   }
   h+='</div>';
 
-  /* カテゴリ別の未達率 */
+  /* カテゴリ別の未達率（リーダー等級以上は集計に含めない） */
   h+='<div class="card"><h2>カテゴリ別のつまずき <span class="cnt">挑戦中グレードの未達項目をカテゴリでまとめたもの</span></h2>';
   const cat={};
-  list.forEach(r=>r.stuck.forEach(it=>{
+  list.forEach(r=>stuckDisplay(r).forEach(it=>{
     const key=CATS.find(c=>c.k==='vision'? it.vision : it.cat.indexOf(c.k)===0);
     const k=key?key.n:'その他';
     cat[k]=(cat[k]||0)+1;
@@ -1698,10 +1702,10 @@ function vMtg(){
       '</div>'+
       '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
         '<div><div class="tiny muted" style="font-weight:700;margin-bottom:3px">詰まっているところ</div>'+
-          (r.stuck.length? '<ul style="margin:0;padding-left:17px" class="tiny">'+
-            r.stuck.slice(0,3).map(it=>'<li>'+esc(it.cat.split('｜')[0])+'：'+esc(cut(it.t,52))+'</li>').join('')+
-            (r.stuck.length>3?'<li class="muted">ほか'+(r.stuck.length-3)+'項目</li>':'')+'</ul>'
-            : '<div class="tiny muted">なし（昇格条件クリア）</div>')+'</div>'+
+          (stuckDisplay(r).length? '<ul style="margin:0;padding-left:17px" class="tiny">'+
+            stuckDisplay(r).slice(0,3).map(it=>'<li>'+esc(it.cat.split('｜')[0])+'：'+esc(cut(it.t,52))+'</li>').join('')+
+            (stuckDisplay(r).length>3?'<li class="muted">ほか'+(stuckDisplay(r).length-3)+'項目</li>':'')+'</ul>'
+            : '<div class="tiny muted">'+(isSeniorTier(r.cg)?'リーダー等級以上は対象外':'なし（昇格条件クリア）')+'</div>')+'</div>'+
         '<div><div class="tiny muted" style="font-weight:700;margin-bottom:3px">直近の申し送り・次月目標</div>'+
           (iv? '<div class="tiny">'+fmtDate(iv.occurred_on)+' '+esc(cut(iv.body,70))+'</div>' : '<div class="tiny muted">記録なし</div>')+
           (r.nextGoal? '<div class="tiny" style="margin-top:4px">🎯 '+esc(cut(r.nextGoal,70))+'</div>':'')+'</div>'+
@@ -1719,7 +1723,7 @@ function mtgText(){
       (r.readyPromo?'　★昇格面談の対象':''));
     L.push('　昇格予定：'+fmtDateFull(r.outlook.targetDate)+
       (r.delay!=null&&!isSeniorTier(r.cg)? '（標準比 '+(r.delay>=0?'+':'')+r.delay.toFixed(1)+'ヶ月）':''));
-    if(r.stuck.length) L.push('　詰まり：'+r.stuck.slice(0,3).map(it=>it.cat.split('｜')[0]+'／'+it.t).join(' ／ '));
+    if(stuckDisplay(r).length) L.push('　詰まり：'+stuckDisplay(r).slice(0,3).map(it=>it.cat.split('｜')[0]+'／'+it.t).join(' ／ '));
     L.push('　提出：YWT '+(r.ywtDone?'済':'未')+'・月次 '+(r.monthlyDone?'済':'未')+
       '／最終更新 '+(r.stale==null?'記録なし':r.stale+'日前'));
     if(r.nextGoal) L.push('　次月目標：'+r.nextGoal);
