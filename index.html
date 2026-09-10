@@ -748,7 +748,7 @@ function rosterUnits(){ return uniqSorted(ROSTER.map(m=>m.unit)); }
    実務では、名ばかりのUL（本人はこのアプリで育成・ULに上がっていない）も
    普通にいるため、権限で上がっている人だけに絞ると選べる人が少なすぎる。 */
 function rosterManagerNames(){ return uniqSorted(ROSTER.filter(m=>isManagerRole(m.role)).map(m=>m.name)); }
-function rosterUlOptions(){    return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.ul))); }
+function rosterUlOptions(){    return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.ul)).concat(knownUls())); }
 function rosterMentorOptions(){ return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.mentor))); }
 /* ------------------------------------------------------------
    既存の登録済み表記から選ぶ／無ければ新しく入力する部品（マイシート用）。
@@ -1593,7 +1593,10 @@ function evolve(gradeN,oldSt,newSt){
 let GATE={ hits:[], units:[], uls:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 function gUnits(){ return uniqSorted(GATE.units); }
-function gUls(){ return uniqSorted(GATE.uls); }
+/* shared/config.js の KNOWN_ULS は、まだ誰のUL欄にも書かれていなくても
+   選べるようにしておきたい「正」の表記。ここで候補に足す。 */
+function knownUls(){ return ((window.STEP_CONFIG||{}).KNOWN_ULS)||[]; }
+function gUls(){ return uniqSorted(GATE.uls.concat(knownUls())); }
 function gMentors(){ return uniqSorted(GATE.mentors); }
 /* ------------------------------------------------------------
    既存の登録済み表記から選ぶ／無ければ新しく入力する部品。

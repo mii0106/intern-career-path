@@ -1867,7 +1867,8 @@ function dwProfile(r){
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
     '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+
     '<div class="f"><label>メンター</label><input type="text" id="pfMentor" list="dlMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
-    '<datalist id="dlUl">'+currentCharges('ul').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<datalist id="dlUl">'+Array.from(new Set(currentCharges('ul').concat(CFG.KNOWN_ULS||[])))
+      .sort((a,b)=>a.localeCompare(b,'ja')).map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<datalist id="dlMentor">'+currentCharges('mentor').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">既存の表記から選ぶと、後で「UL・メンターの引き継ぎ」を使わずに済みます'+
     '（入力欄を押すと候補が出ます）。</p>'+
@@ -2001,7 +2002,8 @@ function handoverCardHTML(){
     '</div>'+
     '<div class="f"><label>引き継ぎ先（統一後の名前）</label>'+
       '<input type="text" id="hoTo" list="hoNames" value="'+esc(HANDOVER.to)+'" placeholder="新しく担当する人の名前、または統一したい表記">'+
-      '<datalist id="hoNames">'+allMemberNames().map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist>'+
+      '<datalist id="hoNames">'+Array.from(new Set(allMemberNames().concat(CFG.KNOWN_ULS||[])))
+        .sort((a,b)=>a.localeCompare(b,'ja')).map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist>'+
     '</div>'+
     (HANDOVER.froms.length? '<p class="tiny muted" style="margin:0 0 10px">対象：'+affected.length+'人'+
       (affected.length? '（'+affected.slice(0,8).map(r=>esc(r.name)).join('、')+(affected.length>8?' ほか':'')+'）':'')+'</p>' : '')+
