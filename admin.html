@@ -1105,11 +1105,12 @@ function vPromo(){
   }
   h+='</div>';
 
-  /* 昇格予定のタイムライン */
-  const withT=list.filter(r=>r.outlook.targetDate).sort((a,b)=>String(a.outlook.targetDate).localeCompare(String(b.outlook.targetDate)));
+  /* 昇格予定のタイムライン（リーダー等級以上は「遅れ」と同じ理由で対象外） */
+  const withT=list.filter(r=>r.outlook.targetDate && !isSeniorTier(r.cg))
+    .sort((a,b)=>String(a.outlook.targetDate).localeCompare(String(b.outlook.targetDate)));
   const byMonth={};
   withT.forEach(r=>{ const k=String(r.outlook.targetDate).slice(0,7); (byMonth[k]=byMonth[k]||[]).push(r); });
-  h+='<div class="card"><h2>昇格予定の時期 <span class="cnt">入社日＋標準期間（手動の上書きがあればそちら）</span></h2>';
+  h+='<div class="card"><h2>昇格予定の時期 <span class="cnt">入社日＋標準期間（手動の上書きがあればそちら）。リーダー等級以上は対象外</span></h2>';
   const keys=Object.keys(byMonth).sort();
   if(!keys.length) h+='<div class="empty">入社日が未登録のため計算できません。</div>';
   else{
