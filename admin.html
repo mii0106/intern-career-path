@@ -422,9 +422,10 @@ function paintHits(boxId,managersOnly){
                    :'先に本人画面（<a href="./">こちら</a>）で登録してください。')+'</p>';
     return;
   }
+  /* 同姓同名がいても区別できるよう、Unitに加えてULも見せる */
   box.innerHTML='<div class="glist">'+GATE.hits.map(m=>
     '<button class="gitem" data-act="pick" data-id="'+m.id+'"><b>'+esc(m.name)+'</b>'+
-    '<span>'+esc(m.unit||'')+(m.linked?' ・ 選ぶ ›':' ・ パスワード未設定')+'</span></button>').join('')+'</div>';
+    '<span>'+esc([m.unit,m.ul].filter(Boolean).join(' ・ '))+(m.linked?' ・ 選ぶ ›':' ・ パスワード未設定')+'</span></button>').join('')+'</div>';
 }
 let searchT=null;
 function gateSearch(q,boxId,managersOnly){
@@ -574,9 +575,12 @@ function mineTag(r){ return r.mine? ' <span class="chip v">自分の担当</span
 
 /* ---------- 絞り込み ---------- */
 function units(){ return Array.from(new Set(ROWS.map(r=>r.unit))).sort(); }
+/* リーダー等級（G7）以上は在籍月数の標準期間という考え方がそぐわないため、
+   「遅れ」の対象から外す。 */
+function isDelayed(r){ return r.delay!=null && r.delay>=DELAY_ALERT && !isSeniorTier(r.cg); }
 function alertsOf(r){
   const out=[];
-  if(r.delay!=null && r.delay>=DELAY_ALERT) out.push('delay');
+  if(isDelayed(r)) out.push('delay');
   if(r.stale==null || r.stale>=STALE_DAYS) out.push('stale');
   if(r.readyPromo) out.push('promo');
   if(!r.ywtDone) out.push('ywt');
@@ -670,6 +674,11 @@ function delayChip(d){
   if(d>=0) return '<span class="chip a">'+d.toFixed(1)+'ヶ月おくれ</span>';
   return '<span class="chip m">'+Math.abs(d).toFixed(1)+'ヶ月はやい</span>';
 }
+/* リーダー等級以上は標準期間との比較を表示しない（delayChipの対象外） */
+function delayCell(r){
+  if(isSeniorTier(r.cg)) return '<span class="muted" title="リーダー等級以上は標準期間の対象外です">対象外</span>';
+  return delayChip(r.delay);
+}
 function staleChip(r){
   if(r.stale==null) return '<span class="chip c">記録なし</span>';
   if(r.stale>=STALE_DAYS) return '<span class="chip c">'+r.stale+'日</span>';
@@ -736,7 +745,7 @@ function th(key,label,cls,tip){
 function vDash(){
   const all=filtered().filter(r=>r.role==='member');
   const n=all.length||1;
-  const delayed=all.filter(r=>r.delay!=null&&r.delay>=DELAY_ALERT);
+  const delayed=all.filter(isDelayed);
   const stale=all.filter(r=>r.stale==null||r.stale>=STALE_DAYS);
   const promo=all.filter(r=>r.readyPromo);
   const noYwt=all.filter(r=>!r.ywtDone);
@@ -847,7 +856,7 @@ function vDash(){
     h+='<tr><td class="nm">'+esc(u)+(ulName?'<span class="tiny muted" style="font-weight:400"> / '+esc(ulName)+'</span>':'')+'</td>'+
       '<td class="num">'+l.length+'</td>'+
       '<td class="num">'+Math.round(l.reduce((a,r)=>a+r.overall,0)/l.length)+'%</td>'+
-      '<td class="num">'+cnt(l.filter(r=>r.delay!=null&&r.delay>=DELAY_ALERT).length,'c')+'</td>'+
+      '<td class="num">'+cnt(l.filter(isDelayed).length,'c')+'</td>'+
       '<td class="num">'+cnt(l.filter(r=>r.stale==null||r.stale>=STALE_DAYS).length,'a')+'</td>'+
       '<td class="num">'+cnt(l.filter(r=>r.readyPromo).length,'m')+'</td>'+
       '<td class="num">'+cnt(l.filter(r=>!r.ywtDone).length,'a')+'</td></tr>';
@@ -970,8 +979,8 @@ const COLDEF={
               cell:r=>'<span class="mono">'+r.overall+'%</span>'},
   target:    {h:'昇格予定', sort:'target', tip:'入社日＋標準期間。設定タブで手動の上書きもできます',
               cell:r=>fmtDateFull(r.outlook.targetDate)},
-  delay:     {h:'標準との差', sort:'delay', cls:'num', tip:'標準期間と、実際の在籍月数の差',
-              cell:r=>delayChip(r.delay)},
+  delay:     {h:'標準との差', sort:'delay', cls:'num', tip:'標準期間と、実際の在籍月数の差（リーダー等級以上は対象外）',
+              cell:r=>delayCell(r)},
   stale:     {h:'最終更新', sort:'stale', cls:'num', tip:'いちばん最後にチェックが動いた日からの日数',
               cell:r=>staleChip(r)},
   quiz:      {h:'テスト',  sort:'quiz', cls:'num', cell:r=>r.quizAvg==null?'<span class="muted">—</span>':r.quizAvg+'%'},
@@ -1651,7 +1660,7 @@ function vMtg(){
 
   if(!list.length){ return h+'<div class="card"><div class="empty">このUnitにメンバーがいません。</div></div>'; }
 
-  const delayed=list.filter(r=>r.delay!=null&&r.delay>=DELAY_ALERT).length;
+  const delayed=list.filter(isDelayed).length;
   const stale=list.filter(r=>r.stale==null||r.stale>=STALE_DAYS).length;
   const promo=list.filter(r=>r.readyPromo).length;
   h+='<div class="grid g4" style="margin-bottom:14px">'+
@@ -1680,7 +1689,7 @@ function vMtg(){
           '<b class="mono">'+r.done+'/'+r.total+'</b></div>'+
           '<div class="tiny muted" style="margin-top:3px">全体 '+r.overall+'%　最終更新 '+(r.stale==null?'記録なし':r.stale+'日前')+'</div></div>'+
         '<div><div class="tiny muted" style="font-weight:700">昇格予定</div>'+
-          '<div style="margin-top:3px">'+fmtDateFull(r.outlook.targetDate)+'　'+delayChip(r.delay)+'</div>'+
+          '<div style="margin-top:3px">'+fmtDateFull(r.outlook.targetDate)+'　'+delayCell(r)+'</div>'+
           '<div class="tiny muted" style="margin-top:3px">標準 '+(r.outlook.standardMonths||'—')+'ヶ月／在籍 '+(r.months==null?'—':r.months.toFixed(1))+'ヶ月</div></div>'+
         '<div><div class="tiny muted" style="font-weight:700">提出状況</div>'+
           '<div style="margin-top:3px">YWT '+(r.ywtDone?'<span class="chip m">提出済</span>':'<span class="chip a">未提出</span>')+
@@ -1709,7 +1718,7 @@ function mtgText(){
     L.push('　進捗：'+r.done+'/'+r.total+'（'+r.pct+'%）／全体 '+r.overall+'%'+
       (r.readyPromo?'　★昇格面談の対象':''));
     L.push('　昇格予定：'+fmtDateFull(r.outlook.targetDate)+
-      (r.delay!=null? '（標準比 '+(r.delay>=0?'+':'')+r.delay.toFixed(1)+'ヶ月）':''));
+      (r.delay!=null&&!isSeniorTier(r.cg)? '（標準比 '+(r.delay>=0?'+':'')+r.delay.toFixed(1)+'ヶ月）':''));
     if(r.stuck.length) L.push('　詰まり：'+r.stuck.slice(0,3).map(it=>it.cat.split('｜')[0]+'／'+it.t).join(' ／ '));
     L.push('　提出：YWT '+(r.ywtDone?'済':'未')+'・月次 '+(r.monthlyDone?'済':'未')+
       '／最終更新 '+(r.stale==null?'記録なし':r.stale+'日前'));
@@ -1853,6 +1862,8 @@ function dwProfile(r){
   return '<div class="card"><h2>名簿の情報</h2>'+
     '<div class="fr"><div class="f"><label>氏名</label><input type="text" id="pfName" value="'+esc(r.name)+'"></div>'+
     '<div class="f"><label>Unit</label><input type="text" id="pfUnit" value="'+esc(r.m.unit||'')+'"></div></div>'+
+    '<p class="tiny muted" style="margin:-6px 0 10px">同姓同名の人がいる場合は、区別のため氏名にUnitやイニシャルを添えても構いません。'+
+    'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
     '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" value="'+esc(r.m.ul||'')+'"></div>'+
     '<div class="f"><label>メンター</label><input type="text" id="pfMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
     '<div class="fr"><div class="f"><label>入社日</label><input type="date" id="pfJoin" value="'+esc(r.m.join_date||'')+'"></div>'+
@@ -1886,6 +1897,16 @@ function dwProfile(r){
       '<input type="text" id="pfConfirm" placeholder="'+esc(r.name)+'"></div>'+
     '<button class="btn ghost" style="color:var(--coral);border-color:var(--coral)" '+
       'data-act="clearProgress" data-id="'+r.id+'">チェックを全件消去する</button>'+
+    '</div>'+
+    '<div class="card"><h2>卒業・退職</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">'+esc(r.name)+' さんを一覧から外します。'+
+    '<b>チェック・申し送り・テスト結果・振り返りは消えません。</b>本人はログインできなくなりますが、'+
+    '記録を残したまま外すだけなので、あとから<b>設定タブの「卒業・退職した人」</b>から現役に戻せます。</p>'+
+    '<div class="fr"><div class="f"><label>区分</label><select id="rtType"><option value="卒業">卒業</option><option value="退職">退職</option></select></div>'+
+    '<div class="f"><label>年月日</label><input type="date" id="rtDate" value="'+todayStr()+'"></div></div>'+
+    '<div class="f"><label>メモ（任意）</label><input type="text" id="rtReason" placeholder="配属先・退職理由など、あとで見て分かるように"></div>'+
+    '<button class="btn ghost" style="color:var(--coral);border-color:var(--coral)" '+
+      'data-act="retireMember" data-id="'+r.id+'">卒業・退職として記録し、一覧から外す</button>'+
     '</div>';
 }
 async function saveProfileFor(id){
@@ -1938,6 +1959,44 @@ async function resetLoginFor(id){
 /* ============================================================
    8. 設定
    ============================================================ */
+/* ---------- UL・メンターの引き継ぎ ----------
+   ULやメンターが変わったとき、対象者を1人ずつ開いて書き換えなくても
+   済むように、いまその名前が入っている人全員ぶんをまとめて付け替える。 */
+let HANDOVER={ field:'ul', from:'', to:'' };
+function currentCharges(field){
+  const set=new Set();
+  ROWS.forEach(r=>{ const v=r.m[field]; if(v&&String(v).trim()) set.add(String(v).trim()); });
+  return Array.from(set).sort((a,b)=>a.localeCompare(b,'ja'));
+}
+function allMemberNames(){
+  return Array.from(new Set(ROWS.map(r=>r.name).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'ja'));
+}
+function handoverCardHTML(){
+  const list=currentCharges(HANDOVER.field);
+  const affected=HANDOVER.from? ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===HANDOVER.from):[];
+  return '<div class="card"><h2>UL・メンターの引き継ぎ</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">担当が変わったとき、対象者ぶんまとめて付け替えます。'+
+    '付け替えた人ごとに申し送り（本人にも見える「申し送り」種別）が1件残ります。</p>'+
+    '<div class="f"><label>付け替えるもの</label><div class="radios">'+
+      '<button data-act="hoField" data-f="ul" class="'+(HANDOVER.field==='ul'?'on':'')+'">UL</button>'+
+      '<button data-act="hoField" data-f="mentor" class="'+(HANDOVER.field==='mentor'?'on':'')+'">メンター</button>'+
+    '</div></div>'+
+    '<div class="fr">'+
+      '<div class="f"><label>引き継ぎ元（いまの名前）</label><select id="hoFrom">'+
+        '<option value="">選んでください</option>'+
+        list.map(n=>'<option value="'+esc(n)+'"'+(HANDOVER.from===n?' selected':'')+'>'+esc(n)+
+          '（'+ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===n).length+'人）</option>').join('')+
+      '</select></div>'+
+      '<div class="f"><label>引き継ぎ先（新しい名前）</label>'+
+        '<input type="text" id="hoTo" list="hoNames" value="'+esc(HANDOVER.to)+'" placeholder="新しく担当する人の名前">'+
+        '<datalist id="hoNames">'+allMemberNames().map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist>'+
+      '</div>'+
+    '</div>'+
+    (HANDOVER.from? '<p class="tiny muted" style="margin:0 0 10px">対象：'+affected.length+'人'+
+      (affected.length? '（'+affected.slice(0,8).map(r=>esc(r.name)).join('、')+(affected.length>8?' ほか':'')+'）':'')+'</p>' : '')+
+    '<button class="btn vio" data-act="doHandover">引き継ぐ</button>'+
+    '</div>';
+}
 function vSettings(){
   let h='<h1 class="h1 disp">設定</h1>'+
     '<p class="lead">アラートの基準と、ログインまわりをここで扱います。</p>';
@@ -1968,6 +2027,29 @@ function vSettings(){
       '共通パスコードだけで決め直せるようにはしていません（それだと、パスコードを知っている人が'+
       '誰にでもなりすませてしまうため）。</p>'+
     '</div>';
+
+  h+=handoverCardHTML();
+
+  /* 卒業・退職した人。一覧やダッシュボードからは外れるが、記録は消えていない。
+     ここだけが唯一の出入り口（戻すのもここから）。 */
+  const graduated=A.members.filter(m=>m.active===false)
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'));
+  h+='<div class="card"><h2>卒業・退職した人'+
+      (graduated.length?' <span class="cnt">'+graduated.length+'人</span>':'')+'</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">メンバー詳細の「卒業・退職」から記録した人がここに並びます。'+
+    '一覧・ダッシュボード・検索には出ませんが、記録は消えていません。'+
+    '間違えて外したときは、ここから現役に戻せます。</p>';
+  if(!graduated.length) h+='<div class="empty">いません。</div>';
+  else{
+    h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+      '<th class="nos nm">名前</th><th class="nos">Unit</th><th class="nos">UL</th><th class="nos"></th></tr></thead><tbody>';
+    graduated.forEach(m=>{
+      h+='<tr><td class="nm">'+esc(m.name)+'</td><td>'+esc(m.unit||'—')+'</td><td>'+esc(m.ul||'—')+'</td>'+
+        '<td><button class="btn ghost sm" data-act="reactivateMember" data-id="'+m.id+'">現役に戻す</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
 
   /* アラートのしきい値 */
   h+='<div class="card"><h2>アラートの基準</h2>'+
@@ -2021,6 +2103,8 @@ function render(){
   const nk=document.getElementById('nkind'); if(nk) nk.onchange=e=>{ NFILTER.kind=e.target.value; render(); };
   const nv=document.getElementById('nvis');  if(nv) nv.onchange=e=>{ NFILTER.vis=e.target.value; render(); };
   const mu=document.getElementById('mtgUnit'); if(mu) mu.onchange=e=>{ V.mtgUnit=e.target.value; render(); };
+  const hf=document.getElementById('hoFrom'); if(hf) hf.onchange=e=>{ HANDOVER.from=e.target.value; render(); };
+  const ht=document.getElementById('hoTo');   if(ht) ht.oninput =e=>{ HANDOVER.to=e.target.value; };
   if(V.drawer) renderDrawer();
 }
 
@@ -2039,6 +2123,13 @@ document.addEventListener('click',async e=>{
     const r=BY_ID[V.drawer]; const id=el.dataset.id; const on=el.dataset.s!=='off';
     try{
       await Store.setCheckFor(r.id,id,on);
+      /* 本人が基準を満たさないままチェックしてしまったときのため、
+         外した操作は申し送りに記録を残す（付けた操作は残さない。頻度が違うため）。 */
+      if(!on){
+        const it=ITEM_BY_ID[id];
+        await Store.addNote({ member_id:r.id, kind:'memo', occurred_on:todayStr(),
+          body:'チェックを外しました：'+(it?it.t:id)+'（管理画面からの操作です）', visibility:'admin' });
+      }
       await loadAll();
       const nr=BY_ID[V.drawer];
       renderDrawer(); render();
@@ -2067,6 +2158,51 @@ document.addEventListener('click',async e=>{
       await loadAll(); renderDrawer(); render();
       toast(n?n+'件を消去しました':'消去しました');
     }catch(err){ toast(err.message||'消去に失敗しました','bad'); }
+  }
+  else if(a==='hoField'){ HANDOVER={ field:el.dataset.f, from:'', to:'' }; render(); }
+  else if(a==='doHandover'){
+    const from=(document.getElementById('hoFrom')||{}).value||'';
+    const to=((document.getElementById('hoTo')||{}).value||'').trim();
+    if(!from){ toast('引き継ぎ元を選んでください','bad'); return; }
+    if(!to){ toast('引き継ぎ先の名前を入力してください','bad'); return; }
+    if(from===to){ toast('引き継ぎ元と引き継ぎ先が同じです','bad'); return; }
+    const n=ROWS.filter(r=>String(r.m[HANDOVER.field]||'').trim()===from).length;
+    if(!confirm((HANDOVER.field==='mentor'?'メンター':'UL')+'「'+from+'」を「'+to+'」に、'+
+      n+'人ぶん一括で付け替えます。よろしいですか？')) return;
+    try{
+      const cnt=await Store.reassignCharge(HANDOVER.field,from,to);
+      HANDOVER={ field:HANDOVER.field, from:'', to:'' };
+      await loadAll(); render();
+      toast(cnt+'人分を引き継ぎました','xp');
+    }catch(err){ toast(err.message||'引き継ぎに失敗しました','bad'); }
+  }
+  else if(a==='retireMember'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    const type=(document.getElementById('rtType')||{}).value||'卒業';
+    const date=(document.getElementById('rtDate')||{}).value||todayStr();
+    const reason=((document.getElementById('rtReason')||{}).value||'').trim();
+    if(!confirm(r.name+' さんを'+type+'として記録し、一覧から外します。\n\n'+
+      'チェック・申し送り・テスト結果・振り返りは消えません。本人はログインできなくなります。\n'+
+      '設定タブの「卒業・退職した人」からいつでも現役に戻せます。\n\nよろしいですか？')) return;
+    try{
+      await Store.upsertMember({id:r.id, active:false});
+      await Store.addNote({member_id:r.id, kind:'memo', occurred_on:date,
+        body:type+'として記録し、一覧から外しました。'+(reason?'（'+reason+'）':''), visibility:'admin'});
+      closeDrawer();
+      await loadAll(); render();
+      toast(r.name+' さんを'+type+'として記録しました','xp');
+    }catch(err){ toast(err.message||'記録に失敗しました','bad'); }
+  }
+  else if(a==='reactivateMember'){
+    const m=A.members.find(x=>x.id===el.dataset.id); if(!m) return;
+    if(!confirm(m.name+' さんを現役に戻します。よろしいですか？')) return;
+    try{
+      await Store.upsertMember({id:m.id, active:true});
+      await Store.addNote({member_id:m.id, kind:'memo', occurred_on:todayStr(),
+        body:'現役に戻しました。', visibility:'admin'});
+      await loadAll(); render();
+      toast(m.name+' さんを現役に戻しました','xp');
+    }catch(err){ toast(err.message||'更新に失敗しました','bad'); }
   }
   else if(a==='preset'){
     V.preset=el.dataset.p;

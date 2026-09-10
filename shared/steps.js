@@ -393,6 +393,9 @@ function gStage(checks){ return Math.min(gClearedCount(checks)+1,10); }
 function gTotalChecked(checks){ return ALL_ITEMS.filter(i=>checks[i.id]).length; }
 function gOverallPct(checks){ return Math.round(gTotalChecked(checks)/TOTAL_ITEMS*100); }
 function tierOf(gn){ return TIERS[GRADES[gn-1].tier]; }
+/* リーダー等級（tier:leader）以上か。この等級からは在籍月数の標準期間という
+   考え方がそぐわなくなるため、管理者画面の「遅れ」表示から外すのに使う。 */
+function isSeniorTier(gn){ const k=GRADES[gn-1].tier; return k==='leader'||k==='exec'; }
 
 /* セクション単位・なりたい姿単位の達成数（ステップ一覧のマス目用） */
 function secStats(checks,gn,si){
