@@ -260,8 +260,11 @@ supabase/schema.sql   Supabaseに貼るSQL
 1. URLを開く
 2. **「はじめる（新規登録）」** を押す
 3. 氏名・所属Unit・UL・メンター・入社日・いま認定されているGrade を入れる
-   - Unit と UL は、**すでに誰かが登録した表記が選択肢に出ます**。
-     選べば表記が揃うので、集計が分かれません。最初の人だけ手で入力します
+   - Unit は **unitA〜unitG から選ぶだけ**です（自由入力はできません）。
+     表記が1つに決まるので、管理者画面の集計が分かれません。
+     Unitが増えたときは `shared/config.js` の `UNITS` に足してください
+   - UL は、**すでに誰かが登録した表記が選択肢に出ます**。
+     選べば表記が揃います。最初の人だけ手で入力します
    - 入社日を入れると**昇格予定時期が自動で計算されます**
    - わからない項目は空でもかまいません。あとから「マイシート」で直せます
 4. **共通パスコード**（全員共通。ULから共有されるもの）を入れる
@@ -374,7 +377,7 @@ Supabase の画面を触る必要はありません。
 
 ```sql
 insert into public.members (name, slug, unit, ul, join_date, role) values
-  ('山田 太郎', 'yamada-taro', 'Unit A', '佐藤 花子', '2026-04-01', 'member')
+  ('山田 太郎', 'yamada-taro', 'unitA', '佐藤 花子', '2026-04-01', 'member')
 on conflict (slug) do nothing;
 ```
 

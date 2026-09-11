@@ -19,6 +19,42 @@ function roleName(role){ const k=roleKey(role); return (ROLES.find(r=>r.k===k)||
 /* 育成とULをまとめて呼ぶときの言い方。画面の文言をここに集める */
 const MANAGER_LABEL='育成・UL';
 
+/* ------------------------------------------------------------
+   所属Unit
+   ------------------------------------------------------------
+   選択肢は shared/config.js の UNITS（unitA〜unitG）。
+   ただし自由入力だった頃の名簿には「Unit F」「ユニットF」「Ｆ」のような
+   表記ゆれが残っている。管理者ツールは文字列の完全一致で集計するので、
+   そのままだと同じUnitの人が別のUnitとして数えられてしまう。
+   表示・集計の前に normalizeUnit() を通して正の表記へ寄せる。
+   A〜Gのどれとも読めない値（「営業部」など）は、勝手に消さず
+   そのまま返す。選び直すまで名簿から消えないようにするため。
+   ------------------------------------------------------------ */
+function unitOptions(){ return ((window.STEP_CONFIG||{}).UNITS)||[]; }
+/* 表記の違いを取り払って、Unitを見分けるための文字にする。
+   「unitF」「Unit F」「ユニットF」「Ｆ」→ すべて 'F' */
+function unitKey(v){
+  return String(v==null?'':v)
+    .replace(/[Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+    .replace(/[\s　_\-－ー・.]/g,'')
+    .replace(/ユニット|unit/gi,'')
+    .toUpperCase();
+}
+function normalizeUnit(v){
+  const raw=String(v==null?'':v).trim();
+  if(!raw) return '';
+  const k=unitKey(raw);
+  return unitOptions().find(u=>unitKey(u)===k) || raw;
+}
+/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す */
+function unitOptionsHTML(value){
+  const val=normalizeUnit(value);
+  const list=unitOptions().slice();
+  if(val && list.indexOf(val)<0) list.push(val);
+  return '<option value="">選んでください</option>'+
+    list.map(u=>'<option value="'+esc(u)+'"'+(val===u?' selected':'')+'>'+esc(u)+'</option>').join('');
+}
+
 function star(cx,cy,r,f){
   return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
 }
