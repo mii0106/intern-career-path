@@ -591,7 +591,7 @@ async function load(){
   const d=await Store.myData();
   D=JSON.parse(JSON.stringify(DEFAULT));
   D.profile={ name:d.member.name||'', join:d.member.join_date||'', grade:d.member.certified_grade||'',
-              unit:d.member.unit||'', ul:d.member.ul||'', mentor:d.member.mentor||'' };
+              unit:normalizeUnit(d.member.unit), ul:d.member.ul||'', mentor:d.member.mentor||'' };
   D.checks=checksOf(d.checks);
   Object.keys(d.checks).forEach(k=>{ const v=d.checks[k]; D.meta[k] = (v&&typeof v==='object')? v : {at:v}; });
   const s=d.state||{};
@@ -740,7 +740,6 @@ function fanfare(big){
 function cutTxt(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 /* すでに登録されている表記を選択肢にする。表記ゆれを増やさないため */
 function uniqSorted(list){ return Array.from(new Set(list.filter(x=>x&&String(x).trim()))).sort((a,b)=>String(a).localeCompare(String(b),'ja')); }
-function rosterUnits(){ return uniqSorted(ROSTER.map(m=>m.unit)); }
 /* UL・メンターの選択肢。
    実際に育成・UL権限に上がっている人の氏名（表記のブレがなく、選べば
    管理者ツールの「自分の担当」判定＝氏名の完全一致も確実に効く）に加えて、
@@ -972,7 +971,8 @@ function vMySheet(){
   let h='<div class="sec-label">マイシート</div>';
   h+='<div class="card">'+
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
-   pickerFieldHTML('所属Unit','profile.unit',D.profile.unit,rosterUnits(),'例：Unit A')+
+   '<div class="field"><label>所属Unit</label>'+
+     '<select data-picker="profile.unit">'+unitOptionsHTML(D.profile.unit)+'</select></div>'+
    pickerFieldHTML('UL','profile.ul',D.profile.ul,rosterUlOptions(),'ユニットリーダーの名前')+
    pickerFieldHTML('メンター','profile.mentor',D.profile.mentor,rosterMentorOptions(),'メンターの名前',
      'ここに入れた2人が、管理者ツールで「あなたの担当」として出ます。'+
@@ -1590,9 +1590,8 @@ function evolve(gradeN,oldSt,newSt){
    共通パスコードは「登録していい人か」を確かめるためのもので、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
-let GATE={ hits:[], units:[], uls:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
+let GATE={ hits:[], uls:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
-function gUnits(){ return uniqSorted(GATE.units); }
 /* shared/config.js の KNOWN_ULS は、まだ誰のUL欄にも書かれていなくても
    選べるようにしておきたい「正」の表記。ここで候補に足す。 */
 function knownUls(){ return ((window.STEP_CONFIG||{}).KNOWN_ULS)||[]; }
@@ -1707,7 +1706,8 @@ function showGate(err){
     body.innerHTML=
       '<div class="field"><label>氏名<span style="color:var(--coral)"> ※必須</span></label>'+
         '<input type="text" id="rName" value="'+esc(GATE.reg.name)+'" placeholder="山田 太郎"></div>'+
-      pickerHTML('所属Unit','rUnitSel','rUnit',GATE.reg.unit,gUnits(),'例：Unit A')+
+      '<div class="field"><label>所属Unit</label>'+
+        '<select id="rUnit">'+unitOptionsHTML(GATE.reg.unit)+'</select></div>'+
       pickerHTML('UL（ユニットリーダー）','rUlSel','rUl',GATE.reg.ul,gUls(),'ULの名前')+
       pickerHTML('メンター','rMentorSel','rMentor',GATE.reg.mentor,gMentors(),'メンターの名前')+
       '<div class="field"><label>入社日<span class="muted" style="font-weight:400">（昇格予定の計算に使います）</span></label>'+
@@ -1732,7 +1732,7 @@ function showGate(err){
       const el=document.getElementById('r'+k);
       el.oninput=el.onchange=ev=>{ GATE.reg[k.toLowerCase()]=ev.target.value; };
     });
-    ['Unit','Ul','Mentor'].forEach(k=>{
+    ['Ul','Mentor'].forEach(k=>{
       wirePicker('r'+k+'Sel','r'+k,v=>{ GATE.reg[k.toLowerCase()]=v; });
     });
     document.getElementById('rPw2').onkeydown=ev=>{ if(ev.key==='Enter') doRegister(); };
@@ -1937,7 +1937,6 @@ async function boot(){
     if(Store.mode!=='cloud'){ showGate(''); return; }
     const me=await Store.restore();
     if(me){ await boot(); return; }   /* 前回のログインが残っている */
-    Store.rosterUnits().then(u=>{ GATE.units=u||[]; }).catch(()=>{});
     Store.rosterUls().then(u=>{ GATE.uls=u||[]; }).catch(()=>{});
     Store.rosterMentors().then(u=>{ GATE.mentors=u||[]; }).catch(()=>{});
     showGate('');

@@ -255,10 +255,10 @@ const Store = (() => {
         (String(m.name).indexOf(s)>=0||String(m.unit||'').indexOf(s)>=0)).slice(0,10);
     },
 
-    /* 新規登録の Unit・UL・メンター候補。個人名とは紐付けない、値の集合だけ。
-       roster_uls / roster_mentors は roster_units より新しい関数なので、
-       roster_units 自体は caps.rosterSearch で判定しつつ、この2つは
-       毎回そのまま呼んで、無ければ（古いschemaのままなら）名簿から手元で作る。 */
+    /* サーバーに届くかどうかを確かめるためだけに使う（admin.html の起動時）。
+       返ってくるのはUnitの文字列だけで個人名を含まないので、ログイン前に
+       投げても管理者の氏名が露出しない。
+       所属Unitの選択肢そのものは shared/config.js の UNITS（固定リスト）。 */
     async rosterUnits(){
       if(!CLOUD) return [];
       if(caps.rosterSearch){
@@ -270,6 +270,10 @@ const Store = (() => {
         return Array.from(new Set(all.map(m=>m.unit).filter(Boolean))).sort();
       }catch(e){ return []; }
     },
+
+    /* 新規登録の UL・メンター候補。個人名とは紐付けない、値の集合だけ。
+       所属Unitは固定リストから選ぶので、名簿から候補を作るのはこの2つだけ。
+       サーバーに関数が無ければ（古いschemaのままなら）名簿から手元で作る。 */
     async rosterUls(){
       if(!CLOUD) return [];
       const r=await sb.rpc('roster_uls');

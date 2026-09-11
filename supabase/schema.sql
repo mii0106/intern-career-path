@@ -779,5 +779,5 @@ grant execute on function public.set_app_settings(jsonb) to authenticated;
 --    入れて紐付きます。slug は他と重複しない任意の文字列にしてください。
 -- ============================================================
 -- insert into public.members (name, slug, unit, ul, mentor, join_date, certified_grade, role) values
---   ('山田 太郎', 'yamada-taro', 'Unit A', '佐藤 花子', '鈴木 一郎', '2026-04-01', 2, 'member')
+--   ('山田 太郎', 'yamada-taro', 'unitA', '佐藤 花子', '鈴木 一郎', '2026-04-01', 2, 'member')
 -- on conflict (slug) do nothing;

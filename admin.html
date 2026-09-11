@@ -525,7 +525,9 @@ function compute(){
     const outlook=promotionOutlook(m,checks,now);
     const atarimae=st.atarimae||{};
     return {
-      m:m, id:m.id, name:m.name, unit:m.unit||'（未設定）', role:roleKey(m.role),
+      /* 自由入力だった頃の表記ゆれ（「Unit F」「ユニットF」など）は
+         ここで正の表記に寄せる。以降の絞り込み・集計は r.unit を見ている。 */
+      m:m, id:m.id, name:m.name, unit:normalizeUnit(m.unit)||'（未設定）', role:roleKey(m.role),
       mineUl:mineUl, mineMentor:mineMentor, mine:(mineUl||mineMentor),
       noCharge: !(String(m.ul||'').trim() || String(m.mentor||'').trim()),
       checks:checks, raw:raw,
@@ -1866,8 +1868,7 @@ function dwReviews(r){
 function dwProfile(r){
   return '<div class="card"><h2>名簿の情報</h2>'+
     '<div class="fr"><div class="f"><label>氏名</label><input type="text" id="pfName" value="'+esc(r.name)+'"></div>'+
-    '<div class="f"><label>Unit</label><input type="text" id="pfUnit" list="dlUnit" value="'+esc(r.m.unit||'')+'"></div></div>'+
-    '<datalist id="dlUnit">'+units().map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<div class="f"><label>Unit</label><select id="pfUnit">'+unitOptionsHTML(r.m.unit)+'</select></div></div>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">同姓同名の人がいる場合は、区別のため氏名にUnitやイニシャルを添えても構いません。'+
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
     '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+
@@ -2062,7 +2063,7 @@ function vSettings(){
     h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
       '<th class="nos nm">名前</th><th class="nos">Unit</th><th class="nos">UL</th><th class="nos"></th></tr></thead><tbody>';
     graduated.forEach(m=>{
-      h+='<tr><td class="nm">'+esc(m.name)+'</td><td>'+esc(m.unit||'—')+'</td><td>'+esc(m.ul||'—')+'</td>'+
+      h+='<tr><td class="nm">'+esc(m.name)+'</td><td>'+esc(normalizeUnit(m.unit)||'—')+'</td><td>'+esc(m.ul||'—')+'</td>'+
         '<td><button class="btn ghost sm" data-act="reactivateMember" data-id="'+m.id+'">現役に戻す</button></td></tr>';
     });
     h+='</tbody></table></div>';
