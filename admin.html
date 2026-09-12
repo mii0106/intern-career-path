@@ -240,19 +240,6 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
 .fetched{margin:8px 0 6px;font-size:10.5px}
 .fetched button{color:#C3C8D8;text-decoration:underline;margin:0}
 
-/* ---------- 振り返りへの返信パネル ---------- */
-#modal{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:20px}
-#modal.on{display:grid}
-.mdl{background:var(--surface);border-radius:18px;width:min(900px,96vw);max-height:88vh;display:flex;flex-direction:column;
-  box-shadow:0 30px 70px -30px rgba(24,18,64,.6);position:relative;overflow:hidden}
-.mdl-head{display:flex;align-items:center;gap:9px;padding:13px 52px 13px 16px;border-bottom:1px solid var(--line)}
-.mdl-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;overflow:hidden;flex:1}
-.mdl-src{overflow-y:auto;padding:14px 16px;background:var(--base);border-right:1px solid var(--line)}
-.mdl-blk{margin-bottom:12px}
-.mdl-reply{overflow-y:auto;padding:14px 16px}
-.mdl-reply .radios button{font-size:11px}
-@media (max-width:760px){ .mdl-body{grid-template-columns:1fr;overflow-y:auto} .mdl-src{border-right:0;border-bottom:1px solid var(--line)} }
-
 @media (max-width:900px){
   #shell{grid-template-columns:1fr}
   aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px}
@@ -303,7 +290,6 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
 
 <div id="scrim"></div>
 <div id="drawer"><div id="drawerInner"></div></div>
-<div id="modal"></div>
 <div id="toasts" role="status" aria-live="polite"></div>
 <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
 
@@ -334,12 +320,12 @@ function loadLocalSettings(){
 loadLocalSettings();
 
 /* 生データ */
-let A = { members:[], progress:{}, states:{}, notes:[], scores:[], reviews:[] };
+let A = { members:[], progress:{}, states:{}, notes:[], scores:[] };
 let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済みか */
 /* メンバーごとに計算済みの行 */
 let ROWS = [], BY_ID = {};
 /* 画面の状態 */
-let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'step', reviewKind:'ywt', mtgUnit:'' };
+let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'step', mtgUnit:'' };
 let F = { unit:'', q:'', role:'member', alert:'', mine:false };
 
 /* ============================================================
@@ -500,12 +486,10 @@ function compute(){
   /* 表示順はここで決める（cloudはSQLでも並べているが、モードによらず同じ順にする） */
   A.notes.sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on))
     || String(b.created_at||'').localeCompare(String(a.created_at||'')));
-  const notesBy={}, scoresBy={}, reviewsBy={};
+  const notesBy={}, scoresBy={};
   A.notes.forEach(n=>(notesBy[n.member_id]=notesBy[n.member_id]||[]).push(n));
   A.scores.forEach(s=>(scoresBy[s.member_id]=scoresBy[s.member_id]||[]).push(s));
-  A.reviews.forEach(r=>(reviewsBy[r.member_id]=reviewsBy[r.member_id]||[]).push(r));
 
-  const curYwt=ywtPeriod(), curMonth=monthlyPeriod();
   const myName=normName(meName());
   ROWS = A.members.filter(m=>m.active!==false).map(m=>{
     /* 「自分が対応する人」＝その人のUL欄・メンター欄に自分の名前が入っている人。
@@ -519,7 +503,6 @@ function compute(){
     const st=A.states[m.id]||{};
     const notes=(notesBy[m.id]||[]).slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on)));
     const scores=(scoresBy[m.id]||[]);
-    const reviews=(reviewsBy[m.id]||[]);
     let last=null;
     Object.keys(raw).forEach(k=>{ const v=raw[k]; if(v&&v!==true&&(!last||String(v)>String(last))) last=v; });
     const outlook=promotionOutlook(m,checks,now);
@@ -546,11 +529,6 @@ function compute(){
       noteCount:notes.length,
       scores:scores,
       quizAvg: scores.length? Math.round(scores.reduce((a,s)=>a+(s.max_score?(+s.score/+s.max_score):0),0)/scores.length*100) : null,
-      reviews:reviews,
-      ywtDone: reviews.some(r=>r.kind==='ywt'&&r.period===curYwt&&r.submitted_at),
-      monthlyDone: reviews.some(r=>r.kind==='monthly'&&r.period===curMonth&&r.submitted_at),
-      lastReview: reviews.filter(r=>r.submitted_at).sort((a,b)=>String(b.submitted_at).localeCompare(String(a.submitted_at)))[0]||null,
-      nextGoal: (reviews.filter(r=>r.kind==='monthly'&&r.next_goal).sort((a,b)=>String(b.period).localeCompare(String(a.period)))[0]||{}).next_goal||'',
       ngAtarimae: Object.keys(atarimae).filter(k=>atarimae[k]==='ng'),
       /* 認定グレードの内容を終えている＝昇格面談の対象 */
       readyPromo: !!(m.certified_grade && cleared>=m.certified_grade)
@@ -588,8 +566,6 @@ function alertsOf(r){
   if(isDelayed(r)) out.push('delay');
   if(r.stale==null || r.stale>=STALE_DAYS) out.push('stale');
   if(r.readyPromo) out.push('promo');
-  if(!r.ywtDone) out.push('ywt');
-  if(!r.monthlyDone) out.push('monthly');
   if(r.ngAtarimae.length) out.push('atarimae');
   return out;
 }
@@ -632,7 +608,6 @@ const TABS=[
   {k:'promo',  n:'昇格と詰まり',   i:'<path d="M12 20V7m0 0L6.5 12.5M12 7l5.5 5.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'},
   {k:'notes',  n:'申し送り・メモ',  i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
   {k:'scores', n:'テスト点数',     i:'<path d="M4 19.5V9m5 10.5V4.5m5 15V12m5 7.5V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
-  {k:'reviews',n:'YWT・月次',     i:'<path d="M4.5 6.5h15v14h-15zM8 3.5v5M16 3.5v5M4.5 11.5h15" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
   {k:'mtg',    n:'リーダーMTG',    i:'<circle cx="9" cy="9" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="16.5" cy="10.5" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M3.5 19.5c.9-3 3-4.6 5.5-4.6s4.6 1.6 5.5 4.6M15 19.5c.5-2 1.7-3.1 3.4-3.1 1.2 0 2.2.5 2.9 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
   {k:'settings',n:'設定',          i:'<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'}
 ];
@@ -708,7 +683,7 @@ function barFilters(opts){
   if(opts.alert!==false){
     h+='<select id="falert"><option value="">アラートで絞らない</option>'+
       [['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
-       ['ywt','今期のYWT未提出'],['monthly','今月の振り返り未提出'],['atarimae','アタリマエに✕']].map(o=>
+       ['atarimae','アタリマエに✕']].map(o=>
        '<option value="'+o[0]+'"'+(F.alert===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   }
   if(opts.mine!==false){
@@ -753,8 +728,6 @@ function vDash(){
   const delayed=all.filter(isDelayed);
   const stale=all.filter(r=>r.stale==null||r.stale>=STALE_DAYS);
   const promo=all.filter(r=>r.readyPromo);
-  const noYwt=all.filter(r=>!r.ywtDone);
-  const noMonthly=all.filter(r=>!r.monthlyDone);
   const ng=all.filter(r=>r.ngAtarimae.length);
   const avg=Math.round(all.reduce((a,r)=>a+r.overall,0)/n);
 
@@ -775,8 +748,6 @@ function vDash(){
      今日のアクション
      数字を眺めるためではなく、その場で1手打つための一覧。
      ------------------------------------------------------------ */
-  const noReply=A.reviews.filter(rv=>rv.submitted_at&&!rv.ul_comment&&BY_ID[rv.member_id]&&
-    (!F.unit||BY_ID[rv.member_id].unit===F.unit));
   /* 「自分がやらなきゃいけない分」＝その人のUL欄・メンター欄に自分が入っているもの。
      全員ぶん見えることは変えず、自分の担当だけ数えて横に添える。 */
   const mineOf=l=>l.filter(r=>r.mine).length;
@@ -784,19 +755,9 @@ function vDash(){
   if(promo.length) acts.push({t:'昇格面談を組む',n:promo.length+'人',
     s:'認定グレードの項目を完了しています',
     m:mineOf(promo),mu:'人',b:'昇格タブを開く',act:'tab',v:'promo'});
-  if(noReply.length) acts.push({t:'YWT・月次に返信する',n:noReply.length+'件',
-    s:'提出されたまま、まだコメントを返していないもの',
-    m:noReply.filter(rv=>BY_ID[rv.member_id]&&BY_ID[rv.member_id].mine).length,mu:'件',
-    b:'振り返りを開く',act:'tab',v:'reviews'});
   if(stale.length) acts.push({t:'しばらく動きがない',n:stale.length+'人',
     s:STALE_DAYS+'日以上チェックが動いていません',
     m:mineOf(stale),mu:'人',b:'リマインド文をコピー',act:'remind',v:'stale'});
-  if(noYwt.length) acts.push({t:'今期のYWTが未提出',n:noYwt.length+'人',
-    s:periodLabel('ywt',ywtPeriod())+'ぶん',
-    m:mineOf(noYwt),mu:'人',b:'リマインド文をコピー',act:'remind',v:'ywt'});
-  if(noMonthly.length) acts.push({t:'今月の振り返りが未提出',n:noMonthly.length+'人',
-    s:periodLabel('monthly',monthlyPeriod())+'ぶん',
-    m:mineOf(noMonthly),mu:'人',b:'リマインド文をコピー',act:'remind',v:'monthly'});
 
   /* 自分の担当ぶんを先に出す。誰の宿題かをはっきりさせるため */
   acts.sort((a,b)=>((b.m||0)>0?1:0)-((a.m||0)>0?1:0));
@@ -818,16 +779,14 @@ function vDash(){
     '<button class="lnk" data-act="mine" style="color:var(--violet);font-weight:700">自分の担当だけに絞る</button></p>';
   h+='</div>';
 
-  h+='<div class="grid g4" style="margin-bottom:14px">'+
+  h+='<div class="grid g3" style="margin-bottom:14px">'+
     kpi('メンバー数',all.length,'人',F.unit||'全Unit','')+
     kpi('平均進捗',avg,'%','チェック済みの項目で計算','')+
     kpi('昇格面談の対象',promo.length,'人','認定グレードの項目を完了','promo')+
-    kpi('標準期間より遅れ',delayed.length,'人',DELAY_ALERT+'ヶ月以上の超過','delay')+
   '</div>';
-  h+='<div class="grid g4" style="margin-bottom:14px">'+
+  h+='<div class="grid g3" style="margin-bottom:14px">'+
+    kpi('標準期間より遅れ',delayed.length,'人',DELAY_ALERT+'ヶ月以上の超過','delay')+
     kpi('しばらく動きなし',stale.length,'人',STALE_DAYS+'日以上チェックなし','stale')+
-    kpi('今期のYWT未提出',noYwt.length,'人',periodLabel('ywt',ywtPeriod()),'ywt')+
-    kpi('今月の振り返り未提出',noMonthly.length,'人',periodLabel('monthly',monthlyPeriod()),'monthly')+
     kpi('アタリマエに✕',ng.length,'人','UL・メンターの判定に✕がある','atarimae')+
   '</div>';
 
@@ -852,7 +811,7 @@ function vDash(){
   /* Unitごとの状況 */
   h+='<div class="card"><h2>Unitごとの状況</h2><div class="tw" style="max-height:none;box-shadow:none">'+
     '<table><thead><tr><th class="nos">Unit</th><th class="nos num">人数</th><th class="nos num">平均進捗</th>'+
-    '<th class="nos num">遅れ</th><th class="nos num">動きなし</th><th class="nos num">昇格対象</th><th class="nos num">YWT未</th></tr></thead><tbody>';
+    '<th class="nos num">遅れ</th><th class="nos num">動きなし</th><th class="nos num">昇格対象</th></tr></thead><tbody>';
   const byUnit={};
   ROWS.filter(r=>r.role==='member').forEach(r=>(byUnit[r.unit]=byUnit[r.unit]||[]).push(r));
   Object.keys(byUnit).sort().forEach(u=>{
@@ -863,8 +822,7 @@ function vDash(){
       '<td class="num">'+Math.round(l.reduce((a,r)=>a+r.overall,0)/l.length)+'%</td>'+
       '<td class="num">'+cnt(l.filter(isDelayed).length,'c')+'</td>'+
       '<td class="num">'+cnt(l.filter(r=>r.stale==null||r.stale>=STALE_DAYS).length,'a')+'</td>'+
-      '<td class="num">'+cnt(l.filter(r=>r.readyPromo).length,'m')+'</td>'+
-      '<td class="num">'+cnt(l.filter(r=>!r.ywtDone).length,'a')+'</td></tr>';
+      '<td class="num">'+cnt(l.filter(r=>r.readyPromo).length,'m')+'</td></tr>';
   });
   h+='</tbody></table></div></div></div>';
 
@@ -937,26 +895,14 @@ function cnt(n,c){ return n? '<span class="chip '+c+'">'+n+'</span>' : '<span cl
    URLを入れた定型文にしている。
    ------------------------------------------------------------ */
 const APP_URL=location.origin+location.pathname.replace(/admin\.html$/,'');
-function remindText(kind){
-  const all=filtered().filter(r=>r.role==='member');
-  let list=[], head='', body='';
-  if(kind==='ywt'){
-    list=all.filter(r=>!r.ywtDone);
-    head='【'+periodLabel('ywt',ywtPeriod())+'のYWTが未提出です】';
-    body='STEPの「記録」タブから提出してください。';
-  }else if(kind==='monthly'){
-    list=all.filter(r=>!r.monthlyDone);
-    head='【'+periodLabel('monthly',monthlyPeriod())+'の振り返りが未提出です】';
-    body='STEPの「記録」タブから、今月の振り返りと次月目標を入れてください。';
-  }else{
-    list=all.filter(r=>r.stale==null||r.stale>=STALE_DAYS);
-    head='【キャリアステップの更新をお願いします】';
-    body=STALE_DAYS+'日以上チェックが動いていません。できたことがあれば入れておいてください。';
-  }
+function remindText(){
+  const list=filtered().filter(r=>r.role==='member')
+    .filter(r=>r.stale==null||r.stale>=STALE_DAYS);
   if(!list.length) return null;
-  return head+'\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+body+'\n'+APP_URL;
+  return '【キャリアステップの更新をお願いします】\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+
+    STALE_DAYS+'日以上チェックが動いていません。できたことがあれば入れておいてください。\n'+APP_URL;
 }
-const ALERT_LABEL={delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],ywt:['YWT未提出','g'],monthly:['月次未提出','g'],atarimae:['アタリマエ✕','c']};
+const ALERT_LABEL={delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],atarimae:['アタリマエ✕','c']};
 function alertChip(a){ const x=ALERT_LABEL[a]||[a,'g']; return '<span class="chip '+x[1]+'">'+x[0]+'</span>'; }
 function cut(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 
@@ -1055,7 +1001,7 @@ function vRoster(){
     h+='<tr'+(r.mine?' class="mine"':'')+'><td class="nm">'+memberLink(r)+
         (r.role!=='member'?' <span class="chip g">'+roleName(r.role)+'</span>':'')+mineTag(r)+'</td>'+
       cols.map(k=>{ const c=COLDEF[k]; return '<td class="'+(c.cls||'')+'">'+c.cell(r)+'</td>'; }).join('')+
-      '<td class="st">'+(alertsOf(r).filter(a=>a!=='ywt'&&a!=='monthly').map(alertChip).join(' ')||'<span class="muted">—</span>')+'</td></tr>';
+      '<td class="st">'+(alertsOf(r).map(alertChip).join(' ')||'<span class="muted">—</span>')+'</td></tr>';
   });
   h+='</tbody></table></div>';
   h+='<p class="tiny muted" style="margin-top:10px">'+
@@ -1066,13 +1012,13 @@ function vRoster(){
 }
 function csvRoster(){
   const rows=[['名前','Unit','UL','メンター','入社日','在籍月数','認定グレード','完了グレード数','挑戦中グレード',
-    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','今期YWT','今月振り返り','アタリマエ✕','詰まっている項目1','詰まっている項目2','次月目標','登録日']];
+    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','アタリマエ✕','詰まっている項目1','詰まっている項目2','登録日']];
   sorted(filtered()).forEach(r=>rows.push([r.name,r.unit,r.m.ul||'',r.m.mentor||'',r.m.join_date||'',
     r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pct,r.overall,
     r.outlook.targetDate||'',r.delay==null?'':r.delay,r.lastCheck?String(r.lastCheck).slice(0,10):'',
-    r.quizAvg==null?'':r.quizAvg,r.noteCount,r.ywtDone?'提出済':'未提出',r.monthlyDone?'提出済':'未提出',
+    r.quizAvg==null?'':r.quizAvg,r.noteCount,
     r.ngAtarimae.length?r.ngAtarimae.join(' / '):'',
-    r.stuck[0]?r.stuck[0].cat+'：'+r.stuck[0].t:'', r.stuck[1]?r.stuck[1].cat+'：'+r.stuck[1].t:'', r.nextGoal,
+    r.stuck[0]?r.stuck[0].cat+'：'+r.stuck[0].t:'', r.stuck[1]?r.stuck[1].cat+'：'+r.stuck[1].t:'',
     r.registeredAt?String(r.registeredAt).slice(0,10):'']));
   downloadCSV('キャリアステップ現状一覧_'+todayStr()+'.csv',rows);
   toast('CSVを書き出しました');
@@ -1478,179 +1424,6 @@ async function importCSVText(text){
 }
 
 /* ============================================================
-   6. YWT・月次振り返り
-   ============================================================ */
-function vReviews(){
-  const kind=V.reviewKind;
-  const list=sorted(filtered());
-  const periods=recentPeriods(kind,kind==='ywt'?8:6);
-  let h='<h1 class="h1 disp">YWT・月次振り返り</h1>'+
-    '<p class="lead">隔週のYWTと月次の振り返り・次月目標の提出状況。マスを押すと中身が開いて、ULコメントを返せます。</p>';
-  h+='<div class="bar">'+
-    '<span class="seg2"><button data-act="rk" data-k="ywt" class="'+(kind==='ywt'?'on':'')+'">隔週YWT</button>'+
-    '<button data-act="rk" data-k="monthly" class="'+(kind==='monthly'?'on':'')+'">月次振り返り</button></span>'+
-    '<input type="search" id="fq" placeholder="名前で検索" value="'+esc(F.q)+'">'+
-    '<select id="funit"><option value="">全Unit</option>'+units().map(u=>'<option value="'+esc(u)+'"'+(F.unit===u?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>'+
-    '<button class="btn '+(F.mine?'vio':'ghost')+' sm" data-act="mine" aria-pressed="'+(F.mine?'true':'false')+'">自分の担当だけ</button>'+
-    '<span class="spacer"></span><button class="btn ghost" data-act="csvReviews">CSVで書き出す</button></div>';
-
-  /* 提出状況のマトリクス */
-  const sub=[], tot=[];
-  h+='<div class="tw"><table><thead><tr><th class="nos nm">名前</th><th class="nos">Unit</th>'+
-    '<th class="nos" title="返信するのは基本この2人です">担当</th>'+
-    periods.map((p,i)=>'<th class="nos num'+(i===0?'" style="color:var(--violet)':'')+'">'+periodLabel(kind,p)+(i===0?'<br><span class="tiny">今期</span>':'')+'</th>').join('')+
-    '<th class="nos num">提出率</th></tr></thead><tbody>';
-  list.forEach(r=>{
-    let ok=0;
-    h+='<tr'+(r.mine?' class="mine"':'')+'><td class="nm">'+memberLink(r)+mineTag(r)+'</td><td>'+esc(r.unit)+'</td>'+
-      '<td>'+chargeChips(r)+'</td>';
-    periods.forEach(p=>{
-      const rv=r.reviews.find(x=>x.kind===kind&&x.period===p);
-      if(rv&&rv.submitted_at){
-        ok++;
-        const todo = !rv.ul_comment;
-        h+='<td class="num"><button class="chip '+(rv.ul_comment?'v':(r.mine?'a':'m'))+'" data-act="openReview" data-id="'+rv.id+'" '+
-          'title="'+(todo?(r.mine?'あなたが返信する分です':'まだ返信がありません'):'返信済み')+'">'+
-          (rv.ul_comment?'✓ 返信済':(r.mine?'要返信':'✓'))+'</button></td>';
-      }else{
-        h+='<td class="num"><span class="muted">—</span></td>';
-      }
-    });
-    sub.push(ok); tot.push(periods.length);
-    h+='<td class="num mono">'+Math.round(ok/periods.length*100)+'%</td></tr>';
-  });
-  h+='</tbody></table></div>';
-  const rate=tot.length? Math.round(sub.reduce((a,b)=>a+b,0)/tot.reduce((a,b)=>a+b,0)*100):0;
-  h+='<p class="tiny muted" style="margin-top:8px">直近'+periods.length+'期間の提出率：全体 '+rate+'%　'+
-    '<span class="chip m">✓</span> 提出済　<span class="chip a">要返信</span> 自分が担当で未返信　'+
-    '<span class="chip v">✓ 返信済</span> コメントあり<br>'+
-    '中身は'+MANAGER_LABEL+'の全員が見られます。「要返信」は、その人のマイシートでULかメンターに'+
-    'あなたの名前が入っているものです。</p>';
-
-  /* 次月目標の一覧 */
-  if(kind==='monthly'){
-    const goals=list.filter(r=>r.nextGoal);
-    h+='<div class="card" style="margin-top:14px"><h2>次月目標の一覧 <span class="cnt">最新の月次振り返りから'+goals.length+'件</span></h2>';
-    if(!goals.length) h+='<div class="empty">まだ登録がありません。</div>';
-    else{
-      h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
-        '<th class="nos nm">名前</th><th class="nos">Unit</th><th class="nos">挑戦中</th><th class="nos">次月目標</th></tr></thead><tbody>';
-      goals.forEach(r=>{
-        h+='<tr><td class="nm">'+memberLink(r)+'</td><td>'+esc(r.unit)+'</td><td>'+gradeChip(r.cg)+'</td>'+
-          '<td style="white-space:normal">'+esc(r.nextGoal)+'</td></tr>';
-      });
-      h+='</tbody></table></div>';
-    }
-    h+='</div>';
-  }
-
-  /* 直近に提出されたもの */
-  const recent=A.reviews.filter(x=>x.kind===kind&&x.submitted_at&&BY_ID[x.member_id]&&(!F.unit||BY_ID[x.member_id].unit===F.unit))
-    .sort((a,b)=>String(b.submitted_at).localeCompare(String(a.submitted_at))).slice(0,6);
-  h+='<div class="card" style="margin-top:14px"><h2>直近の提出 <span class="cnt">最新6件</span></h2>';
-  h+= recent.length? recent.map(reviewCard).join('') : '<div class="empty">まだ提出がありません。</div>';
-  h+='</div>';
-  return h;
-}
-function reviewCard(rv){
-  const r=BY_ID[rv.member_id];
-  const charge = r? chargeChips(r) : '';
-  const body = rv.kind==='ywt'
-    ? [['Y｜やったこと',rv.y],['W｜わかったこと',rv.w],['T｜つぎにやること',rv.t]]
-    : [['振り返り',rv.looking_back],['次月目標',rv.next_goal]];
-  return '<div class="note"><div class="when"><b>'+periodLabel(rv.kind,rv.period)+'</b>'+relDays(rv.submitted_at)+'</div>'+
-    '<div class="bd"><div class="hdr">'+(r?memberLink(r):'—')+
-      (r?'<span class="tiny muted">'+esc(r.unit)+'</span>':'')+
-      '<span class="chip '+(rv.kind==='ywt'?'s':'v')+'">'+(rv.kind==='ywt'?'YWT':'月次')+'</span>'+
-      (rv.ul_comment?'<span class="chip m">返信済</span>'
-                    :'<span class="chip a">'+(r&&r.mine?'あなたが返信':'未返信')+'</span>')+
-      charge+'</div>'+
-    body.filter(x=>x[1]).map(x=>'<div style="margin-bottom:5px"><span class="tiny" style="font-weight:700;color:var(--ink2)">'+x[0]+'</span>'+
-      '<div class="body">'+esc(x[1])+'</div></div>').join('')+
-    (rv.ul_comment?'<div class="na" style="background:var(--violet-soft)">UL：'+esc(rv.ul_comment)+
-      (rv.ul_comment_by?'<span class="tiny muted">（'+esc(rv.ul_comment_by)+'）</span>':'')+'</div>':'')+
-    '<div style="margin-top:7px"><button class="btn ghost sm" data-act="openReview" data-id="'+rv.id+'">'+
-      (rv.ul_comment?'コメントを編集':'コメントを返す')+'</button>'+
-      (r&&!r.mine&&!rv.ul_comment?'<span class="tiny muted" style="margin-left:8px">'+
-        '担当は'+esc([r.m.ul,r.m.mentor].filter(Boolean).join('・')||'未登録')+'ですが、返信はだれでもできます</span>':'')+
-      '</div>'+
-    '</div></div>';
-}
-/* ------------------------------------------------------------
-   振り返りへの返信
-   prompt() だと改行が打てず、スマホでは実質使えないので、
-   本文を左に置いた専用のパネルにしている。
-   ------------------------------------------------------------ */
-let RV={ open:false, id:null, text:'', saving:false };
-const RV_TEMPLATES=[
-  'よく言語化できています。',
-  'ここをもう少し具体的に書けると、次の打ち手が決めやすくなります。',
-  '次回の定例で一緒に見ましょう。',
-  '数字がどう動いたかも書いてみてください。'
-];
-function openReview(id){
-  const rv=A.reviews.find(x=>x.id===id); if(!rv) return;
-  RV={ open:true, id:id, text:rv.ul_comment||'', saving:false };
-  renderModal();
-}
-function closeReview(){ RV.open=false; renderModal(); }
-function renderModal(){
-  const box=document.getElementById('modal');
-  if(!RV.open){ box.classList.remove('on'); box.innerHTML=''; document.getElementById('scrim').classList.remove('on'); return; }
-  const rv=A.reviews.find(x=>x.id===RV.id);
-  if(!rv){ RV.open=false; return; }
-  const r=BY_ID[rv.member_id];
-  const rows = rv.kind==='ywt'
-    ? [['Y｜やったこと',rv.y],['W｜わかったこと',rv.w],['T｜つぎにやること',rv.t]]
-    : [['今月の振り返り',rv.looking_back],['次月目標',rv.next_goal]];
-  box.innerHTML='<div class="mdl" role="dialog" aria-modal="true" aria-label="振り返りへの返信">'+
-    '<div class="mdl-head"><b>'+(r?esc(r.name):'—')+'</b>'+
-      '<span class="chip '+(rv.kind==='ywt'?'s':'v')+'">'+(rv.kind==='ywt'?'YWT':'月次')+'</span>'+
-      '<span class="tiny muted">'+periodLabel(rv.kind,rv.period)+' ・ '+relDays(rv.submitted_at)+'</span>'+
-      '<button class="dw-close" data-act="closeReview" aria-label="閉じる">✕</button></div>'+
-    '<div class="mdl-body">'+
-      '<div class="mdl-src">'+rows.map(x=>'<div class="mdl-blk"><span class="tiny" style="font-weight:700;color:var(--ink2)">'+
-        x[0]+'</span><div class="body">'+esc(x[1]||'—')+'</div></div>').join('')+'</div>'+
-      '<div class="mdl-reply">'+
-        '<div class="f"><label>ULコメント</label>'+
-          '<textarea id="rvText" style="min-height:150px" placeholder="読んで感じたこと、次に見たいところ">'+esc(RV.text)+'</textarea></div>'+
-        '<div class="radios" style="margin-bottom:10px">'+RV_TEMPLATES.map((t,i)=>
-          '<button data-act="rvTpl" data-i="'+i+'" class="tiny">'+esc(cut(t,18))+'</button>').join('')+'</div>'+
-        '<div style="display:flex;gap:8px">'+
-          '<button class="btn vio" data-act="saveReview"'+(RV.saving?' disabled':'')+'>'+(RV.saving?'保存中…':'コメントを送る')+'</button>'+
-          '<button class="btn ghost" data-act="closeReview">やめる</button>'+
-          (rv.ul_comment?'<span class="spacer"></span><button class="btn ghost" data-act="delReviewComment">コメントを削除</button>':'')+
-        '</div>'+
-      '</div>'+
-    '</div></div>';
-  box.classList.add('on');
-  document.getElementById('scrim').classList.add('on');
-  const ta=document.getElementById('rvText'); if(ta){ ta.focus(); ta.oninput=e=>{ RV.text=e.target.value; }; }
-}
-async function saveReviewComment(text){
-  RV.saving=true; renderModal();
-  try{
-    await Store.setUlComment(RV.id,(text||'').trim()||null);
-    RV.open=false;
-    await loadAll(); render(); renderModal();
-    toast('コメントを送りました');
-  }catch(e){ RV.saving=false; renderModal(); toast(e.message||'保存に失敗しました','bad'); }
-}
-function csvReviews(){
-  const kind=V.reviewKind;
-  const rows=[kind==='ywt'
-    ? ['名前','Unit','期間','Y やったこと','W わかったこと','T つぎにやること','提出日','ULコメント','コメント者']
-    : ['名前','Unit','期間','振り返り','次月目標','提出日','ULコメント','コメント者']];
-  sorted(filtered()).forEach(r=>r.reviews.filter(x=>x.kind===kind).forEach(rv=>{
-    rows.push(kind==='ywt'
-      ? [r.name,r.unit,rv.period,rv.y||'',rv.w||'',rv.t||'',rv.submitted_at?String(rv.submitted_at).slice(0,10):'',rv.ul_comment||'',rv.ul_comment_by||'']
-      : [r.name,r.unit,rv.period,rv.looking_back||'',rv.next_goal||'',rv.submitted_at?String(rv.submitted_at).slice(0,10):'',rv.ul_comment||'',rv.ul_comment_by||'']);
-  }));
-  downloadCSV((kind==='ywt'?'YWT':'月次振り返り')+'_'+todayStr()+'.csv',rows);
-  toast('CSVを書き出しました');
-}
-
-/* ============================================================
    7. リーダーMTG用サマリ
    ============================================================ */
 function vMtg(){
@@ -1698,10 +1471,8 @@ function vMtg(){
         '<div><div class="tiny muted" style="font-weight:700">昇格予定</div>'+
           '<div style="margin-top:3px">'+fmtDateFull(r.outlook.targetDate)+'　'+delayCell(r)+'</div>'+
           '<div class="tiny muted" style="margin-top:3px">標準 '+(r.outlook.standardMonths||'—')+'ヶ月／在籍 '+(r.months==null?'—':r.months.toFixed(1))+'ヶ月</div></div>'+
-        '<div><div class="tiny muted" style="font-weight:700">提出状況</div>'+
-          '<div style="margin-top:3px">YWT '+(r.ywtDone?'<span class="chip m">提出済</span>':'<span class="chip a">未提出</span>')+
-          '　月次 '+(r.monthlyDone?'<span class="chip m">提出済</span>':'<span class="chip a">未提出</span>')+'</div>'+
-          '<div class="tiny muted" style="margin-top:3px">テスト平均 '+(r.quizAvg==null?'—':r.quizAvg+'%')+'</div></div>'+
+        '<div><div class="tiny muted" style="font-weight:700">テスト</div>'+
+          '<div style="margin-top:3px">平均 '+(r.quizAvg==null?'—':r.quizAvg+'%')+'</div></div>'+
       '</div>'+
       '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
         '<div><div class="tiny muted" style="font-weight:700;margin-bottom:3px">詰まっているところ</div>'+
@@ -1709,9 +1480,8 @@ function vMtg(){
             stuckDisplay(r).slice(0,3).map(it=>'<li>'+esc(it.cat.split('｜')[0])+'：'+esc(cut(it.t,52))+'</li>').join('')+
             (stuckDisplay(r).length>3?'<li class="muted">ほか'+(stuckDisplay(r).length-3)+'項目</li>':'')+'</ul>'
             : '<div class="tiny muted">'+(isSeniorTier(r.cg)?'リーダー等級以上は対象外':'なし（昇格条件クリア）')+'</div>')+'</div>'+
-        '<div><div class="tiny muted" style="font-weight:700;margin-bottom:3px">直近の申し送り・次月目標</div>'+
-          (iv? '<div class="tiny">'+fmtDate(iv.occurred_on)+' '+esc(cut(iv.body,70))+'</div>' : '<div class="tiny muted">記録なし</div>')+
-          (r.nextGoal? '<div class="tiny" style="margin-top:4px">🎯 '+esc(cut(r.nextGoal,70))+'</div>':'')+'</div>'+
+        '<div><div class="tiny muted" style="font-weight:700;margin-bottom:3px">直近の申し送り</div>'+
+          (iv? '<div class="tiny">'+fmtDate(iv.occurred_on)+' '+esc(cut(iv.body,70))+'</div>' : '<div class="tiny muted">記録なし</div>')+'</div>'+
       '</div></div>';
   });
   return h;
@@ -1727,9 +1497,7 @@ function mtgText(){
     L.push('　昇格予定：'+fmtDateFull(r.outlook.targetDate)+
       (r.delay!=null&&!isSeniorTier(r.cg)? '（標準比 '+(r.delay>=0?'+':'')+r.delay.toFixed(1)+'ヶ月）':''));
     if(stuckDisplay(r).length) L.push('　詰まり：'+stuckDisplay(r).slice(0,3).map(it=>it.cat.split('｜')[0]+'／'+it.t).join(' ／ '));
-    L.push('　提出：YWT '+(r.ywtDone?'済':'未')+'・月次 '+(r.monthlyDone?'済':'未')+
-      '／最終更新 '+(r.stale==null?'記録なし':r.stale+'日前'));
-    if(r.nextGoal) L.push('　次月目標：'+r.nextGoal);
+    L.push('　最終更新：'+(r.stale==null?'記録なし':r.stale+'日前'));
     if(r.notes[0]) L.push('　直近：'+fmtDateFull(r.notes[0].occurred_on)+' '+r.notes[0].body);
     L.push('');
   });
@@ -1739,7 +1507,7 @@ function mtgText(){
 /* ============================================================
    メンバー詳細（右から出てくるパネル）
    ============================================================ */
-const DW_TABS=[['step','キャリアステップ'],['notes','申し送り'],['scores','テスト'],['reviews','振り返り'],['profile','設定']];
+const DW_TABS=[['step','キャリアステップ'],['notes','申し送り'],['scores','テスト'],['profile','設定']];
 function openDrawer(id){ V.drawer=id; V.dwTab='step'; renderDrawer(); }
 function closeDrawer(){ V.drawer=null; document.getElementById('drawer').classList.remove('on'); document.getElementById('scrim').classList.remove('on'); }
 function renderDrawer(){
@@ -1770,7 +1538,6 @@ function renderDrawer(){
 function dwBody(r){
   if(V.dwTab==='notes')   return dwNotes(r);
   if(V.dwTab==='scores')  return dwScores(r);
-  if(V.dwTab==='reviews') return dwReviews(r);
   if(V.dwTab==='profile') return dwProfile(r);
   return dwStep(r);
 }
@@ -1855,16 +1622,6 @@ function dwScores(r){
   }
   return h+'</div>';
 }
-function dwReviews(r){
-  let h='';
-  [['ywt','隔週YWT'],['monthly','月次振り返り']].forEach(k=>{
-    const list=r.reviews.filter(x=>x.kind===k[0]).sort((a,b)=>String(b.period).localeCompare(String(a.period)));
-    h+='<div class="card"><h2>'+k[1]+' <span class="cnt">'+list.length+'件</span></h2>';
-    h+= list.length? list.map(reviewCard).join('') : '<div class="empty">まだ提出がありません。</div>';
-    h+='</div>';
-  });
-  return h;
-}
 function dwProfile(r){
   return '<div class="card"><h2>名簿の情報</h2>'+
     '<div class="fr"><div class="f"><label>氏名</label><input type="text" id="pfName" value="'+esc(r.name)+'"></div>'+
@@ -1873,8 +1630,7 @@ function dwProfile(r){
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
     '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+
     '<div class="f"><label>メンター</label><input type="text" id="pfMentor" list="dlMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
-    '<datalist id="dlUl">'+Array.from(new Set(currentCharges('ul').concat(CFG.KNOWN_ULS||[])))
-      .sort((a,b)=>a.localeCompare(b,'ja')).map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<datalist id="dlUl">'+ulNameOptions().map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<datalist id="dlMentor">'+currentCharges('mentor').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">既存の表記から選ぶと、後で「UL・メンターの引き継ぎ」を使わずに済みます'+
     '（入力欄を押すと候補が出ます）。</p>'+
@@ -1892,7 +1648,7 @@ function dwProfile(r){
     '</div>'+
     '<div class="card"><h2>ログイン</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px">パスワードを忘れた人はここでリセットします。'+
-    'チェック・申し送り・テスト結果・振り返りは消えません。'+
+    'チェック・申し送り・テスト結果は消えません。'+
     'このあと本人が本人画面で自分の名前を選ぶと、共通パスコードを入れて新しいパスワードを決め直せます。</p>'+
     (r.m.auth_id==null? '<p class="tiny" style="margin:0 0 10px;color:var(--violet);font-weight:700">'+
       'いまパスワード未設定です。本人が本人画面で名前を選ぶと決められます。</p>':'')+
@@ -1904,7 +1660,7 @@ function dwProfile(r){
     '<div class="card"><h2>チェックの消去</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px">'+esc(r.name)+' さんのチェックを全件（'+
     Object.keys(r.checks).length+'件）消します。<b>元に戻せません。</b>'+
-    '申し送り・テスト結果・振り返りは残ります。実行すると申し送りに記録が残ります。</p>'+
+    '申し送り・テスト結果は残ります。実行すると申し送りに記録が残ります。</p>'+
     '<div class="f"><label>確認のため、氏名を入力してください</label>'+
       '<input type="text" id="pfConfirm" placeholder="'+esc(r.name)+'"></div>'+
     '<button class="btn ghost" style="color:var(--coral);border-color:var(--coral)" '+
@@ -1912,7 +1668,7 @@ function dwProfile(r){
     '</div>'+
     '<div class="card"><h2>卒業・退職</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px">'+esc(r.name)+' さんを一覧から外します。'+
-    '<b>チェック・申し送り・テスト結果・振り返りは消えません。</b>本人はログインできなくなりますが、'+
+    '<b>チェック・申し送り・テスト結果は消えません。</b>本人はログインできなくなりますが、'+
     '記録を残したまま外すだけなので、あとから<b>設定タブの「卒業・退職した人」</b>から現役に戻せます。</p>'+
     '<div class="fr"><div class="f"><label>区分</label><select id="rtType"><option value="卒業">卒業</option><option value="退職">退職</option></select></div>'+
     '<div class="f"><label>年月日</label><input type="date" id="rtDate" value="'+todayStr()+'"></div></div>'+
@@ -1941,7 +1697,7 @@ function resetMessage(id){
     '1. '+url+' をひらく\n'+
     '2. 自分の名前を入れて「パスワードを決める ›」を押す\n'+
     '3. 共通パスコード（全員おなじもの）と、新しいパスワードを入れる\n'+
-    'これまでの記録（チェック・申し送り・テスト・振り返り）は消えていません。';
+    'これまでの記録（チェック・申し送り・テスト）は消えていません。';
 }
 async function resetLoginFor(id){
   const r=BY_ID[id];
@@ -1986,6 +1742,14 @@ function currentCharges(field){
 function allMemberNames(){
   return Array.from(new Set(ROWS.map(r=>r.name).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'ja'));
 }
+/* UL欄に入れる名前の候補。実際に育成・UL権限に上がっている人＋KNOWN_ULS。
+   自己申告のUL欄の値そのものは候補にしない。「小林直樹・直井理子」のように
+   2人ぶんが1つの欄に入った値を、候補から選べる形で広めないため。 */
+function ulNameOptions(){
+  const managers=ROWS.filter(r=>r.role!=='member').map(r=>r.name);
+  return Array.from(new Set(managers.concat(CFG.KNOWN_ULS||[]).filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b,'ja'));
+}
 function handoverCardHTML(){
   const list=currentCharges(HANDOVER.field);
   const affected=HANDOVER.froms.length
@@ -2026,7 +1790,7 @@ function vSettings(){
       (unlinked.length?' <span class="cnt">いま'+unlinked.length+'人が設定待ち</span>':'')+'</h2>'+
     '<div class="steps3">'+
       '<div class="stp3"><i>1</i><div><b>ここでリセットする</b>'+
-        '<span>下から名前を選んで押すだけです。チェック・申し送り・テスト・振り返りは消えません。</span></div></div>'+
+        '<span>下から名前を選んで押すだけです。チェック・申し送り・テストは消えません。</span></div></div>'+
       '<div class="stp3"><i>2</i><div><b>本人に伝える</b>'+
         '<span>「本人画面で自分の名前を選んで、共通パスコードと新しいパスワードを入れて」と伝えます。'+
         'リセットのあとに出る文をそのままコピーできます。</span></div></div>'+
@@ -2113,7 +1877,6 @@ function render(){
   else if(V.tab==='promo')  v.innerHTML=vPromo();
   else if(V.tab==='notes')  v.innerHTML=vNotes();
   else if(V.tab==='scores') v.innerHTML=vScores();
-  else if(V.tab==='reviews')v.innerHTML=vReviews();
   else if(V.tab==='settings')v.innerHTML=vSettings();
   else                      v.innerHTML=vMtg();
   renderNav();
@@ -2205,7 +1968,7 @@ document.addEventListener('click',async e=>{
     const date=(document.getElementById('rtDate')||{}).value||todayStr();
     const reason=((document.getElementById('rtReason')||{}).value||'').trim();
     if(!confirm(r.name+' さんを'+type+'として記録し、一覧から外します。\n\n'+
-      'チェック・申し送り・テスト結果・振り返りは消えません。本人はログインできなくなります。\n'+
+      'チェック・申し送り・テスト結果は消えません。本人はログインできなくなります。\n'+
       '設定タブの「卒業・退職した人」からいつでも現役に戻せます。\n\nよろしいですか？')) return;
     try{
       await Store.upsertMember({id:r.id, active:false});
@@ -2235,7 +1998,7 @@ document.addEventListener('click',async e=>{
   else if(a==='clearFilters'){ F.unit=''; F.q=''; F.role='all'; F.alert=''; F.mine=false; render(); }
   else if(a==='mine'){ F.mine=!F.mine; render(); }
   else if(a==='remind'){
-    const t=remindText(el.dataset.kind);
+    const t=remindText();
     if(!t){ toast('対象の人がいません'); return; }
     await copyText(t,'リマインド文をコピーしました。Slackに貼ってください');
   }
@@ -2260,20 +2023,6 @@ document.addEventListener('click',async e=>{
       else toast('このブラウザに保存しました');
     }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
     compute(); render();
-  }
-  else if(a==='closeReview'){ closeReview(); }
-  else if(a==='rvTpl'){
-    const t=RV_TEMPLATES[+el.dataset.i];
-    const ta=document.getElementById('rvText');
-    if(ta){ ta.value=(ta.value?ta.value.replace(/\s*$/,'')+'\n':'')+t; RV.text=ta.value; ta.focus(); }
-  }
-  else if(a==='saveReview'){
-    const ta=document.getElementById('rvText');
-    await saveReviewComment(ta?ta.value:RV.text);
-  }
-  else if(a==='delReviewComment'){
-    if(!confirm('このコメントを削除します。よろしいですか？')) return;
-    await saveReviewComment('');
   }
   else if(a==='logout'){ await Store.signOut(); location.reload(); }
   else if(a==='login'){ await doLogin(); }
@@ -2326,9 +2075,6 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='importCSV'){ document.getElementById('csvFile').click(); }
 
-  else if(a==='rk'){ V.reviewKind=el.dataset.k; render(); }
-  else if(a==='openReview'){ await openReview(el.dataset.id); }
-
   else if(a==='saveProfile'){ await saveProfileFor(el.dataset.id); }
   else if(a==='resetLogin'){ await resetLoginFor(el.dataset.id); }
 
@@ -2336,7 +2082,6 @@ document.addEventListener('click',async e=>{
   else if(a==='csvStuck'){ csvStuck(); }
   else if(a==='csvNotes'){ csvNotes(); }
   else if(a==='csvScores'){ csvScores(); }
-  else if(a==='csvReviews'){ csvReviews(); }
   else if(a==='copyMtg'){
     const t=mtgText();
     try{ await navigator.clipboard.writeText(t); toast('コピーしました'); }
@@ -2344,11 +2089,9 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='printMtg'){ window.print(); }
 });
-document.getElementById('scrim').onclick=()=>{ if(RV.open) closeReview(); else closeDrawer(); };
+document.getElementById('scrim').onclick=()=>{ closeDrawer(); };
 document.addEventListener('keydown',e=>{
-  if(e.key!=='Escape') return;
-  if(RV.open) closeReview();
-  else if(V.drawer) closeDrawer();
+  if(e.key==='Escape' && V.drawer) closeDrawer();
 });
 document.getElementById('csvFile').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;

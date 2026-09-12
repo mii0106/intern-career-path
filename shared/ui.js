@@ -46,14 +46,18 @@ function normalizeUnit(v){
   const k=unitKey(raw);
   return unitOptions().find(u=>unitKey(u)===k) || raw;
 }
-/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す */
-function unitOptionsHTML(value){
-  const val=normalizeUnit(value);
-  const list=unitOptions().slice();
-  if(val && list.indexOf(val)<0) list.push(val);
+/* 決まった選択肢からだけ選ばせる<select>の中身。
+   いま名簿に入っている値が選択肢に無いときは、選び直すまで消えないよう
+   その値も1つ足しておく（勝手に別の値へ書き換えたり、空にしたりしない）。 */
+function selectOptionsHTML(value,list){
+  const val=String(value==null?'':value).trim();
+  const opts=list.slice();
+  if(val && opts.indexOf(val)<0) opts.push(val);
   return '<option value="">選んでください</option>'+
-    list.map(u=>'<option value="'+esc(u)+'"'+(val===u?' selected':'')+'>'+esc(u)+'</option>').join('');
+    opts.map(o=>'<option value="'+esc(o)+'"'+(val===o?' selected':'')+'>'+esc(o)+'</option>').join('');
 }
+/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す */
+function unitOptionsHTML(value){ return selectOptionsHTML(normalizeUnit(value),unitOptions()); }
 
 function star(cx,cy,r,f){
   return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
@@ -273,39 +277,8 @@ function parseCSV(text){
 }
 function clamp(n,a,b){ return Math.max(a,Math.min(b,n)); }
 
-/* ============================================================
-   振り返りの期間キー
-     隔週YWT … 'YYYY-MM-A'（1〜15日）/ 'YYYY-MM-B'（16日〜）
-     月次     … 'YYYY-MM'
-   ============================================================ */
-function ywtPeriod(d){
-  const t=d?new Date(d):new Date();
-  return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+(t.getDate()<=15?'-A':'-B');
-}
+/* 「2026-09」のような月のキー。昇格予定が過ぎているかの判定に使う */
 function monthlyPeriod(d){
   const t=d?new Date(d):new Date();
   return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0');
-}
-function periodLabel(kind,p){
-  if(!p) return '—';
-  if(kind==='ywt'){
-    const m=String(p).match(/^(\d{4})-(\d{2})-(A|B)$/);
-    return m? (+m[2])+'月'+(m[3]==='A'?'前半':'後半') : p;
-  }
-  const m=String(p).match(/^(\d{4})-(\d{2})$/);
-  return m? (+m[2])+'月' : p;
-}
-/* 直近 n 期間のキーを新しい順に返す */
-function recentPeriods(kind,n){
-  const out=[], t=new Date();
-  if(kind==='monthly'){
-    for(let i=0;i<n;i++){ const d=new Date(t.getFullYear(),t.getMonth()-i,1); out.push(monthlyPeriod(d)); }
-  }else{
-    let y=t.getFullYear(), mo=t.getMonth(), half=t.getDate()<=15?'A':'B';
-    for(let i=0;i<n;i++){
-      out.push(y+'-'+String(mo+1).padStart(2,'0')+'-'+half);
-      if(half==='B') half='A'; else { half='B'; mo--; if(mo<0){ mo=11; y--; } }
-    }
-  }
-  return out;
 }

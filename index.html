@@ -394,10 +394,6 @@ main{padding:0 16px}
   padding:8px 0;border-radius:10px;transition:.15s}
 .pinbtn.on{opacity:1;filter:none}
 .pinbtn:hover{opacity:.7}
-.alertcard{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;background:var(--violet);
-  color:#fff;border-radius:16px;padding:13px 15px;margin-bottom:14px;box-shadow:var(--shadow)}
-.alertcard b{font-size:13.5px}
-.alertcard .tiny{opacity:.85}
 .badge{display:inline-block;margin-left:6px;min-width:16px;height:16px;border-radius:99px;background:var(--coral);
   color:#fff;font-size:9.5px;line-height:16px;text-align:center;padding:0 4px;letter-spacing:0}
 
@@ -484,7 +480,6 @@ main{padding:0 16px}
 .nt .top{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:5px}
 .nt .bd{font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
 .nt .na{margin-top:7px;font-size:12px;background:var(--amber-soft);border-radius:10px;padding:8px 11px;white-space:pre-wrap}
-.nt .ul{margin-top:7px;font-size:12px;background:var(--violet-soft);border-radius:10px;padding:8px 11px;white-space:pre-wrap}
 .sc{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
 .sc:first-of-type{border-top:0}
 .sc .nm{flex:1;min-width:0;font-size:13px;font-weight:700}
@@ -501,9 +496,6 @@ main{padding:0 16px}
 .savebtn{width:100%;padding:13px;border-radius:14px;background:var(--violet);color:#fff;font-weight:700;font-size:14px;margin-top:2px}
 .savebtn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
 .savebtn:disabled{opacity:.5}
-.pgrid{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-.pgrid button{padding:7px 12px;border-radius:10px;background:#F3F1FC;font-weight:700;font-size:12px;color:var(--ink2)}
-.pgrid button.on{background:var(--ink);color:#fff}
 @media (min-width:900px){
   .tabbar{grid-template-columns:none}
   .tabbar button{font-size:13.5px;gap:11px;padding:11px 13px}
@@ -567,19 +559,18 @@ let dexOpen=false;          /* ずかんは相棒を押したときだけ開く 
 let failedSave=null;        /* 保存できなかった操作。下部のバーからやり直せる */
 /* 記録タブ */
 let ROSTER=[];   /* 既存のUnit・UL・メンターを選択肢に出すために使う */
-let LOG={ seg:'notes', rkind:'ywt', notes:[], scores:[], reviews:[], loaded:false,
-          ywtPeriod:ywtPeriod(), monthPeriod:monthlyPeriod(), draft:{}, saving:false };
+let LOG={ seg:'notes', notes:[], scores:[], loaded:false };
 
 /* ------------------------------------------------------------
    custom（自由入力のかたまり）に相乗りしている設定
      __pins    … ホームに出す「今週やること」の項目ID
-     __read    … 共有事項・ULコメントをどこまで読んだか
+     __read    … 共有事項をどこまで読んだか
      __concern … アタリマエで気になっていること（本人の申告）
    ------------------------------------------------------------ */
 function pins(){ const p=D.custom.__pins; return Array.isArray(p)?p:[]; }
 function setPins(list){ D.custom.__pins=list.slice(0,3); save(); }
 function isPinned(id){ return pins().indexOf(id)>=0; }
-function readMark(){ return Object.assign({notes:0,reviews:0},D.custom.__read||{}); }
+function readMark(){ return Object.assign({notes:0},D.custom.__read||{}); }
 function markRead(kind){
   const r=readMark(); r[kind]=Date.now();
   D.custom.__read=r; save();
@@ -679,14 +670,10 @@ function stage(){return gStage(D.checks);}
 function totalChecked(){return gTotalChecked(D.checks);}
 function totalItems(){return TOTAL_ITEMS;}
 function weekCount(){const wk=Date.now()-6048e5;return D.log.filter(t=>t>wk).length;}
-/* 未読の共有事項・ULコメントの件数 */
+/* 未読の共有事項の件数 */
 function unreadNotes(){
   const r=readMark();
   return (LOG.notes||[]).filter(n=>new Date(n.created_at||n.occurred_on).getTime()>r.notes).length;
-}
-function unreadComments(){
-  const r=readMark();
-  return (LOG.reviews||[]).filter(v=>v.ul_comment&&new Date(v.updated_at||0).getTime()>r.reviews).length;
 }
 
 /* ============================================================
@@ -742,12 +729,17 @@ function cutTxt(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 function uniqSorted(list){ return Array.from(new Set(list.filter(x=>x&&String(x).trim()))).sort((a,b)=>String(a).localeCompare(String(b),'ja')); }
 /* UL・メンターの選択肢。
    実際に育成・UL権限に上がっている人の氏名（表記のブレがなく、選べば
-   管理者ツールの「自分の担当」判定＝氏名の完全一致も確実に効く）に加えて、
-   すでに誰かのUL・メンター欄に使われている値も候補に含める。
+   管理者ツールの「自分の担当」判定＝氏名の完全一致も確実に効く）を使う。
    実務では、名ばかりのUL（本人はこのアプリで育成・ULに上がっていない）も
-   普通にいるため、権限で上がっている人だけに絞ると選べる人が少なすぎる。 */
+   普通にいるため、権限で上がっている人だけでは選べる人が少なすぎる。
+   ULは shared/config.js の KNOWN_ULS がその不足を埋める「正」の名簿。
+
+   他の人のUL欄に入っている値そのものは候補にしない。
+   自己申告の自由入力なので「小林直樹・直井理子」のように2人ぶんが
+   1つの欄に入った値が混ざることがあり、候補に出すと他の人がそれを選んで
+   同じ間違いが広がってしまうため。 */
 function rosterManagerNames(){ return uniqSorted(ROSTER.filter(m=>isManagerRole(m.role)).map(m=>m.name)); }
-function rosterUlOptions(){    return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.ul)).concat(knownUls())); }
+function rosterUlOptions(){    return uniqSorted(rosterManagerNames().concat(knownUls())); }
 function rosterMentorOptions(){ return uniqSorted(rosterManagerNames().concat(ROSTER.map(m=>m.mentor))); }
 /* ------------------------------------------------------------
    既存の登録済み表記から選ぶ／無ければ新しく入力する部品（マイシート用）。
@@ -801,14 +793,6 @@ function vHome(){
   '</div>';
 
   h+='</div><div class="hg-r">';
-
-  /* ULからのコメントは、届いたことが分かるように最上部へ */
-  const uc=unreadComments();
-  if(uc){
-    h+='<button class="alertcard" data-act="toComments">'+
-      '<b>ULからコメントが届いています（'+uc+'件）</b>'+
-      '<span class="tiny">記録タブの振り返りで読めます →</span></button>';
-  }
 
   /* 今週やること。面談で決めた3件をピン留めして、ここに固定する */
   const pinIds=pins().filter(id=>ITEM_BY_ID[id]&&!D.checks[id]);
@@ -973,10 +957,11 @@ function vMySheet(){
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
    '<div class="field"><label>所属Unit</label>'+
      '<select data-picker="profile.unit">'+unitOptionsHTML(D.profile.unit)+'</select></div>'+
-   pickerFieldHTML('UL','profile.ul',D.profile.ul,rosterUlOptions(),'ユニットリーダーの名前')+
+   '<div class="field"><label>UL</label>'+
+     '<select data-picker="profile.ul">'+selectOptionsHTML(D.profile.ul,rosterUlOptions())+'</select></div>'+
    pickerFieldHTML('メンター','profile.mentor',D.profile.mentor,rosterMentorOptions(),'メンターの名前',
      'ここに入れた2人が、管理者ツールで「あなたの担当」として出ます。'+
-     'YWTや月次への返信も、この2人が対応する人として表示されます。登録済みの名前から選ぶと表記が揃います。')+
+     '登録済みの名前から選ぶと表記が揃います。')+
    '<div class="field"><label>入社日</label><input type="date" data-field="profile.join" value="'+esc(D.profile.join)+'"></div>'+
    '<div class="field" style="margin-bottom:0"><label>Grade（社内で認定されている現グレード）</label>'+
    '<select data-field="profile.grade"><option value="">未設定</option>'+
@@ -1141,7 +1126,7 @@ function vDex(){
   return h+'</div>';
 }
 /* ============================================================
-   記録タブ — ULからの共有事項・テスト点数・振り返り
+   記録タブ — ULからの共有事項・テスト点数
    ============================================================ */
 const NOTE_KIND={
   memo:{n:'メモ',c:'g'}, handover:{n:'申し送り',c:'s'}, interview:{n:'面談',c:'v'},
@@ -1149,20 +1134,17 @@ const NOTE_KIND={
 };
 async function loadLog(){
   if(LOG.loaded) return;
-  const [n,s,r]=await Promise.all([Store.myNotes(),Store.myScores(),Store.myReviews()]);
-  LOG.notes=n||[]; LOG.scores=s||[]; LOG.reviews=r||[]; LOG.loaded=true;
+  const [n,s]=await Promise.all([Store.myNotes(),Store.myScores()]);
+  LOG.notes=n||[]; LOG.scores=s||[]; LOG.loaded=true;
 }
-function reviewOf(kind,period){ return LOG.reviews.find(r=>r.kind===kind&&r.period===period)||null; }
 
 function vLog(){
   let h='<div class="logwrap"><div class="segs">'+
-    [['notes','共有事項'],['scores','テスト'],['reviews','振り返り']].map(x=>
+    [['notes','共有事項'],['scores','テスト']].map(x=>
       '<button data-act="seg" data-s="'+x[0]+'" class="'+(LOG.seg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+
     '</div>';
   if(!LOG.loaded) return h+'<div class="card"><div style="text-align:center;padding:24px 0" class="tiny muted">読み込んでいます…</div></div></div>';
-  if(LOG.seg==='notes')   h+=logNotes();
-  else if(LOG.seg==='scores') h+=logScores();
-  else h+=logReviews();
+  h+= LOG.seg==='scores'? logScores() : logNotes();
   return h+'</div>';
 }
 
@@ -1228,101 +1210,6 @@ function logScores(){
   return h+'</div>';
 }
 
-/* ---------- 振り返り ---------- */
-function logReviews(){
-  let h='<div class="segs" style="background:#EFEEF8">'+
-    [['ywt','隔週YWT'],['monthly','月次振り返り']].map(x=>
-      '<button data-act="rkind" data-k="'+x[0]+'" class="'+(LOG.rkind===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+'</div>';
-  return h+(LOG.rkind==='monthly'?logMonthly():logYwt());
-}
-function periodPicker(kind){
-  const cur=kind==='ywt'?LOG.ywtPeriod:LOG.monthPeriod;
-  const list=recentPeriods(kind,kind==='ywt'?6:6);
-  return '<div class="pgrid">'+list.map((p,i)=>{
-    const has=reviewOf(kind,p);
-    return '<button data-act="pick" data-kind="'+kind+'" data-p="'+p+'" class="'+(cur===p?'on':'')+'">'+
-      periodLabel(kind,p)+(i===0?'（今期）':'')+(has?' ✓':'')+'</button>';
-  }).join('')+'</div>';
-}
-function draftVal(kind,period,field,fallback){
-  const k=kind+':'+period+':'+field;
-  return (k in LOG.draft)? LOG.draft[k] : (fallback||'');
-}
-function logYwt(){
-  const p=LOG.ywtPeriod, rv=reviewOf('ywt',p);
-  let h='<div class="note" style="background:var(--violet-soft)">2週間ごとの振り返り。'+
-    'やったこと（Y）・わかったこと（W）・つぎにやること（T）を書いて提出すると、ULが見てコメントを返します。</div>';
-  h+=periodPicker('ywt');
-  h+='<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+
-    '<b style="font-size:15px">'+periodLabel('ywt',p)+'</b>'+
-    (rv&&rv.submitted_at?'<span class="pill m">提出済</span>':'<span class="pill a">未提出</span>')+
-    (rv&&rv.submitted_at?'<span class="tiny muted" style="margin-left:auto">'+fmtDateTime(rv.submitted_at)+'</span>':'')+'</div>'+
-    '<div class="field"><label>Y｜やったこと</label><textarea data-draft="ywt:'+p+':y" placeholder="この2週間で実際に手を動かしたこと">'+esc(draftVal('ywt',p,'y',rv&&rv.y))+'</textarea></div>'+
-    '<div class="field"><label>W｜わかったこと</label><textarea data-draft="ywt:'+p+':w" placeholder="やってみて気づいたこと・学びになったこと">'+esc(draftVal('ywt',p,'w',rv&&rv.w))+'</textarea></div>'+
-    '<div class="field"><label>T｜つぎにやること</label><textarea data-draft="ywt:'+p+':t" placeholder="次の2週間で試すこと">'+esc(draftVal('ywt',p,'t',rv&&rv.t))+'</textarea></div>'+
-    '<button class="savebtn" data-act="saveReview" data-kind="ywt" data-p="'+p+'"'+(LOG.saving?' disabled':'')+'>'+
-      (LOG.saving?'保存中…':(rv&&rv.submitted_at?'内容を更新する':'提出する'))+'</button>';
-  if(rv&&rv.ul_comment) h+='<div class="ul" style="margin-top:12px">ULからのコメント：'+esc(rv.ul_comment)+
-    (rv.ul_comment_by?'<span class="tiny muted">（'+esc(rv.ul_comment_by)+'）</span>':'')+'</div>';
-  h+='</div>';
-  h+=pastReviews('ywt',p);
-  return h;
-}
-function logMonthly(){
-  const p=LOG.monthPeriod, rv=reviewOf('monthly',p);
-  let h='<div class="note" style="background:var(--violet-soft)">1ヶ月の振り返りと、次の月の目標。'+
-    'ULとの月次定例の前に書いておくと、そのまま話のたたき台になります。</div>';
-  h+=periodPicker('monthly');
-  h+='<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+
-    '<b style="font-size:15px">'+p.replace('-','年')+'月</b>'+
-    (rv&&rv.submitted_at?'<span class="pill m">提出済</span>':'<span class="pill a">未提出</span>')+
-    (rv&&rv.submitted_at?'<span class="tiny muted" style="margin-left:auto">'+fmtDateTime(rv.submitted_at)+'</span>':'')+'</div>'+
-    '<div class="field"><label>今月の振り返り</label><textarea data-draft="monthly:'+p+':looking_back" placeholder="できたこと・できなかったこと。数値がどう動いたか" style="min-height:104px">'+esc(draftVal('monthly',p,'looking_back',rv&&rv.looking_back))+'</textarea></div>'+
-    '<div class="field"><label>次月の目標</label><textarea data-draft="monthly:'+p+':next_goal" placeholder="例）フォロワー+200とCV1件。ペルソナ分析を作り直す" style="min-height:88px">'+esc(draftVal('monthly',p,'next_goal',rv&&rv.next_goal))+'</textarea></div>'+
-    '<button class="savebtn" data-act="saveReview" data-kind="monthly" data-p="'+p+'"'+(LOG.saving?' disabled':'')+'>'+
-      (LOG.saving?'保存中…':(rv&&rv.submitted_at?'内容を更新する':'提出する'))+'</button>';
-  if(rv&&rv.ul_comment) h+='<div class="ul" style="margin-top:12px">ULからのコメント：'+esc(rv.ul_comment)+
-    (rv.ul_comment_by?'<span class="tiny muted">（'+esc(rv.ul_comment_by)+'）</span>':'')+'</div>';
-  h+='</div>';
-  h+=pastReviews('monthly',p);
-  return h;
-}
-function pastReviews(kind,skip){
-  const list=LOG.reviews.filter(r=>r.kind===kind&&r.period!==skip&&r.submitted_at)
-    .sort((a,b)=>String(b.period).localeCompare(String(a.period)));
-  if(!list.length) return '';
-  let h='<div class="sec-label">これまでの振り返り</div><div class="card">';
-  list.forEach(rv=>{
-    const rows = kind==='ywt'
-      ? [['Y',rv.y],['W',rv.w],['T',rv.t]]
-      : [['振り返り',rv.looking_back],['次月目標',rv.next_goal]];
-    h+='<div class="nt"><div class="top"><b style="font-size:13px">'+periodLabel(kind,rv.period)+'</b>'+
-      (rv.ul_comment?'<span class="pill v">ULコメントあり</span>':'')+
-      '<span class="tiny muted" style="margin-left:auto">'+relDays(rv.submitted_at)+'</span></div>'+
-      rows.filter(x=>x[1]).map(x=>'<div style="margin-bottom:5px"><span class="tiny" style="font-weight:700;color:var(--ink2)">'+x[0]+'</span>'+
-        '<div class="bd">'+esc(x[1])+'</div></div>').join('')+
-      (rv.ul_comment?'<div class="ul">UL：'+esc(rv.ul_comment)+'</div>':'')+
-    '</div>';
-  });
-  return h+'</div>';
-}
-async function saveReview(kind,period){
-  const g=f=>{ const el=document.querySelector('[data-draft="'+kind+':'+period+':'+f+'"]'); return el?el.value:''; };
-  const payload = kind==='ywt'
-    ? {kind:'ywt', period:period, y:g('y'), w:g('w'), t:g('t')}
-    : {kind:'monthly', period:period, looking_back:g('looking_back'), next_goal:g('next_goal')};
-  const filled=Object.keys(payload).filter(k=>k!=='kind'&&k!=='period').some(k=>String(payload[k]||'').trim());
-  if(!filled){ toast('内容を入力してください'); return; }
-  LOG.saving=true; render(true);
-  try{
-    await Store.submitReview(payload);
-    LOG.loaded=false; LOG.draft={};
-    await loadLog();
-    toast('提出しました','xp');
-  }catch(e){ toast(e.message||'保存に失敗しました'); }
-  LOG.saving=false; render(true);
-}
-
 /* ============================================================
    RENDER + EVENTS
    ============================================================ */
@@ -1336,7 +1223,7 @@ const TABS=[
 ];
 function renderTabs(){
   const st=stage(), cg=currentGrade(), dn=done(cg), tt=total(cg), tc=tierOf(cg);
-  const un=unreadNotes()+unreadComments();
+  const un=unreadNotes();
   document.getElementById('tabbar').innerHTML=
    '<div class="side-buddy">'+
      '<button class="pod buddy-btn" style="width:96px;height:96px;margin:0 auto" data-act="openDex" aria-label="進化ずかんをひらく">'+creature(st,84,'float')+'</button>'+
@@ -1390,11 +1277,6 @@ document.addEventListener('click',async e=>{
   else if(a==='sheetSeg'){ sheetSeg=el.dataset.s; render(); }
   else if(a==='openDex'){ dexOpen=true; renderDex(); }
   else if(a==='closeDex'){ dexOpen=false; renderDex(); }
-  else if(a==='toComments'){
-    view='log'; LOG.seg='reviews'; openG=null;
-    if(!LOG.loaded) await loadLog();
-    markRead('reviews'); render();
-  }
   else if(a==='openGrade'){ openG=+el.dataset.g; view='step'; render(); }
   else if(a==='back'){ openG=null; render(); }
   else if(a==='toggle'){ toggle(el.dataset.id); }
@@ -1412,17 +1294,7 @@ document.addEventListener('click',async e=>{
     if(el.dataset.icon){ el.innerHTML=D.sound?SPK_ON:SPK_OFF; if(D.sound) blip(.7); }
     else { if(D.sound) blip(.7); render(true); }
   }
-  else if(a==='seg'){
-    LOG.seg=el.dataset.s;
-    if(LOG.seg==='reviews') markRead('reviews');
-    render();
-  }
-  else if(a==='rkind'){ LOG.rkind=el.dataset.k; render(); }
-  else if(a==='pick'){
-    if(el.dataset.kind==='ywt') LOG.ywtPeriod=el.dataset.p; else LOG.monthPeriod=el.dataset.p;
-    render(true);
-  }
-  else if(a==='saveReview'){ await saveReview(el.dataset.kind,el.dataset.p); }
+  else if(a==='seg'){ LOG.seg=el.dataset.s; render(); }
   else if(a==='retrySave'){ el.disabled=true; el.textContent='送信中…'; await runSave(); }
   else if(a==='closeFail'){ clearFail(); }
   else if(a==='logout'){
@@ -1453,7 +1325,6 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
-  if(t.dataset.draft){ LOG.draft[t.dataset.draft]=t.value; return; }
   if(t.dataset.field){
     const k=t.dataset.field.split('.');
     if(k.length===1) D[k[0]]=t.value; else D[k[0]][k[1]]=t.value;
@@ -1590,12 +1461,13 @@ function evolve(gradeN,oldSt,newSt){
    共通パスコードは「登録していい人か」を確かめるためのもので、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
-let GATE={ hits:[], uls:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
+let GATE={ hits:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
-/* shared/config.js の KNOWN_ULS は、まだ誰のUL欄にも書かれていなくても
-   選べるようにしておきたい「正」の表記。ここで候補に足す。 */
+/* shared/config.js の KNOWN_ULS が、ULとして選べる「正」の名簿。
+   ここで名簿のUL欄の値そのものは引いてこない。自己申告の自由入力なので、
+   2人ぶんが1つの欄に入った値などが候補に出回ってしまうため。 */
 function knownUls(){ return ((window.STEP_CONFIG||{}).KNOWN_ULS)||[]; }
-function gUls(){ return uniqSorted(GATE.uls.concat(knownUls())); }
+function gUls(){ return uniqSorted(knownUls()); }
 function gMentors(){ return uniqSorted(GATE.mentors); }
 /* ------------------------------------------------------------
    既存の登録済み表記から選ぶ／無ければ新しく入力する部品。
@@ -1708,7 +1580,8 @@ function showGate(err){
         '<input type="text" id="rName" value="'+esc(GATE.reg.name)+'" placeholder="山田 太郎"></div>'+
       '<div class="field"><label>所属Unit</label>'+
         '<select id="rUnit">'+unitOptionsHTML(GATE.reg.unit)+'</select></div>'+
-      pickerHTML('UL（ユニットリーダー）','rUlSel','rUl',GATE.reg.ul,gUls(),'ULの名前')+
+      '<div class="field"><label>UL（ユニットリーダー）</label>'+
+        '<select id="rUl">'+selectOptionsHTML(GATE.reg.ul,gUls())+'</select></div>'+
       pickerHTML('メンター','rMentorSel','rMentor',GATE.reg.mentor,gMentors(),'メンターの名前')+
       '<div class="field"><label>入社日<span class="muted" style="font-weight:400">（昇格予定の計算に使います）</span></label>'+
         '<input type="date" id="rJoin" value="'+esc(GATE.reg.join)+'"></div>'+
@@ -1732,7 +1605,7 @@ function showGate(err){
       const el=document.getElementById('r'+k);
       el.oninput=el.onchange=ev=>{ GATE.reg[k.toLowerCase()]=ev.target.value; };
     });
-    ['Ul','Mentor'].forEach(k=>{
+    ['Mentor'].forEach(k=>{
       wirePicker('r'+k+'Sel','r'+k,v=>{ GATE.reg[k.toLowerCase()]=v; });
     });
     document.getElementById('rPw2').onkeydown=ev=>{ if(ev.key==='Enter') doRegister(); };
@@ -1745,7 +1618,7 @@ function showGate(err){
     lead.textContent='パスワードを設定し直します。';
     body.innerHTML=
       '<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
-        '<b>これまでの記録は消えません。</b>チェック・申し送り・テスト・振り返りはそのまま残り、'+
+        '<b>これまでの記録は消えません。</b>チェック・申し送り・テストはそのまま残り、'+
         'パスワードだけを決め直します。</div>'+
       '<div class="steps">'+
         '<div class="stp"><i>1</i><div><b>ULか育成の人に頼む</b>'+
@@ -1937,7 +1810,6 @@ async function boot(){
     if(Store.mode!=='cloud'){ showGate(''); return; }
     const me=await Store.restore();
     if(me){ await boot(); return; }   /* 前回のログインが残っている */
-    Store.rosterUls().then(u=>{ GATE.uls=u||[]; }).catch(()=>{});
     Store.rosterMentors().then(u=>{ GATE.mentors=u||[]; }).catch(()=>{});
     showGate('');
   }catch(e){
