@@ -271,18 +271,10 @@ const Store = (() => {
       }catch(e){ return []; }
     },
 
-    /* 新規登録の UL・メンター候補。個人名とは紐付けない、値の集合だけ。
-       所属Unitは固定リストから選ぶので、名簿から候補を作るのはこの2つだけ。
+    /* 新規登録のメンター候補。個人名とは紐付けない、値の集合だけ。
+       所属Unitは固定リスト、ULは KNOWN_ULS から選ぶので、名簿から候補を
+       作るのはメンターだけ。
        サーバーに関数が無ければ（古いschemaのままなら）名簿から手元で作る。 */
-    async rosterUls(){
-      if(!CLOUD) return [];
-      const r=await sb.rpc('roster_uls');
-      if(!r.error) return (chk(r)||[]).map(x=>x.ul).filter(Boolean);
-      try{
-        const all=await api.roster();
-        return Array.from(new Set(all.map(m=>m.ul).filter(Boolean))).sort();
-      }catch(e){ return []; }
-    },
     async rosterMentors(){
       if(!CLOUD) return [];
       const r=await sb.rpc('roster_mentors');

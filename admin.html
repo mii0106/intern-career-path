@@ -1873,8 +1873,7 @@ function dwProfile(r){
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
     '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+
     '<div class="f"><label>メンター</label><input type="text" id="pfMentor" list="dlMentor" value="'+esc(r.m.mentor||'')+'"></div></div>'+
-    '<datalist id="dlUl">'+Array.from(new Set(currentCharges('ul').concat(CFG.KNOWN_ULS||[])))
-      .sort((a,b)=>a.localeCompare(b,'ja')).map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
+    '<datalist id="dlUl">'+ulNameOptions().map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<datalist id="dlMentor">'+currentCharges('mentor').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">既存の表記から選ぶと、後で「UL・メンターの引き継ぎ」を使わずに済みます'+
     '（入力欄を押すと候補が出ます）。</p>'+
@@ -1985,6 +1984,14 @@ function currentCharges(field){
 }
 function allMemberNames(){
   return Array.from(new Set(ROWS.map(r=>r.name).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'ja'));
+}
+/* UL欄に入れる名前の候補。実際に育成・UL権限に上がっている人＋KNOWN_ULS。
+   自己申告のUL欄の値そのものは候補にしない。「小林直樹・直井理子」のように
+   2人ぶんが1つの欄に入った値を、候補から選べる形で広めないため。 */
+function ulNameOptions(){
+  const managers=ROWS.filter(r=>r.role!=='member').map(r=>r.name);
+  return Array.from(new Set(managers.concat(CFG.KNOWN_ULS||[]).filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b,'ja'));
 }
 function handoverCardHTML(){
   const list=currentCharges(HANDOVER.field);

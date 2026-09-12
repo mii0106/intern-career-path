@@ -46,14 +46,18 @@ function normalizeUnit(v){
   const k=unitKey(raw);
   return unitOptions().find(u=>unitKey(u)===k) || raw;
 }
-/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す */
-function unitOptionsHTML(value){
-  const val=normalizeUnit(value);
-  const list=unitOptions().slice();
-  if(val && list.indexOf(val)<0) list.push(val);
+/* 決まった選択肢からだけ選ばせる<select>の中身。
+   いま名簿に入っている値が選択肢に無いときは、選び直すまで消えないよう
+   その値も1つ足しておく（勝手に別の値へ書き換えたり、空にしたりしない）。 */
+function selectOptionsHTML(value,list){
+  const val=String(value==null?'':value).trim();
+  const opts=list.slice();
+  if(val && opts.indexOf(val)<0) opts.push(val);
   return '<option value="">選んでください</option>'+
-    list.map(u=>'<option value="'+esc(u)+'"'+(val===u?' selected':'')+'>'+esc(u)+'</option>').join('');
+    opts.map(o=>'<option value="'+esc(o)+'"'+(val===o?' selected':'')+'>'+esc(o)+'</option>').join('');
 }
+/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す */
+function unitOptionsHTML(value){ return selectOptionsHTML(normalizeUnit(value),unitOptions()); }
 
 function star(cx,cy,r,f){
   return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
