@@ -493,39 +493,25 @@ const Store = (() => {
       const r=await sb.from('quiz_scores').select('*').eq('member_id',me.member.id).order('taken_on',{ascending:false});
       return chk(r)||[];
     },
-    async myReviews(){
-      need();
-      const r=await sb.from('reviews').select('*').eq('member_id',me.member.id).order('period',{ascending:false});
-      return chk(r)||[];
-    },
-    async submitReview(p){
-      need();
-      chk(await sb.rpc('submit_review',{
-        p_kind:p.kind, p_period:p.period,
-        p_y:p.y||null, p_w:p.w||null, p_t:p.t||null,
-        p_looking_back:p.looking_back||null, p_next_goal:p.next_goal||null }));
-      return p;
-    },
 
     /* ---------- 管理者用：まとめて読む ---------- */
     async adminLoad(){
       need();
       await detectManagerCaps();
       const pcols='member_id,item_id,checked_at';
-      const [m,p,s,n,q,rv]=await Promise.all([
+      const [m,p,s,n,q]=await Promise.all([
         sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name'),
         sb.from('progress').select(pcols),
         sb.from('member_state').select('*'),
         sb.from('notes').select('*').order('occurred_on',{ascending:false}),
-        sb.from('quiz_scores').select('*').order('taken_on',{ascending:false}),
-        sb.from('reviews').select('*').order('period',{ascending:false})
+        sb.from('quiz_scores').select('*').order('taken_on',{ascending:false})
       ]);
       const progress={};
       (chk(p)||[]).forEach(r=>{
         (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
       });
       const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
-      return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[], reviews:chk(rv)||[],
+      return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[],
                fetchedAt:Date.now() };
     },
 
@@ -560,11 +546,6 @@ const Store = (() => {
     async deleteScore(id){
       need();
       chk(await sb.from('quiz_scores').delete().eq('id',id));
-    },
-
-    async setUlComment(reviewId,text){
-      need();
-      chk(await sb.rpc('set_ul_comment',{p_review_id:reviewId,p_comment:text}));
     },
 
     async upsertMember(m){

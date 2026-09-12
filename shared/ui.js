@@ -277,39 +277,8 @@ function parseCSV(text){
 }
 function clamp(n,a,b){ return Math.max(a,Math.min(b,n)); }
 
-/* ============================================================
-   振り返りの期間キー
-     隔週YWT … 'YYYY-MM-A'（1〜15日）/ 'YYYY-MM-B'（16日〜）
-     月次     … 'YYYY-MM'
-   ============================================================ */
-function ywtPeriod(d){
-  const t=d?new Date(d):new Date();
-  return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+(t.getDate()<=15?'-A':'-B');
-}
+/* 「2026-09」のような月のキー。昇格予定が過ぎているかの判定に使う */
 function monthlyPeriod(d){
   const t=d?new Date(d):new Date();
   return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0');
-}
-function periodLabel(kind,p){
-  if(!p) return '—';
-  if(kind==='ywt'){
-    const m=String(p).match(/^(\d{4})-(\d{2})-(A|B)$/);
-    return m? (+m[2])+'月'+(m[3]==='A'?'前半':'後半') : p;
-  }
-  const m=String(p).match(/^(\d{4})-(\d{2})$/);
-  return m? (+m[2])+'月' : p;
-}
-/* 直近 n 期間のキーを新しい順に返す */
-function recentPeriods(kind,n){
-  const out=[], t=new Date();
-  if(kind==='monthly'){
-    for(let i=0;i<n;i++){ const d=new Date(t.getFullYear(),t.getMonth()-i,1); out.push(monthlyPeriod(d)); }
-  }else{
-    let y=t.getFullYear(), mo=t.getMonth(), half=t.getDate()<=15?'A':'B';
-    for(let i=0;i<n;i++){
-      out.push(y+'-'+String(mo+1).padStart(2,'0')+'-'+half);
-      if(half==='B') half='A'; else { half='B'; mo--; if(mo<0){ mo=11; y--; } }
-    }
-  }
-  return out;
 }

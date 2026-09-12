@@ -118,28 +118,6 @@ create table if not exists public.quiz_scores (
 );
 create index if not exists quiz_member_idx on public.quiz_scores(member_id);
 
--- 隔週YWT・月次振り返り。
-create table if not exists public.reviews (
-  id            uuid primary key default gen_random_uuid(),
-  member_id     uuid not null references public.members(id) on delete cascade,
-  kind          text not null,                        -- ywt / monthly
-  period        text not null,                        -- ywt: '2026-08-A'（前半）/'2026-08-B'（後半）, monthly: '2026-08'
-  y             text,                                  -- やったこと
-  w             text,                                  -- わかったこと
-  t             text,                                  -- つぎにやること
-  looking_back  text,                                  -- 月次の振り返り
-  next_goal     text,                                  -- 次月目標
-  ul_comment    text,
-  ul_comment_by text,
-  submitted_at  timestamptz,
-  updated_at    timestamptz not null default now(),
-  unique (member_id, kind, period)
-);
-do $$ begin
-  alter table public.reviews add constraint reviews_kind_chk check (kind in ('ywt','monthly'));
-exception when duplicate_object then null; end $$;
-create index if not exists reviews_member_idx on public.reviews(member_id);
-
 -- ============================================================
 -- 2. 補助関数
 --    RLSポリシーの中から members を参照すると再帰してしまうため、
@@ -159,8 +137,8 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 /* 卒業・退職（members.active = false）した本人からの書き込みを止めるためのガード。
-   記録（チェック・申し送り・テスト・振り返り）はそのまま残すが、
-   本人がその後もチェックを付け外ししたり、YWT・プロフィールを書き換えたりはできなくする。
+   記録（チェック・申し送り・テスト）はそのまま残すが、
+   本人がその後もチェックを付け外ししたり、プロフィールを書き換えたりはできなくする。
    読み取り（本人が自分の記録を見ること）はここでは制限しない。 */
 create or replace function public.is_active_member(p_id uuid)
 returns boolean language sql stable security definer set search_path = public as $$
@@ -386,45 +364,11 @@ begin
    where id = v_id;
 end $$;
 
--- 本人が自分のYWT・月次振り返りを提出する。ULコメントは触れない。
-create or replace function public.submit_review(
-  p_kind text, p_period text,
-  p_y text, p_w text, p_t text, p_looking_back text, p_next_goal text
-) returns uuid language plpgsql security definer set search_path = public as $$
-declare v_id uuid := public.current_member_id(); v_row uuid;
-begin
-  if v_id is null then raise exception 'not linked'; end if;
-  if not public.is_active_member(v_id) then raise exception 'このアカウントは卒業・退職の扱いになっているため操作できません。心当たりがなければ育成・ULにご連絡ください'; end if;
-  if p_kind not in ('ywt','monthly') then raise exception 'bad kind'; end if;
-
-  insert into public.reviews as r (member_id, kind, period, y, w, t, looking_back, next_goal, submitted_at, updated_at)
-  values (v_id, p_kind, p_period, p_y, p_w, p_t, p_looking_back, p_next_goal, now(), now())
-  on conflict (member_id, kind, period) do update
-    set y = excluded.y, w = excluded.w, t = excluded.t,
-        looking_back = excluded.looking_back, next_goal = excluded.next_goal,
-        submitted_at = coalesce(r.submitted_at, now()), updated_at = now()
-  returning id into v_row;
-  return v_row;
-end $$;
-
--- UL/管理者が振り返りにコメントを返す。
-create or replace function public.set_ul_comment(p_review_id uuid, p_comment text)
-returns void language plpgsql security definer set search_path = public as $$
-declare v_name text;
-begin
-  if not public.is_manager() then raise exception 'not a manager'; end if;
-  select name into v_name from public.members where auth_id = auth.uid();
-  update public.reviews set ul_comment = p_comment, ul_comment_by = v_name, updated_at = now()
-   where id = p_review_id;
-end $$;
-
 grant execute on function public.claim_member(uuid,text)                             to authenticated;
 grant execute on function public.admin_reset_login(uuid)                             to authenticated;
 grant execute on function public.register_me(text,text,text,text,date,int,text)      to authenticated;
 grant execute on function public.claim_manager(text)                                 to authenticated;
 grant execute on function public.update_my_profile(text,date,int,text,text,text)     to authenticated;
-grant execute on function public.submit_review(text, text, text, text, text, text, text) to authenticated;
-grant execute on function public.set_ul_comment(uuid, text)                          to authenticated;
 /* 古い版から貼り直したときに、引数が違う旧関数が残らないように落とす */
 drop function if exists public.update_my_profile(text, date, int);
 
@@ -436,7 +380,6 @@ alter table public.progress     enable row level security;
 alter table public.member_state enable row level security;
 alter table public.notes        enable row level security;
 alter table public.quiz_scores  enable row level security;
-alter table public.reviews      enable row level security;
 
 -- members：自分の行と、管理者なら全員。書き込みは管理者のみ（本人は上の関数経由）。
 drop policy if exists members_read   on public.members;
@@ -507,20 +450,6 @@ create policy quiz_write on public.quiz_scores for insert to authenticated
 create policy quiz_update on public.quiz_scores for update to authenticated
   using (public.is_manager()) with check (public.is_manager());
 create policy quiz_delete on public.quiz_scores for delete to authenticated
-  using (public.is_manager());
-
--- reviews：本人は自分の分を読める（書き込みは submit_review 経由）。管理者は全部。
-drop policy if exists reviews_read   on public.reviews;
-drop policy if exists reviews_write  on public.reviews;
-drop policy if exists reviews_update on public.reviews;
-drop policy if exists reviews_delete on public.reviews;
-create policy reviews_read on public.reviews for select to authenticated
-  using (member_id = public.current_member_id() or public.is_manager());
-create policy reviews_write on public.reviews for insert to authenticated
-  with check (public.is_manager());
-create policy reviews_update on public.reviews for update to authenticated
-  using (public.is_manager()) with check (public.is_manager());
-create policy reviews_delete on public.reviews for delete to authenticated
   using (public.is_manager());
 
 -- ============================================================
