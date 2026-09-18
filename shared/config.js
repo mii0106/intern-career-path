@@ -62,8 +62,14 @@ window.STEP_CONFIG = {
      同じUnitの人が別々に数えられてしまっていた。
      古い表記は shared/ui.js の normalizeUnit() が表示・集計のときに
      ここの表記へ寄せるので、名簿を手で直さなくても揃う。
-     Unitが増えたときは、ここに足せばそのまま選択肢に出る。 */
-  UNITS: ['unitA','unitB','unitC','unitD','unitE','unitF','unitG'],
+     Unitが増えたときは、ここに足せばそのまま選択肢に出る。
+
+     ここに足し忘れても詰まらないように、shared/ui.js の unitOptions() が
+     「名簿にすでに居るUnit」も選択肢に足す（unitH のように1文字の
+     アルファベットとして読めるものだけ。「営業部」のような値は足さない）。
+     とはいえ、まだ誰も居ないUnitは名簿から拾えないので、
+     新しいUnitができたらここに書き足すのが正しい直し方。 */
+  UNITS: ['unitA','unitB','unitC','unitD','unitE','unitF','unitG','unitH'],
 
   /* 現在ULとして選べるようにしておきたい人。
      本人がまだこのアプリに登録していない場合や、まだ誰のUL欄にも

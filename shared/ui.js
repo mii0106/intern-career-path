@@ -22,15 +22,44 @@ const MANAGER_LABEL='育成・UL';
 /* ------------------------------------------------------------
    所属Unit
    ------------------------------------------------------------
-   選択肢は shared/config.js の UNITS（unitA〜unitG）。
+   選択肢は shared/config.js の UNITS。
    ただし自由入力だった頃の名簿には「Unit F」「ユニットF」「Ｆ」のような
    表記ゆれが残っている。管理者ツールは文字列の完全一致で集計するので、
    そのままだと同じUnitの人が別のUnitとして数えられてしまう。
    表示・集計の前に normalizeUnit() を通して正の表記へ寄せる。
-   A〜Gのどれとも読めない値（「営業部」など）は、勝手に消さず
-   そのまま返す。選び直すまで名簿から消えないようにするため。
+
+   Unitが増えたのに config.js に足し忘れると、その人は自分のUnitを
+   選べず、名簿にある値も選択肢に出てこない（unitH で実際に起きた）。
+   そこで unitOptions() は、いま名簿に入っている値のうち
+   「1文字のアルファベットとして読めるもの」も選択肢に足す。
+   「営業部」のような値は足さない（選択肢が散らかるため）。
+
+   アルファベット1文字として読める値は、config.js に無くても
+   正の書き方（unitA と同じ形）へ揃える。「Ｈ」「ユニットH」「Unit H」が
+   別々のUnitとして数えられないようにするため。
+   どちらとも読めない値（「営業部」など）は、勝手に消さずそのまま返す。
+   選び直すまで名簿から消えないようにするため。
    ------------------------------------------------------------ */
-function unitOptions(){ return ((window.STEP_CONFIG||{}).UNITS)||[]; }
+const UNIT_LETTER=/^[A-Z]$/;
+/* config.js のUNITSと同じ書き方で、Unitの正の表記を作る。
+   'unitA' なら 'unit'+文字、'Unit A' なら 'Unit '+文字。 */
+function unitLabel(letter){
+  const base=((window.STEP_CONFIG||{}).UNITS)||[];
+  const model=base.find(u=>UNIT_LETTER.test(unitKey(u)));
+  return model? String(model).slice(0,-1)+letter : 'unit'+letter;
+}
+/* Unitの選択肢。extra には名簿にある値（表記ゆれを含んでよい）を渡す。
+   そのうちUnitとして読めるものだけを正の表記に直して足す。 */
+function unitOptions(extra){
+  const out=(((window.STEP_CONFIG||{}).UNITS)||[]).slice();
+  (extra||[]).forEach(v=>{
+    const k=unitKey(v==null?'':v);
+    if(!UNIT_LETTER.test(k)) return;
+    const u=unitLabel(k);
+    if(!out.some(o=>unitKey(o)===k)) out.push(u);
+  });
+  return out.sort((a,b)=>String(unitKey(a)).localeCompare(String(unitKey(b))));
+}
 /* 表記の違いを取り払って、Unitを見分けるための文字にする。
    「unitF」「Unit F」「ユニットF」「Ｆ」→ すべて 'F' */
 function unitKey(v){
@@ -44,7 +73,9 @@ function normalizeUnit(v){
   const raw=String(v==null?'':v).trim();
   if(!raw) return '';
   const k=unitKey(raw);
-  return unitOptions().find(u=>unitKey(u)===k) || raw;
+  const hit=unitOptions().find(u=>unitKey(u)===k);
+  if(hit) return hit;
+  return UNIT_LETTER.test(k)? unitLabel(k) : raw;
 }
 /* 決まった選択肢からだけ選ばせる<select>の中身。
    いま名簿に入っている値が選択肢に無いときは、選び直すまで消えないよう
@@ -56,8 +87,9 @@ function selectOptionsHTML(value,list){
   return '<option value="">選んでください</option>'+
     opts.map(o=>'<option value="'+esc(o)+'"'+(val===o?' selected':'')+'>'+esc(o)+'</option>').join('');
 }
-/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す */
-function unitOptionsHTML(value){ return selectOptionsHTML(normalizeUnit(value),unitOptions()); }
+/* Unitを選ぶ<select>の中身。本人画面・管理者ツールで同じものを出す。
+   extra には名簿にある値を渡す（config.js に書き忘れたUnitを拾うため）。 */
+function unitOptionsHTML(value,extra){ return selectOptionsHTML(normalizeUnit(value),unitOptions(extra)); }
 
 function star(cx,cy,r,f){
   return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
