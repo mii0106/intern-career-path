@@ -554,7 +554,23 @@ function chargeChips(r,opts){
 function mineTag(r){ return r.mine? ' <span class="chip v">自分の担当</span>' : ''; }
 
 /* ---------- 絞り込み ---------- */
-function units(){ return Array.from(new Set(ROWS.map(r=>r.unit))).sort(); }
+/* いま名簿に入っているUnitの生の値。shared/ui.js の選択肢を作るときに渡す */
+function rosterUnitValues(){ return ROWS.map(r=>r.m.unit).filter(Boolean); }
+/* 実際にメンバーが居るUnitだけ（リーダーMTGのサマリはここから選ぶ。
+   誰も居ないUnitを開いても空の資料にしかならないため）。 */
+function unitsInUse(){
+  return Array.from(new Set(ROWS.filter(r=>r.role==='member').map(r=>r.unit)))
+    .sort((a,b)=>String(a).localeCompare(String(b),'ja'));
+}
+/* Unitの絞り込みに出す一覧。
+   名簿に居るUnitだけだと、まだ誰も登録していないUnit（unitHなど）が
+   選べず「そのUnitは無い」ように見えてしまうので、選択肢のほうも足す。
+   「（未設定）」は、該当者が居るときだけ inUse 側から入る。 */
+function units(){
+  const inUse=Array.from(new Set(ROWS.map(r=>r.unit)));
+  const all=unitOptions(rosterUnitValues()).concat(inUse);
+  return Array.from(new Set(all)).sort((a,b)=>String(a).localeCompare(String(b),'ja'));
+}
 /* リーダー等級（G7）以上は在籍月数の標準期間という考え方がそぐわないため、
    「遅れ」の対象から外す。 */
 function isDelayed(r){ return r.delay!=null && r.delay>=DELAY_ALERT && !isSeniorTier(r.cg); }
@@ -1427,7 +1443,7 @@ async function importCSVText(text){
    7. リーダーMTG用サマリ
    ============================================================ */
 function vMtg(){
-  const us=units();
+  const us=unitsInUse();
   const unit=V.mtgUnit||us[0]||'';
   const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit)
     .sort((a,b)=>b.overall-a.overall);
@@ -1487,7 +1503,7 @@ function vMtg(){
   return h;
 }
 function mtgText(){
-  const unit=V.mtgUnit||units()[0]||'';
+  const unit=V.mtgUnit||unitsInUse()[0]||'';
   const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort((a,b)=>b.overall-a.overall);
   const L=['【'+unit+'｜キャリアステップ確認 '+fmtDateFull(todayStr())+'】',''];
   list.forEach(r=>{
@@ -1625,7 +1641,7 @@ function dwScores(r){
 function dwProfile(r){
   return '<div class="card"><h2>名簿の情報</h2>'+
     '<div class="fr"><div class="f"><label>氏名</label><input type="text" id="pfName" value="'+esc(r.name)+'"></div>'+
-    '<div class="f"><label>Unit</label><select id="pfUnit">'+unitOptionsHTML(r.m.unit)+'</select></div></div>'+
+    '<div class="f"><label>Unit</label><select id="pfUnit">'+unitOptionsHTML(r.m.unit,rosterUnitValues())+'</select></div></div>'+
     '<p class="tiny muted" style="margin:-6px 0 10px">同姓同名の人がいる場合は、区別のため氏名にUnitやイニシャルを添えても構いません。'+
     'ログインは氏名ではなく内部IDで行われるため、氏名を変えてもログインには影響しません。</p>'+
     '<div class="fr"><div class="f"><label>UL</label><input type="text" id="pfUl" list="dlUl" value="'+esc(r.m.ul||'')+'"></div>'+

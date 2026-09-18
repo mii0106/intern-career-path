@@ -956,7 +956,7 @@ function vMySheet(){
   h+='<div class="card">'+
    '<div class="field"><label>氏名</label><input type="text" data-field="profile.name" value="'+esc(D.profile.name)+'" placeholder="山田 太郎"></div>'+
    '<div class="field"><label>所属Unit</label>'+
-     '<select data-picker="profile.unit">'+unitOptionsHTML(D.profile.unit)+'</select></div>'+
+     '<select data-picker="profile.unit">'+unitOptionsHTML(D.profile.unit,ROSTER.map(m=>m.unit))+'</select></div>'+
    '<div class="field"><label>UL</label>'+
      '<select data-picker="profile.ul">'+selectOptionsHTML(D.profile.ul,rosterUlOptions())+'</select></div>'+
    pickerFieldHTML('メンター','profile.mentor',D.profile.mentor,rosterMentorOptions(),'メンターの名前',
@@ -1461,7 +1461,7 @@ function evolve(gradeN,oldSt,newSt){
    共通パスコードは「登録していい人か」を確かめるためのもので、
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
-let GATE={ hits:[], mentors:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
+let GATE={ hits:[], mentors:[], units:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 /* shared/config.js の KNOWN_ULS が、ULとして選べる「正」の名簿。
    ここで名簿のUL欄の値そのものは引いてこない。自己申告の自由入力なので、
@@ -1548,6 +1548,7 @@ const PW_HINT='<p class="tiny muted" style="margin:4px 0 0">6文字以上。次�
   '忘れたときは、ULか育成の人に「ログインのリセット」を頼めば決め直せます（記録は消えません）。</p>';
 
 function showGate(err){
+  GATE.err=err||'';   /* 描き直すときに出しっぱなしにするため覚えておく */
   document.getElementById('app').style.display='none';
   document.getElementById('gate').classList.add('on');
   document.getElementById('gateErr').innerHTML = err? '<div class="gerr">'+esc(err)+'</div>' : '';
@@ -1579,7 +1580,7 @@ function showGate(err){
       '<div class="field"><label>氏名<span style="color:var(--coral)"> ※必須</span></label>'+
         '<input type="text" id="rName" value="'+esc(GATE.reg.name)+'" placeholder="山田 太郎"></div>'+
       '<div class="field"><label>所属Unit</label>'+
-        '<select id="rUnit">'+unitOptionsHTML(GATE.reg.unit)+'</select></div>'+
+        '<select id="rUnit">'+unitOptionsHTML(GATE.reg.unit,GATE.units)+'</select></div>'+
       '<div class="field"><label>UL（ユニットリーダー）</label>'+
         '<select id="rUl">'+selectOptionsHTML(GATE.reg.ul,gUls())+'</select></div>'+
       pickerHTML('メンター','rMentorSel','rMentor',GATE.reg.mentor,gMentors(),'メンターの名前')+
@@ -1601,8 +1602,11 @@ function showGate(err){
       '<p class="tiny muted" style="margin:12px 0 0">氏名やUnitは、あとから「マイシート」で直せます。</p>';
     const n=document.getElementById('rName');
     n.oninput=e=>{ GATE.reg.name=e.target.value; };
+    /* 1つでも欄が見つからないと、ここで例外が出て以降の配線
+       （パスワード欄のEnter等）が丸ごと止まってしまうので、必ず確かめる */
     ['Unit','Ul','Mentor','Join','Grade'].forEach(k=>{
       const el=document.getElementById('r'+k);
+      if(!el) return;
       el.oninput=el.onchange=ev=>{ GATE.reg[k.toLowerCase()]=ev.target.value; };
     });
     ['Mentor'].forEach(k=>{
@@ -1690,6 +1694,20 @@ function showGate(err){
   const gp=document.getElementById('gpass');
   gp.focus();
   gp.onkeydown=ev=>{ if(ev.key==='Enter') doSignIn(); };
+}
+/* 選択肢が届いたときに、登録フォームだけ描き直す。
+   氏名・Unit等は GATE.reg に入っているので戻るが、パスコードと
+   パスワードはどこにも持っていないので、入力済みの値を書き戻し、
+   カーソルのあった欄に戻してから続けてもらう。 */
+function refreshGateOptions(){
+  const gate=document.getElementById('gate');
+  if(!gate||!gate.classList.contains('on')||GATE.mode!=='reg') return;
+  if(isComposing()) return;   /* 日本語を変換している最中は触らない */
+  const keep=['rCode','rPw','rPw2'].map(id=>[id,(document.getElementById(id)||{}).value||'']);
+  const act=document.activeElement, focusId=act&&act.id;
+  showGate(GATE.err);
+  keep.forEach(kv=>{ const el=document.getElementById(kv[0]); if(el&&kv[1]) el.value=kv[1]; });
+  if(focusId){ const el=document.getElementById(focusId); if(el) el.focus(); }
 }
 function gateBusy(sel,label){
   const b=document.querySelector(sel);
@@ -1810,7 +1828,12 @@ async function boot(){
     if(Store.mode!=='cloud'){ showGate(''); return; }
     const me=await Store.restore();
     if(me){ await boot(); return; }   /* 前回のログインが残っている */
-    Store.rosterMentors().then(u=>{ GATE.mentors=u||[]; }).catch(()=>{});
+    /* 登録フォームの選択肢（メンター候補・名簿にあるUnit）。
+       届くのは画面を出したあとなので、届いた時点で描き直す。
+       そうしないと、先に「はじめて使う」を開いた人には
+       選択肢が空のまま（＝unitHのようなUnitが出ない）になる。 */
+    Store.rosterMentors().then(u=>{ GATE.mentors=u||[]; refreshGateOptions(); }).catch(()=>{});
+    Store.rosterUnits().then(u=>{ GATE.units=u||[]; refreshGateOptions(); }).catch(()=>{});
     showGate('');
   }catch(e){
     GATE.offline=true;
