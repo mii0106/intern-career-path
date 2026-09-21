@@ -625,6 +625,7 @@ on conflict (slug) do nothing;
 | `Email address "m-xxxx@..." is invalid` と出て誰も登録できない | `shared/config.js` の `AUTH_EMAIL_DOMAIN` が架空のTLDになっています。`.local` `.test` `.internal` などは Supabase Auth が実在しないTLDとして弾きます。**実在するドメイン**（自社ドメインなど）に変えてください |
 | 何をしても404になる／名前が1件も出ない | `SUPABASE_URL` の末尾に `/rest/v1/` が付いていないか確認（手順4） |
 | 「通信できませんでした」と出る | 回線か、`shared/config.js` のURL・キーの写し間違いです。データは消えていません |
+| `syntax error at or near "check"` と出る | SQLエディタが貼り付けたSQLを途中で切ってしまっています。**ファイル全体をもう一度、最初から最後まで選択して**貼り直してください（一部だけ選択して実行すると、文の途中で切れて同じエラーになります）。それでも出る場合は、`supabase/schema.sql` が最新か確認してください（古い版には `do $$ ... $$` のブロックがあり、エディタによってはここで切れます） |
 | 手順5のSQLで `function crypt(...) does not exist` | 1行目の `set search_path = public, extensions;` ごとコピーして実行してください |
 | `Allow new users to sign up` 系のエラーで登録できない | 手順3でサインアップをオンにしてください |
 | 同じ人が2行できてしまった | 2回目の登録で別のログインを作った場合に起こります。使わない行を開き、名前を変えたうえで設定タブの「卒業・退職」から外してください（SQL Editor で `update public.members set active=false where id='...';` でも同じことができます） |

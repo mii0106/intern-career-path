@@ -19,6 +19,16 @@
 --     管理者になれてしまう
 -- ============================================================
 
+/* 制約は「いったん落としてから付け直す」。
+   以前は do ... exception when duplicate_object ... のブロックで包んでいたが、
+   2つ問題があった。
+     ・許す値を増やしたとき、すでにある古い制約がそのまま残る
+       （duplicate_object で黙って飛ばすため。新しい値の保存が弾かれる）
+     ・SQLエディタによっては、引用の対応を取り違えて
+       「syntax error at or near "check"」で止まる
+   drop if exists → add なら、何度流しても同じ結果になり、
+   引用も使わないので、どの画面に貼っても通る。 */
+
 -- ============================================================
 -- 1. テーブル
 -- ============================================================
@@ -47,10 +57,8 @@ create table if not exists public.members (
    'admin' は旧「管理者」。中身は mentor と同じなので、下で mentor に寄せる。 */
 alter table public.members drop constraint if exists members_role_chk;
 update public.members set role = 'mentor' where role = 'admin';
-do $$ begin
-  alter table public.members add constraint members_role_chk
-    check (role in ('member','mentor','ul'));
-exception when duplicate_object then null; end $$;
+alter table public.members add constraint members_role_chk
+  check (role in ('member','mentor','ul'));
 
 -- チェックが入った項目。1行＝1項目。
 create table if not exists public.progress (
@@ -90,14 +98,12 @@ create table if not exists public.notes (
   pinned      boolean not null default false,
   created_at  timestamptz not null default now()
 );
-do $$ begin
-  alter table public.notes add constraint notes_kind_chk
-    check (kind in ('memo','handover','interview','promotion','escalation','praise'));
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table public.notes add constraint notes_visibility_chk
-    check (visibility in ('shared','admin'));
-exception when duplicate_object then null; end $$;
+alter table public.notes drop constraint if exists notes_kind_chk;
+alter table public.notes add constraint notes_kind_chk
+  check (kind in ('memo','handover','interview','promotion','escalation','praise'));
+alter table public.notes drop constraint if exists notes_visibility_chk;
+alter table public.notes add constraint notes_visibility_chk
+  check (visibility in ('shared','admin'));
 create index if not exists notes_member_idx on public.notes(member_id, occurred_on desc);
 
 -- ラーニングボックス等のテスト結果。
@@ -124,26 +130,26 @@ create index if not exists quiz_member_idx on public.quiz_scores(member_id);
 --    security definer にして RLS を通さずに引く。
 -- ============================================================
 create or replace function public.current_member_id()
-returns uuid language sql stable security definer set search_path = public as $$
+returns uuid language sql stable security definer set search_path = public as $fn$
   select id from public.members where auth_id = auth.uid() limit 1
-$$;
+$fn$;
 
 create or replace function public.is_manager()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select exists (
     select 1 from public.members
     where auth_id = auth.uid() and role in ('mentor','ul') and active
   )
-$$;
+$fn$;
 
 /* 卒業・退職（members.active = false）した本人からの書き込みを止めるためのガード。
    記録（チェック・申し送り・テスト）はそのまま残すが、
    本人がその後もチェックを付け外ししたり、プロフィールを書き換えたりはできなくする。
    読み取り（本人が自分の記録を見ること）はここでは制限しない。 */
 create or replace function public.is_active_member(p_id uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select coalesce((select active from public.members where id = p_id), false)
-$$;
+$fn$;
 
 -- ============================================================
 -- 3. ログイン画面に出す名簿
@@ -191,9 +197,8 @@ create table if not exists public.app_config (
   admin_passcode text,          -- bcryptハッシュ。管理者になるための管理者キー
   updated_at     timestamptz not null default now()
 );
-do $$ begin
-  alter table public.app_config add constraint app_config_single check (id = 1);
-exception when duplicate_object then null; end $$;
+alter table public.app_config drop constraint if exists app_config_single;
+alter table public.app_config add constraint app_config_single check (id = 1);
 insert into public.app_config(id) values (1) on conflict (id) do nothing;
 
 -- ポリシーを1つも作らないので、クライアント（anon/authenticated）からは読めない。
@@ -234,25 +239,25 @@ drop function if exists public.set_passcodes(text, text);
 -- 下の register_me / claim_member が「まだ設定されていません」と
 -- 理由の分かるエラーを出す。
 create or replace function public.check_team_passcode(p_code text)
-returns boolean language sql stable security definer set search_path = public, extensions as $$
+returns boolean language sql stable security definer set search_path = public, extensions as $fn$
   select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), false)
     from public.app_config where id = 1
-$$;
+$fn$;
 grant execute on function public.check_team_passcode(text) to anon, authenticated;
 
 -- 共通パスコードが「設定されているか」だけを返す（中身は返さない）。
 -- 登録画面が「違います」と「まだ設定されていません」を出し分けるために使う。
 -- どちらの状態かはエラーメッセージからどのみち分かるので、これ自体は何も漏らさない。
 create or replace function public.team_passcode_set()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select exists (select 1 from public.app_config where id = 1 and team_passcode is not null)
-$$;
+$fn$;
 grant execute on function public.team_passcode_set() to anon, authenticated;
 
 -- 共通パスコードを検証して、通らなければ理由の分かるエラーで止める。
 -- 「未設定」と「間違い」を分けるのは、配る側と入れる側で直す場所が違うため。
 create or replace function public.assert_team_passcode(p_code text)
-returns void language plpgsql stable security definer set search_path = public, extensions as $$
+returns void language plpgsql stable security definer set search_path = public, extensions as $fn$
 begin
   if not exists (select 1 from public.app_config where id = 1 and team_passcode is not null) then
     raise exception '共通パスコードがまだ設定されていません。ULに連絡してください（SETUP.md 手順5）';
@@ -260,16 +265,16 @@ begin
   if not public.check_team_passcode(p_code) then
     raise exception 'パスコードが違います';
   end if;
-end $$;
+end $fn$;
 
 -- パスコードが設定済みかどうか（管理者画面で注意を出すため）。中身は返さない。
 create or replace function public.config_status()
-returns jsonb language sql stable security definer set search_path = public as $$
+returns jsonb language sql stable security definer set search_path = public as $fn$
   select jsonb_build_object(
            'team',  (select team_passcode  is not null from public.app_config where id=1),
            'admin', (select admin_passcode is not null from public.app_config where id=1))
   where public.is_manager()
-$$;
+$fn$;
 grant execute on function public.config_status() to authenticated;
 
 -- ============================================================
@@ -294,7 +299,7 @@ alter table public.members add column if not exists claim_code_fails   int not n
 
 drop function if exists public.claim_member(uuid);
 create or replace function public.claim_member(p_member_id uuid, p_code text)
-returns uuid language plpgsql security definer set search_path = public, extensions as $$
+returns uuid language plpgsql security definer set search_path = public, extensions as $fn$
 declare v_slug text; v_id uuid; r record;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
@@ -346,7 +351,7 @@ begin
 
   insert into public.member_state(member_id) values (v_id) on conflict do nothing;
   return v_id;
-end $$;
+end $fn$;
 
 -- ログインのリセット（パスワードを忘れた人の救済）。
 -- 管理者だけが呼べる。行そのもの（進捗・申し送り・点数）は一切消さず、
@@ -357,7 +362,7 @@ end $$;
 -- slug を振り直すのは、外したあとに古いログイン（元のパスワードを知っている人）が
 -- そのまま繋ぎ直せてしまうのを防ぐため。
 create or replace function public.admin_reset_login(p_member_id uuid)
-returns text language plpgsql security definer set search_path = public, extensions as $$
+returns text language plpgsql security definer set search_path = public, extensions as $fn$
 declare v_slug text; v_code text;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
@@ -389,7 +394,7 @@ begin
   /* 平文のコードを返すのはここ1回だけ。DBにはハッシュしか残らないので、
      控え忘れたら発行し直す（それでいい。使い回さないほうが安全）。 */
   return v_code;
-end $$;
+end $fn$;
 
 -- 自分で名簿に登録する。
 -- 一括投入をしなくても、使い始めた人の情報が順に名簿へ積み上がっていく。
@@ -398,7 +403,7 @@ end $$;
 create or replace function public.register_me(
   p_name text, p_unit text, p_ul text, p_mentor text,
   p_join_date date, p_certified_grade int, p_code text
-) returns uuid language plpgsql security definer set search_path = public as $$
+) returns uuid language plpgsql security definer set search_path = public as $fn$
 declare v_id uuid; v_slug text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
@@ -429,12 +434,12 @@ begin
 
   insert into public.member_state(member_id) values (v_id) on conflict do nothing;
   return v_id;
-end $$;
+end $fn$;
 
 -- 管理者キーを入れて、自分を UL に昇格させる。
 -- キーが未設定のあいだは昇格できない（誰でも全員分を見られてしまうため）。
 create or replace function public.claim_manager(p_code text)
-returns text language plpgsql security definer set search_path = public, extensions as $$
+returns text language plpgsql security definer set search_path = public, extensions as $fn$
 declare v_id uuid := public.current_member_id(); v_hash text;
 begin
   if v_id is null then raise exception 'not linked'; end if;
@@ -444,13 +449,13 @@ begin
 
   update public.members set role = 'ul' where id = v_id and role = 'member';
   return (select role from public.members where id = v_id);
-end $$;
+end $fn$;
 
 -- マイシートの自己申告項目だけを更新する。role や auth_id には触れない。
 create or replace function public.update_my_profile(
   p_name text, p_join_date date, p_certified_grade int,
   p_unit text default null, p_ul text default null, p_mentor text default null
-) returns void language plpgsql security definer set search_path = public as $$
+) returns void language plpgsql security definer set search_path = public as $fn$
 declare v_id uuid := public.current_member_id();
 begin
   if v_id is null then raise exception 'not linked'; end if;
@@ -463,7 +468,7 @@ begin
          ul              = coalesce(nullif(trim(p_ul),''),     ul),
          mentor          = coalesce(nullif(trim(p_mentor),''), mentor)
    where id = v_id;
-end $$;
+end $fn$;
 
 grant execute on function public.claim_member(uuid,text)                             to authenticated;
 grant execute on function public.admin_reset_login(uuid)                             to authenticated;
@@ -572,7 +577,7 @@ update public.progress set approved_at = checked_at where approved_at is null;
 
 -- 本人からの書き込みは関数経由に限定する（他人の行に触れないようにするため）。
 create or replace function public.set_my_check(p_item_id text, p_on boolean)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public as $fn$
 declare v_id uuid := public.current_member_id();
 begin
   if v_id is null then raise exception 'not linked'; end if;
@@ -585,12 +590,12 @@ begin
   else
     delete from public.progress where member_id = v_id and item_id = p_item_id;
   end if;
-end $$;
+end $fn$;
 
 -- UL・メンターが代わりに付ける／外す。
 --   p_state: 'off'（チェックを外す）／それ以外（チェックを付ける）
 create or replace function public.set_check_for(p_member_id uuid, p_item_id text, p_state text)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public as $fn$
 declare v_me uuid := public.current_member_id();
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
@@ -601,12 +606,12 @@ begin
     values (p_member_id, p_item_id, now(), v_me, now(), v_me)
     on conflict (member_id, item_id) do update set approved_at = coalesce(progress.approved_at, excluded.approved_at);
   end if;
-end $$;
+end $fn$;
 
 -- 承認制をやめる前に残った「承認待ち」を、まとめて達成にそろえる関数。
 -- ふだんは使いませんが、古いデータが混じったときの片付け用に残しています。
 create or replace function public.approve_items(p_member_id uuid, p_item_ids text[])
-returns int language plpgsql security definer set search_path = public as $$
+returns int language plpgsql security definer set search_path = public as $fn$
 declare v_n int;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
@@ -616,11 +621,11 @@ begin
      and (p_item_ids is null or item_id = any(p_item_ids));
   get diagnostics v_n = row_count;
   return v_n;
-end $$;
+end $fn$;
 
 -- 管理者がその人のチェックを全部消す（本人画面から消せないようにした代わり）。
 create or replace function public.admin_clear_progress(p_member_id uuid)
-returns int language plpgsql security definer set search_path = public as $$
+returns int language plpgsql security definer set search_path = public as $fn$
 declare v_n int; v_name text;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
@@ -632,7 +637,7 @@ begin
           'チェックを全件消去しました（' || v_n || '件）。管理画面からの操作です。',
           public.current_member_id(), v_name, 'admin');
   return v_n;
-end $$;
+end $fn$;
 
 grant execute on function public.set_my_check(text, boolean)              to authenticated;
 grant execute on function public.set_check_for(uuid, text, text)          to authenticated;
@@ -659,7 +664,7 @@ create policy progress_delete on public.progress for delete to authenticated
 -- ============================================================
 create or replace function public.roster_search(p_q text, p_managers boolean default false)
 returns table(id uuid, name text, unit text, ul text, slug text, role text, linked boolean)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public as $fn$
   /* slug を出すのはパスワード設定済みの人だけ（member_roster と同じ理由）。
      未設定の人の行は「パスワードを決める ›」に進むだけなので id で足りる。 */
   select m.id, m.name, m.unit, m.ul,
@@ -672,7 +677,7 @@ language sql stable security definer set search_path = public as $$
      and (m.name ilike '%' || trim(p_q) || '%' or coalesce(m.unit,'') ilike '%' || trim(p_q) || '%')
    order by m.name
    limit 10
-$$;
+$fn$;
 grant execute on function public.roster_search(text, boolean) to anon, authenticated;
 
 -- 新規登録のときに Unit・UL・メンターを選択肢として出すためだけの一覧。
@@ -680,29 +685,29 @@ grant execute on function public.roster_search(text, boolean) to anon, authentic
 -- 「だれのUL・メンターか」は出さない）。
 create or replace function public.roster_units()
 returns table(unit text)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public as $fn$
   select distinct m.unit from public.members m
    where m.active and nullif(trim(m.unit),'') is not null
    order by 1
-$$;
+$fn$;
 grant execute on function public.roster_units() to anon, authenticated;
 
 create or replace function public.roster_uls()
 returns table(ul text)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public as $fn$
   select distinct m.ul from public.members m
    where m.active and nullif(trim(m.ul),'') is not null
    order by 1
-$$;
+$fn$;
 grant execute on function public.roster_uls() to anon, authenticated;
 
 create or replace function public.roster_mentors()
 returns table(mentor text)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public as $fn$
   select distinct m.mentor from public.members m
    where m.active and nullif(trim(m.mentor),'') is not null
    order by 1
-$$;
+$fn$;
 grant execute on function public.roster_mentors() to anon, authenticated;
 
 -- ============================================================
@@ -737,7 +742,7 @@ alter table public.members add column if not exists admin_key_locked_until times
 -- 引数が1つだった頃の版が残っていると、どちらを呼ぶか決められなくなる。
 drop function if exists public.request_manager(text);
 create or replace function public.request_manager(p_code text, p_role text default 'ul')
-returns text language plpgsql security definer set search_path = public, extensions as $$
+returns text language plpgsql security definer set search_path = public, extensions as $fn$
 declare v_id uuid := public.current_member_id(); v_hash text; v_lock timestamptz;
         v_want text := case when p_role = 'mentor' then 'mentor' else 'ul' end;
 begin
@@ -768,7 +773,7 @@ begin
      すでに育成／ULの人が選び直した場合も、選んだほうに切り替える。 */
   update public.members set role = v_want where id = v_id and role <> v_want;
   return 'approved';
-end $$;
+end $fn$;
 
 -- 承認制をやめたので、承認する関数は落とす。
 drop function if exists public.decide_manager_request(uuid, boolean);
@@ -786,17 +791,17 @@ drop function if exists public.claim_manager(text);
 alter table public.app_config add column if not exists settings jsonb not null default '{}'::jsonb;
 
 create or replace function public.get_app_settings()
-returns jsonb language sql stable security definer set search_path = public as $$
+returns jsonb language sql stable security definer set search_path = public as $fn$
   select settings from public.app_config where id = 1 and public.is_manager()
-$$;
+$fn$;
 
 create or replace function public.set_app_settings(p_settings jsonb)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public as $fn$
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   update public.app_config set settings = coalesce(p_settings, '{}'::jsonb), updated_at = now() where id = 1;
   return (select settings from public.app_config where id = 1);
-end $$;
+end $fn$;
 
 -- 関数の実行権限は既定で PUBLIC に付くので、明示的に落としてから配り直す。
 revoke all on function public.get_app_settings()      from public;
@@ -846,10 +851,9 @@ create table if not exists public.terms (
   note       text,
   created_at timestamptz not null default now()
 );
-do $$ begin
-  alter table public.terms add constraint terms_status_chk
-    check (status in ('draft','active','closed'));
-exception when duplicate_object then null; end $$;
+alter table public.terms drop constraint if exists terms_status_chk;
+alter table public.terms add constraint terms_status_chk
+  check (status in ('draft','active','closed'));
 create index if not exists terms_start_idx on public.terms(starts_on desc);
 
 create table if not exists public.assignments (
@@ -922,7 +926,7 @@ grant select on public.my_assignments to authenticated;
    1人ずつ更新すると途中で失敗したときに名簿が半端な状態で残るので、
    まとめて1つのトランザクションで行う。 */
 create or replace function public.apply_term(p_term uuid)
-returns int language plpgsql security definer set search_path = public as $$
+returns int language plpgsql security definer set search_path = public as $fn$
 declare v_n int;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
@@ -941,7 +945,7 @@ begin
   update public.terms set status = 'closed' where status = 'active' and id <> p_term;
   update public.terms set status = 'active' where id = p_term;
   return v_n;
-end $$;
+end $fn$;
 revoke all on function public.apply_term(uuid) from public;
 grant execute on function public.apply_term(uuid) to authenticated;
 
@@ -975,7 +979,7 @@ create policy loginreq_delete on public.login_requests for delete to authenticat
   using (public.is_manager());
 
 create or replace function public.request_login_reset(p_member_id uuid)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public as $fn$
 declare v_last timestamptz;
 begin
   if not exists (select 1 from public.members where id = p_member_id and active) then
@@ -991,14 +995,14 @@ begin
   insert into public.login_requests(member_id) values (p_member_id)
   on conflict (member_id) do update
     set requested_at = now(), times = public.login_requests.times + 1;
-end $$;
+end $fn$;
 grant execute on function public.request_login_reset(uuid) to anon, authenticated;
 
 -- リセットしたら依頼は片付ける（admin_reset_login の中から呼ばれる）。
 create or replace function public.clear_login_request(p_member_id uuid)
-returns void language plpgsql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public as $fn$
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   delete from public.login_requests where member_id = p_member_id;
-end $$;
+end $fn$;
 grant execute on function public.clear_login_request(uuid) to authenticated;
