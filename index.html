@@ -665,8 +665,8 @@ function total(g){return gTotal(g);}
 function isDone(g){return gIsDone(D.checks,g);}
 function isLocked(n){return gIsLocked(D.checks,n,D.profile.grade);}
 function isCertified(n){return gIsCertified(n,D.profile.grade);}
-function currentGrade(){return gCurrentGrade(D.checks);}
-function stage(){return gStage(D.checks);}
+function currentGrade(){return gCurrentGrade(D.checks,D.profile.grade);}
+function stage(){return gStage(D.checks,D.profile.grade);}
 function totalChecked(){return gTotalChecked(D.checks);}
 function totalItems(){return TOTAL_ITEMS;}
 function weekCount(){const wk=Date.now()-6048e5;return D.log.filter(t=>t>wk).length;}

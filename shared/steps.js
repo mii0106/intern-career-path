@@ -365,14 +365,24 @@ function gDone(checks,gn){ return ITEMS[gn].filter(i=>checks[i.id]).length; }
 function gIsDone(checks,gn){ return gDone(checks,gn)===gTotal(gn); }
 function gPct(checks,gn){ return Math.round(gDone(checks,gn)/gTotal(gn)*100); }
 function gradeOf(id){ return +id.slice(1).split('.')[0]; }
-/* 挑戦中のグレード＝まだ埋まりきっていない最も低いグレード */
-function gCurrentGrade(checks){ for(const g of GRADES){ if(!gIsDone(checks,g.n)) return g.n; } return 10; }
+/* 挑戦中のグレード。
+   「まだ埋まりきっていない最も低いグレード」だが、社内で認定されている
+   グレードより下は探しにいかない。
+   認定G5の人がG1のチェックを付け忘れていると挑戦中がG1になり、
+   そこから逆算する昇格予定・遅れが実態とかけ離れた値になっていたため。
+   認定グレードは「そこまでは社内が認めている」という宣言なので、
+   それより下は埋まっている扱いにする。 */
+function gCurrentGrade(checks,certified){
+  const from=Math.max(1,+certified||1);
+  for(let n=from;n<=GRADES.length;n++){ if(!gIsDone(checks,n)) return n; }
+  return GRADES.length;
+}
 /* ロック：ひとつ下のグレードが埋まっていれば開く。
    加えて「社内で認定されているグレード」以下は最初から開いている。
    在籍が長い人に、終わったはずの下位グレードを埋め直させないため。 */
 function gIsLocked(checks,gn,certified){
   if(certified && gn<=+certified) return false;
-  return gn>gCurrentGrade(checks);
+  return gn>gCurrentGrade(checks,certified);
 }
 /* 認定グレード以下＝すでに社内で認定されている範囲（画面で印を出すのに使う） */
 function gIsCertified(gn,certified){ return !!(certified && gn<=+certified); }
@@ -388,8 +398,16 @@ function checksOf(raw){
   Object.keys(raw||{}).forEach(k=>{ if(raw[k]) all[k]=true; });
   return all;
 }
-function gClearedCount(checks){ return GRADES.filter(g=>gIsDone(checks,g.n)).length; }
-function gStage(checks){ return Math.min(gClearedCount(checks)+1,10); }
+/* 完了したグレード数＝挑戦中グレードのひとつ下まで。
+   「埋まっているグレードを数える」やり方だと、G5だけ飛び飛びで終えた人が
+   1 と数えられ、認定G1なら昇格面談の対象として拾われてしまっていた。
+   挑戦中グレードから引く形にすると、認定ぶんと連続して埋めたぶんが
+   そのまま「どこまで到達しているか」になる。 */
+function gClearedCount(checks,certified){
+  const cg=gCurrentGrade(checks,certified);
+  return (cg===GRADES.length && gIsDone(checks,GRADES.length)) ? GRADES.length : cg-1;
+}
+function gStage(checks,certified){ return Math.min(gClearedCount(checks,certified)+1,10); }
 function gTotalChecked(checks){ return ALL_ITEMS.filter(i=>checks[i.id]).length; }
 function gOverallPct(checks){ return Math.round(gTotalChecked(checks)/TOTAL_ITEMS*100); }
 function tierOf(gn){ return TIERS[GRADES[gn-1].tier]; }
@@ -456,7 +474,7 @@ function addMonths(dateStr,months){
 }
 /* 昇格見込み：挑戦中グレードを終える標準時期と、そこからの遅れ月数 */
 function promotionOutlook(member,checks,now){
-  const cg=gCurrentGrade(checks);
+  const cg=gCurrentGrade(checks,member&&member.certified_grade);
   const pm=periodMonths(cg);
   const elapsed=monthsSince(member.join_date,now);
   const target=member.promotion_target || addMonths(member.join_date,pm);
@@ -465,8 +483,8 @@ function promotionOutlook(member,checks,now){
   return {grade:cg, targetDate:target, standardMonths:pm, elapsedMonths:elapsed==null?null:Math.round(elapsed*10)/10, delayMonths:delay};
 }
 /* 詰まっている項目：挑戦中グレードの未チェック項目をカテゴリごとにまとめて返す */
-function stuckItems(checks,limit){
-  const cg=gCurrentGrade(checks);
+function stuckItems(checks,limit,certified){
+  const cg=gCurrentGrade(checks,certified);
   const rest=ITEMS[cg].filter(i=>!checks[i.id]);
   return limit?rest.slice(0,limit):rest;
 }
