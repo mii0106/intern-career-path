@@ -12,17 +12,17 @@
 --
 -- 本番のSupabaseに対しては流さないこと（名簿を消す）。
 -- ============================================================
-create or replace function pg_temp.t(label text, got text, want text) returns void language plpgsql as $$
+create or replace function pg_temp.t(label text, got text, want text) returns void language plpgsql as $fn$
 begin
   raise notice '%  %', case when got is not distinct from want then 'PASS' else 'FAIL (got='||coalesce(got,'NULL')||' want='||coalesce(want,'NULL')||')' end, label;
-end $$;
-create or replace function pg_temp.fails(label text, sql text, want text) returns void language plpgsql as $$
+end $fn$;
+create or replace function pg_temp.fails(label text, sql text, want text) returns void language plpgsql as $fn$
 begin
   execute sql;
   raise notice 'FAIL (通ってしまった)  %', label;
 exception when others then
   raise notice '%  %', case when sqlerrm like '%'||want||'%' then 'PASS' else 'FAIL (断り文=>'||sqlerrm||'<)' end, label;
-end $$;
+end $fn$;
 
 -- ============================================================
 -- 下ごしらえ
@@ -37,7 +37,7 @@ insert into auth.users(id) values ('00000000-0000-0000-0000-0000000000a9') on co
 select set_config('test.uid','00000000-0000-0000-0000-0000000000a9',false);
 select set_config('test.jwt','{"email":"m-newcomer@example.com"}',false);
 select pg_temp.fails('未設定のあいだは登録できない',
-  $$select public.register_me('誰か',null,null,null,null,null,'なんでもいい')$$,
+  $fn$select public.register_me('誰か',null,null,null,null,null,'なんでもいい')$fn$,
   'まだ設定されていません');
 
 -- ===== 設定したあと =====
@@ -52,7 +52,7 @@ select pg_temp.t('違うパスコードは通らない', public.check_team_passc
 select pg_temp.t('空のパスコードは通らない', public.check_team_passcode('')::text,      'false');
 select pg_temp.t('NULLのパスコードは通らない', public.check_team_passcode(null)::text,  'false');
 select pg_temp.fails('パスコードが違うと登録できない',
-  $$select public.register_me('誰か',null,null,null,null,null,'ちがう')$$, 'パスコードが違います');
+  $fn$select public.register_me('誰か',null,null,null,null,null,'ちがう')$fn$, 'パスコードが違います');
 select pg_temp.t('正しいパスコードなら登録できる',
   (public.register_me('新人','unitA',null,null,null,null,'step-sns-7k95yza3eu') is not null)::text, 'true');
 select pg_temp.t('登録した人は必ず member から始まる',
@@ -105,7 +105,7 @@ select public.claim_member('00000000-0000-0000-0000-0000000000b2','ZZZZZZZZ');
 select pg_temp.t('間違えた回数がちゃんと残る（巻き戻らない）',
   (select claim_code_fails::text from public.members where id='00000000-0000-0000-0000-0000000000b2'),'5');
 select pg_temp.fails('5回間違えると、正しいコードでも使えなくなる',
-  $$select public.claim_member('00000000-0000-0000-0000-0000000000b2', current_setting('test.code'))$$,
+  $fn$select public.claim_member('00000000-0000-0000-0000-0000000000b2', current_setting('test.code'))$fn$,
   '使えなくなりました');
 
 -- 発行し直せば、本人はちゃんと入れる
@@ -131,13 +131,13 @@ update public.members set claim_code_expires = now() - interval '1 day'
 select set_config('test.uid','00000000-0000-0000-0000-0000000000a3',false);
 select set_config('test.jwt','{"email":"m-late@example.com"}',false);
 select pg_temp.fails('期限切れのコードは使えない',
-  $$select public.claim_member('00000000-0000-0000-0000-0000000000b2', current_setting('test.code'))$$,
+  $fn$select public.claim_member('00000000-0000-0000-0000-0000000000b2', current_setting('test.code'))$fn$,
   '有効期限が切れています');
 
 -- メンバーが自分を昇格できないこと
 select set_config('test.uid','00000000-0000-0000-0000-0000000000a2',false);
 select pg_temp.fails('メンバーは他人のログインをリセットできない',
-  $$select public.admin_reset_login('00000000-0000-0000-0000-0000000000b1')$$,
+  $fn$select public.admin_reset_login('00000000-0000-0000-0000-0000000000b1')$fn$,
   '権限がありません');
 -- 管理者キー（claim_manager は request_manager に一本化済み）
 update public.members set auth_id='00000000-0000-0000-0000-0000000000a2',
@@ -162,7 +162,7 @@ select pg_temp.t('5回でロックがかかる',
   (select admin_key_fails||'/'||(admin_key_locked_until is not null)::text
      from public.members where id='00000000-0000-0000-0000-0000000000b2'), '5/true');
 select pg_temp.fails('ロック中は正しいキーでも試せない',
-  $$select public.request_manager('adminkey')$$, 'しばらく試せません');
+  $fn$select public.request_manager('adminkey')$fn$, 'しばらく試せません');
 
 -- ロックを手で解いてから。
 -- （同じ文の中で members を更新しながら request_manager を呼ぶと、
@@ -184,7 +184,7 @@ select public.request_login_reset('00000000-0000-0000-0000-0000000000b2');
 select pg_temp.t('連打しても増えない（10分に1回）',
   (select times::text from public.login_requests where member_id='00000000-0000-0000-0000-0000000000b2'),'1');
 select pg_temp.fails('いない人には依頼を出せない',
-  $$select public.request_login_reset('00000000-0000-0000-0000-0000000000bf')$$, '見つかりません');
+  $fn$select public.request_login_reset('00000000-0000-0000-0000-0000000000bf')$fn$, '見つかりません');
 select set_config('test.uid','00000000-0000-0000-0000-0000000000a1',false);
 select public.admin_reset_login('00000000-0000-0000-0000-0000000000b2');
 select pg_temp.t('リセットすると依頼は片付く',

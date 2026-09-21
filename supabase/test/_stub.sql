@@ -10,15 +10,15 @@ create schema if not exists auth;
 create table if not exists auth.users(id uuid primary key);
 
 -- 「いま誰としてログインしているか」を set_config で差し替えられるようにする
-create or replace function auth.uid() returns uuid language sql stable as $$
+create or replace function auth.uid() returns uuid language sql stable as $fn$
   select nullif(current_setting('test.uid', true), '')::uuid
-$$;
-create or replace function auth.jwt() returns jsonb language sql stable as $$
+$fn$;
+create or replace function auth.jwt() returns jsonb language sql stable as $fn$
   select coalesce(nullif(current_setting('test.jwt', true), '')::jsonb, '{}'::jsonb)
-$$;
+$fn$;
 
-do $$ begin create role anon;          exception when duplicate_object then null; end $$;
-do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
+do $fn$ begin create role anon;          exception when duplicate_object then null; end $fn$;
+do $fn$ begin create role authenticated; exception when duplicate_object then null; end $fn$;
 
 -- ------------------------------------------------------------
 -- まとめて流すとき（ローカルのPostgreSQLで）
