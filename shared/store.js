@@ -484,6 +484,22 @@ const Store = (() => {
       catch(e){ return {team:null,admin:null}; }
     },
 
+    /* ---------- 自分でパスワードを変える ----------
+       これが無いと、パスワードを変えたい人・漏れたかもしれない人が
+       全員ULに頼むしかなく、実際には「気持ち悪いけど放置」になる。
+
+       いまのパスワードをもう一度確かめてから変える。
+       端末を置きっぱなしにして席を外したすきに変えられるのを防ぐため。 */
+    async changeMyPassword(current, next){
+      need();
+      if(!me) throw new Error('ログインし直してください');
+      const email=emailFor(me.member.slug);
+      /* 確認のサインイン。失敗すれば「パスワードが違います」で止まる */
+      chk(await sb.auth.signInWithPassword({email,password:current}));
+      chk(await sb.auth.updateUser({password:next}));
+      return true;
+    },
+
     async signOut(){
       me=null;
       if(CLOUD && sb) await sb.auth.signOut();

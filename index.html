@@ -502,6 +502,10 @@ main{padding:0 16px}
 .pill.s{background:var(--sky-soft);color:#1B6FB4}
 .pill.g{background:#EDECF6;color:var(--ink2)}
 .savebtn{width:100%;padding:13px;border-radius:14px;background:var(--violet);color:#fff;font-weight:700;font-size:14px;margin-top:2px}
+.savebtn[disabled]{opacity:.55}
+/* 設定タブのパスワード変更。開くまでは1ボタンだけ置いておく */
+.pwbox{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--bg2,#FAFAFE)}
+.pwbox .field:last-of-type{margin-bottom:10px}
 .savebtn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
 .savebtn:disabled{opacity:.5}
 @media (min-width:900px){
@@ -562,6 +566,7 @@ let D=JSON.parse(JSON.stringify(DEFAULT));
 let WANT_ROLE='mentor';
 let view='home', openG=null, ready=false, profileDirty=false;
 let stepSeg='grades';       /* ステップタブの中身：grades（一覧）／map（横並び） */
+let PWFORM=false;           /* 設定タブのパスワード変更フォームを開いているか */
 let sheetSeg='sheet';       /* マイシートタブの中身：sheet（記入）／settings（設定） */
 let dexOpen=false;          /* ずかんは相棒を押したときだけ開く */
 let failedSave=null;        /* 保存できなかった操作。下部のバーからやり直せる */
@@ -1082,6 +1087,22 @@ function vSettings(){
   h+='<div class="sec-label">ログイン</div><div class="card">'+
    '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
    'チェックを消したいときや、記録の控えが必要なときはULに相談してください。</p>'+
+   /* パスワードは自分で変えられるようにしておく。ULに頼むしかない形だと、
+      変えたい人も「漏れたかも」という人も、結局そのまま使い続けてしまう。 */
+   '<div class="pwbox">'+
+     (PWFORM
+       ? '<div class="field"><label>いまのパスワード</label>'+
+           '<input type="password" id="pwCur" autocomplete="current-password" placeholder="いま使っているもの"></div>'+
+         '<div class="field"><label>新しいパスワード</label>'+
+           '<input type="password" id="pwNew" autocomplete="new-password" placeholder="6文字以上"></div>'+
+         '<div class="field"><label>新しいパスワード（確認）</label>'+
+           '<input type="password" id="pwNew2" autocomplete="new-password" placeholder="もう一度入力"></div>'+
+         '<button class="savebtn" data-act="savePw">パスワードを変える</button>'+
+         '<button class="danger" style="margin-top:8px;border-color:var(--line);color:var(--ink2)" '+
+           'data-act="cancelPw">やめる</button>'
+       : '<button class="danger" data-act="openPw" style="border-color:var(--line);color:var(--ink2)">パスワードを変える</button>')+
+   '</div>'+
+   '<div style="height:8px"></div>'+
    '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
   h+='<div style="height:8px"></div>';
   return h;
@@ -1339,6 +1360,27 @@ document.addEventListener('click',async e=>{
   else if(a==='seg'){ LOG.seg=el.dataset.s; render(); }
   else if(a==='retrySave'){ el.disabled=true; el.textContent='送信中…'; await runSave(); }
   else if(a==='closeFail'){ clearFail(); }
+  else if(a==='openPw'){ PWFORM=true; render(true); return; }
+  else if(a==='cancelPw'){ PWFORM=false; render(true); return; }
+  else if(a==='savePw'){
+    const g=x=>(document.getElementById(x)||{}).value||'';
+    const cur=g('pwCur'), a1=g('pwNew'), a2=g('pwNew2');
+    if(!cur){ toast('いまのパスワードを入力してください','bad'); return; }
+    const bad=checkPw(a1,a2);
+    if(bad){ toast(bad,'bad'); return; }
+    if(cur===a1){ toast('いまと同じパスワードです','bad'); return; }
+    const btn=document.querySelector('[data-act="savePw"]');
+    if(btn){ btn.disabled=true; btn.textContent='変更しています…'; }
+    try{
+      await Store.changeMyPassword(cur,a1);
+      PWFORM=false; render(true);
+      toast('パスワードを変えました','xp');
+    }catch(e){
+      if(btn){ btn.disabled=false; btn.textContent='パスワードを変える'; }
+      toast(e.message||'変更できませんでした','bad',6000);
+    }
+    return;
+  }
   else if(a==='logout'){
     if(!confirm('ログアウトします。よろしいですか？')) return;
     await Store.signOut(); location.reload();
