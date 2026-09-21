@@ -287,6 +287,19 @@ td .asg:focus{border-color:var(--violet);background:#fff;outline:none}
 .kv{display:flex;flex-wrap:wrap;gap:6px 18px}
 .kv > div{min-width:118px}
 .kv b.v{font-size:14px}
+/* 引き継ぎシート（1人1枚）。画面では出さず、印刷のときだけ出す */
+#printSheets{display:none}
+.sheet{padding:0 0 10mm;break-after:page;page-break-after:always}
+.sheet:last-child{break-after:auto;page-break-after:auto}
+.sh-head{border-bottom:2px solid var(--ink);padding-bottom:6px;margin-bottom:10px;
+  display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline}
+.sh-head b{font-size:19px}
+.sh-head span{font-size:11px;color:var(--ink2)}
+.sh-cols{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
+.sh-f{margin-bottom:11px;break-inside:avoid;page-break-inside:avoid}
+.sh-f b{display:block;font-size:10.5px;letter-spacing:.04em;color:var(--ink2);margin-bottom:3px}
+.sh-f p{margin:0;font-size:12px;line-height:1.85;white-space:pre-wrap;word-break:break-word;
+  border-left:3px solid var(--line);padding-left:9px;min-height:20px}
 @media print{aside,.bar,.dw-close{display:none}#shell{grid-template-columns:1fr}.tw{max-height:none}
   /* カルテ1人ぶんを印刷するとき（body.pdw）。ドロワーだけを紙に出す */
   /* #shell は起動時に style="display:grid" を直接書き込んでいるので !important が要る */
@@ -298,6 +311,11 @@ td .asg:focus{border-color:var(--violet);background:#fff;outline:none}
   /* 紙に押せないボタンを残さない（チェック欄の .item は残す） */
   body.pdw .dw-body .btn,body.pdw .dw-body button.lnk{display:none}
   body.pdw .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none;border:1px solid #ddd}
+  /* 引き継ぎシートの一括印刷（body.psheet）。シートだけを紙に出す */
+  body.psheet{background:#fff}
+  body.psheet #shell,body.psheet #drawer,body.psheet #scrim,body.psheet #toasts{display:none !important}
+  body.psheet #printSheets{display:block}
+  body.psheet .sh-f p{border-left-color:#bbb}
 }
 </style>
 </head>
@@ -331,6 +349,8 @@ td .asg:focus{border-color:var(--violet);background:#fff;outline:none}
 <div id="drawer"><div id="drawerInner"></div></div>
 <div id="toasts" role="status" aria-live="polite"></div>
 <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
+<!-- 引き継ぎシートの一括印刷。印刷のときだけ中身を作って、終わったら空にする -->
+<div id="printSheets"></div>
 
 <script src="shared/config.js"></script>
 <script src="shared/steps.js"></script>
@@ -364,7 +384,7 @@ let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済み�
 /* メンバーごとに計算済みの行 */
 let ROWS = [], BY_ID = {};
 /* 画面の状態 */
-let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'' };
+let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'' };
 /* 期（半期）まわり。compute() で組み立てる */
 let TERMS=[], ASG_BY_TERM={}, ASG_BY_MEMBER={};
 /* 編集中の割当。保存を押すまでサーバーには送らない。{member_id:{unit,ul,...}} */
@@ -1792,6 +1812,9 @@ function vTerms(){
   /* ---------- 前の期との差分 ---------- */
   h+=termDiffHTML(cur);
 
+  /* ---------- 引き継ぎシート ---------- */
+  h+=hoCardHTML(cur);
+
   /* ---------- 確定 ---------- */
   h+='<div class="card"><h2>この期を確定する</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px;line-height:1.9">'+
@@ -1886,6 +1909,186 @@ function termDiffHTML(t){
       '確定すると、この人たちに申し送りが1件ずつ残ります。</p>';
   }
   return h+'</div>';
+}
+
+/* ============================================================
+   引き継ぎシート
+   ------------------------------------------------------------
+   期が変わるとき、前のULが次のULに渡すぶんを構造化して残す。
+   自由記述のメモにすると「書く人は書く／書かない人は書かない」に
+   なるので、項目を決めて、記入率で未記入の人を名指しできるようにする。
+   ここがいちばん引き継ぎの質を左右する。
+
+   置き場所は「移る先の期」の割当（assignments.handover）。
+   書くのは前のULなので、誰に催促すればいいかは「前の期のUL」で束ねる。
+   ============================================================ */
+const HO_FIELDS=[
+  {k:'strength', n:'強み',                   req:true,
+   ph:'具体的なエピソードで。「数字に強い」ではなく「先月のCV改善は自分で仮説を立てて検証していた」'},
+  {k:'weakness', n:'苦手・つまずきやすいところ', req:true,
+   ph:'「納期が重なると抱え込んで黙る」など、次のULが先回りできる形で'},
+  {k:'comm',     n:'コミュニケーションのクセ',  req:false,
+   ph:'褒め方・詰め方・レスの速さ・テキストと口頭どちらが通じるか'},
+  {k:'landmine', n:'地雷',                   req:false,
+   ph:'これを言うと固まる／このやり方だと動かない、など'},
+  {k:'next',     n:'次のULにまず最初にやってほしいこと', req:true,
+   ph:'「初回の1on1で、アドバンス2社目を持つ気があるか確認してほしい」など'}
+];
+function hoOf(termId,memberId){
+  const a=(ASG_BY_TERM[termId]||{})[memberId];
+  return (a&&a.handover)||{};
+}
+/* 必須3つが埋まっていれば「記入済み」とする */
+function hoDone(h){
+  return HO_FIELDS.filter(f=>f.req).every(f=>String((h||{})[f.k]||'').trim());
+}
+/* その期の引き継ぎ状況。前の期のUL（いなければいまのUL）ごとに束ねる */
+function hoStatus(term){
+  const prev=prevTermOf(term);
+  const from=prev? (ASG_BY_TERM[prev.id]||{}) : null;
+  const cur=ASG_BY_TERM[term.id]||{};
+  const rows=termMembers().filter(r=>cur[r.id]).map(r=>{
+    const before=from? from[r.id] : null;
+    const writer=String((before&&before.ul)||r.m.ul||'').trim()||'（前のULが未登録）';
+    return { r:r, writer:writer, h:hoOf(term.id,r.id), done:hoDone(hoOf(term.id,r.id)),
+             to:String(cur[r.id].ul||'').trim()||'—' };
+  });
+  const by={};
+  rows.forEach(x=>{ (by[x.writer]=by[x.writer]||[]).push(x); });
+  return { rows:rows, byWriter:by,
+           done:rows.filter(x=>x.done).length, total:rows.length };
+}
+function hoCardHTML(term){
+  const st=hoStatus(term);
+  let h='<div class="card"><h2>引き継ぎシート '+
+    '<span class="cnt">前のULが、次のULに渡すぶんを書きます</span>'+
+    '<span class="spacer"></span>'+
+    (st.done? '<button class="btn ghost sm" data-act="printSheets" data-id="'+term.id+'">'+
+      '記入済みをまとめて印刷</button>' : '')+'</h2>';
+  if(!st.total) return h+'<div class="empty">この期の割当がまだありません。<br>'+
+    '上で割当を取り込むと、1人ずつシートを書けるようになります。</div></div>';
+
+  const pct=Math.round(st.done/st.total*100);
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'+
+    '<b class="mono" style="font-size:17px">'+st.done+' / '+st.total+'</b>'+
+    '<span class="mini" style="flex:1;height:10px"><i style="width:'+pct+'%;background:'+
+      (pct===100?'var(--mint)':'var(--violet)')+'"></i></span>'+
+    '<b class="mono" style="font-size:12px">'+pct+'%</b></div>'+
+    '<p class="tiny muted" style="margin:0 0 12px">'+
+    (pct===100? '全員ぶんそろいました。上の「まとめて印刷」で新しいULに渡せます。'
+      : '「強み」「苦手・つまずきやすいところ」「次のULにまず最初にやってほしいこと」の3つが'+
+        '埋まったら記入済みとして数えます。')+'</p>';
+
+  const writers=Object.keys(st.byWriter).sort((a,b)=>a.localeCompare(b,'ja'));
+  h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">書く人（前のUL）</th><th class="nos num">記入</th>'+
+    '<th class="nos">まだ書けていない人</th><th class="nos"></th></tr></thead><tbody>';
+  writers.forEach(w=>{
+    const list=st.byWriter[w], rest=list.filter(x=>!x.done);
+    h+='<tr><td class="nm">'+esc(w)+'</td>'+
+      '<td class="num"><b class="mono">'+(list.length-rest.length)+'</b>'+
+        '<span class="tiny muted">/'+list.length+'</span></td>'+
+      '<td style="white-space:normal">'+(rest.length
+        ? rest.map(x=>'<button class="chip a" style="margin:2px 3px 2px 0;cursor:pointer" '+
+            'data-act="openHo" data-id="'+x.r.id+'" data-term="'+term.id+'">'+esc(x.r.name)+' を書く</button>').join('')
+        : '<span class="chip m">そろいました</span>')+'</td>'+
+      '<td></td></tr>';
+  });
+  h+='</tbody></table></div>';
+  return h+'</div>';
+}
+
+/* ---------- カルテの「引き継ぎ」タブ ---------- */
+function dwHandover(r){
+  if(!Store.caps.terms) return '<div class="card"><div class="empty">'+
+    'この機能を使うには supabase/schema.sql を貼り直してください（SETUP.md 手順2）。</div></div>';
+  if(!TERMS.length) return '<div class="card"><div class="empty">'+
+    'まだ期がありません。<br>「期・ユニット編成」タブで期をつくると、ここに引き継ぎシートが出ます。</div></div>';
+  const term = termById(V.hoTerm) || currentTerm();
+  const a=(ASG_BY_TERM[term.id]||{})[r.id];
+  const prev=prevTermOf(term);
+  const before=prev? (ASG_BY_TERM[prev.id]||{})[r.id] : null;
+
+  let h='<div class="card"><h2>引き継ぎシート<span class="spacer"></span>'+
+    '<select id="hoTermSel" style="max-width:190px">'+TERMS.map(t=>
+      '<option value="'+t.id+'"'+(t.id===term.id?' selected':'')+'>'+esc(t.name)+'</option>').join('')+
+    '</select></h2>';
+  if(!a) return h+'<div class="empty">'+esc(term.name)+' の割当に '+esc(r.name)+' さんがいません。<br>'+
+    '「期・ユニット編成」タブで取り込んでから書いてください。</div></div>';
+
+  const h0=a.handover||{};
+  h+='<p class="tiny muted" style="margin:-4px 0 12px;line-height:1.9">'+
+    '<b>'+esc(prev?prev.name:'いま')+'</b> の担当（'+esc((before&&before.ul)||r.m.ul||'未登録')+'）が書いて、'+
+    '<b>'+esc(term.name)+'</b> の担当（'+esc(a.ul||'未定')+'）が読みます。'+
+    'ここに書いたものは本人の画面には出ません。</p>';
+  if(r.concern) h+='<div class="quote warn" style="margin-bottom:12px"><b>本人が気にしていること</b>'+esc(r.concern)+'</div>';
+  HO_FIELDS.forEach(f=>{
+    h+='<div class="f"><label>'+esc(f.n)+
+      (f.req?' <span class="chip c" style="font-weight:700">必須</span>':' <span class="muted" style="font-weight:400">（任意）</span>')+
+      '</label><textarea id="ho_'+f.k+'" rows="3" placeholder="'+esc(f.ph)+'">'+esc(h0[f.k]||'')+'</textarea></div>';
+  });
+  h+='<button class="btn vio" data-act="saveHo" data-id="'+r.id+'" data-term="'+term.id+'">保存する</button>';
+  if(h0.filled_by) h+='<p class="tiny muted" style="margin:10px 0 0">'+
+    '最終更新：'+esc(h0.filled_by)+'　'+fmtDateTime(h0.filled_at)+'</p>';
+  /* 書くときの手がかり。カルテと同じ内容を下に置いておく
+     （タブを行き来しないと書けない、という状態にしないため） */
+  return h+'</div>'+
+    '<p class="tiny muted" style="margin:16px 4px 8px;font-weight:700">'+
+    '書くときの手がかり（カルテと同じ内容です）</p>'+
+    dwCatCard(r)+dwTrendCard(r);
+}
+async function saveHoFor(memberId,termId){
+  const g=k=>((document.getElementById('ho_'+k)||{}).value||'').trim();
+  const h={}; HO_FIELDS.forEach(f=>{ h[f.k]=g(f.k); });
+  h.filled_by=meName(); h.filled_at=new Date().toISOString();
+  try{
+    await Store.saveHandover(termId,memberId,h);
+    await loadAll(); renderDrawer(); render();
+    toast(hoDone(h)? '保存しました（記入済み）' : '保存しました（必須の欄がまだ空です）');
+  }catch(e){ toast(e.message||'保存に失敗しました','bad',6000); }
+}
+/* 記入済みのシートを、1人1枚でまとめて紙に出す */
+function printSheets(termId){
+  const term=termById(termId); if(!term) return;
+  const st=hoStatus(term);
+  const list=st.rows.filter(x=>x.done);
+  if(!list.length){ toast('記入済みのシートがありません','bad'); return; }
+  const box=document.getElementById('printSheets');
+  box.innerHTML=list.map(x=>{
+    const r=x.r, h=x.h;
+    return '<section class="sheet">'+
+      '<div class="sh-head"><b>'+esc(r.name)+'</b>'+
+        '<span>'+esc(term.name)+'　'+esc(normalizeUnit((ASG_BY_TERM[term.id][r.id]||{}).unit)||'—')+
+        '　UL：'+esc(x.to)+'</span>'+
+        '<span>G'+r.cg+' '+esc(tierOf(r.cg).name)+'／在籍'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+
+        '／全体'+r.overall+'%</span></div>'+
+      '<div class="sh-cols">'+
+        '<div>'+HO_FIELDS.map(f=>'<div class="sh-f"><b>'+esc(f.n)+'</b><p>'+
+          esc(h[f.k]||'—')+'</p></div>').join('')+'</div>'+
+        '<div>'+
+          '<div class="sh-f"><b>強み・弱み（カテゴリ別）</b><p>'+
+            (r.cats||[]).map(c=>esc(c.n)+' '+c.pct+'%').join('　／　')+'</p></div>'+
+          '<div class="sh-f"><b>いまの稼働</b><p>'+
+            (r.work.hours==null?'—':r.work.hours+'h／週')+'　担当'+accTotal(r.work)+'社'+
+            '（ｽﾀﾝﾀﾞｰﾄﾞ'+(r.work.accStd||0)+'／ｱﾄﾞﾊﾞﾝｽ'+(r.work.accAdv||0)+'）'+
+            (r.work.until? '　卒業予定 '+fmtDateFull(r.work.until):'')+
+            (r.work.skills.length? '<br>得意：'+esc(r.work.skills.join('・')):'')+'</p></div>'+
+          '<div class="sh-f"><b>本人が気にしていること</b><p>'+esc(r.concern||'—')+'</p></div>'+
+          '<div class="sh-f"><b>いま詰まっているところ</b><p>'+
+            (stuckDisplay(r).slice(0,3).map(it=>esc(it.cat.split('｜')[0])+'／'+esc(it.t)).join('<br>')||'—')+'</p></div>'+
+          '<div class="sh-f"><b>前のULからの記入</b><p>'+esc(h.filled_by||'—')+'　'+
+            (h.filled_at?fmtDateTime(h.filled_at):'')+'</p></div>'+
+        '</div>'+
+      '</div></section>';
+  }).join('');
+  document.body.classList.add('psheet');
+  let done=false;
+  const off=()=>{ if(done) return; done=true;
+    document.body.classList.remove('psheet');
+    box.innerHTML='';
+    window.removeEventListener('afterprint',off); };
+  window.addEventListener('afterprint',off);
+  setTimeout(()=>{ window.print(); setTimeout(off,1500); },40);
 }
 
 /* ------------------------------------------------------------
@@ -2088,7 +2291,8 @@ function mtgText(){
 /* カルテ（読む）とチェック（書く）を分ける。
    引き継ぎMTG中に一覧を見ているつもりで誤タップし、
    本人画面にまで反映されてしまうのを避けるため。 */
-const DW_TABS=[['summary','カルテ'],['step','チェック'],['notes','申し送り'],['scores','テスト'],['profile','設定']];
+const DW_TABS=[['summary','カルテ'],['step','チェック'],['handover','引き継ぎ'],
+               ['notes','申し送り'],['scores','テスト'],['profile','設定']];
 function openDrawer(id){ V.drawer=id; V.dwTab='summary'; renderDrawer(); }
 function closeDrawer(){ V.drawer=null; document.getElementById('drawer').classList.remove('on'); document.getElementById('scrim').classList.remove('on'); }
 function renderDrawer(){
@@ -2120,7 +2324,8 @@ function renderDrawer(){
   document.getElementById('scrim').classList.add('on');
 }
 function dwBody(r){
-  if(V.dwTab==='summary') return dwSummary(r);
+  if(V.dwTab==='summary')  return dwSummary(r);
+  if(V.dwTab==='handover') return dwHandover(r);
   if(V.dwTab==='notes')   return dwNotes(r);
   if(V.dwTab==='scores')  return dwScores(r);
   if(V.dwTab==='profile') return dwProfile(r);
@@ -2714,6 +2919,7 @@ function render(){
   const nk=document.getElementById('nkind'); if(nk) nk.onchange=e=>{ NFILTER.kind=e.target.value; render(); };
   const nv=document.getElementById('nvis');  if(nv) nv.onchange=e=>{ NFILTER.vis=e.target.value; render(); };
   const mu=document.getElementById('mtgUnit'); if(mu) mu.onchange=e=>{ V.mtgUnit=e.target.value; render(); };
+  const hs=document.getElementById('hoTermSel'); if(hs) hs.onchange=e=>{ V.hoTerm=e.target.value; renderDrawer(); };
   const ht=document.getElementById('hoTo'); if(ht) ht.oninput=e=>{ HANDOVER.to=e.target.value; };
   if(V.drawer) renderDrawer();
 }
@@ -2787,6 +2993,11 @@ document.addEventListener('click',async e=>{
   else if(a==='seedTerm'){ await seedTermFlow(el.dataset.id); }
   else if(a==='saveAsg'){ await saveAsgFlow(el.dataset.id); }
   else if(a==='applyTerm'){ await applyTermFlow(el.dataset.id); }
+  else if(a==='openHo'){
+    V.hoTerm=el.dataset.term; V.drawer=el.dataset.id; V.dwTab='handover'; renderDrawer();
+  }
+  else if(a==='saveHo'){ await saveHoFor(el.dataset.id,el.dataset.term); }
+  else if(a==='printSheets'){ printSheets(el.dataset.id); }
   else if(a==='hoField'){ HANDOVER={ field:el.dataset.f, froms:[], to:'' }; render(); }
   else if(a==='hoFrom'){
     const n=el.dataset.n, i=HANDOVER.froms.indexOf(n);

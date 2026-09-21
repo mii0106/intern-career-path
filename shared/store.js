@@ -632,6 +632,14 @@ const Store = (() => {
       need(); needTerms();
       chk(await sb.from('assignments').delete().eq('id',id));
     },
+    /* 引き継ぎシート。割当の handover だけを書き換える。
+       割当そのもの（Unit・UL・稼働）には触らないよう update に限定している。 */
+    async saveHandover(termId,memberId,handover){
+      need(); needTerms();
+      chk(await sb.from('assignments')
+        .update({handover:handover||{}, updated_at:new Date().toISOString()})
+        .eq('term_id',termId).eq('member_id',memberId));
+    },
     /* 期を確定して、その割当を名簿（members.unit/ul/mentor）に書き戻す */
     async applyTerm(termId){
       need(); needTerms();
