@@ -268,7 +268,28 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
   .bar input[type=search]{min-width:0;flex:1}
   .act-n{flex-basis:48px;font-size:15px}
 }
-@media print{aside,.bar,.dw-close{display:none}#shell{grid-template-columns:1fr}.tw{max-height:none}}
+/* 進捗の推移（月ごとに何項目チェックが入ったか） */
+.spark{display:flex;align-items:flex-end;gap:5px;height:56px}
+.spark div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;height:100%}
+.spark i{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--violet);min-height:2px}
+.spark i.zero{background:#E6E3F4}
+.spark span{font-size:9.5px;color:var(--ink3);line-height:1;white-space:nowrap}
+/* カルテの小見出し付きブロック */
+.kv{display:flex;flex-wrap:wrap;gap:6px 18px}
+.kv > div{min-width:118px}
+.kv b.v{font-size:14px}
+@media print{aside,.bar,.dw-close{display:none}#shell{grid-template-columns:1fr}.tw{max-height:none}
+  /* カルテ1人ぶんを印刷するとき（body.pdw）。ドロワーだけを紙に出す */
+  /* #shell は起動時に style="display:grid" を直接書き込んでいるので !important が要る */
+  body.pdw #shell,body.pdw #scrim{display:none !important}
+  body.pdw #drawer{position:static;width:auto;max-width:none;height:auto;transform:none;box-shadow:none;border:0}
+  body.pdw .dw-body{overflow:visible;max-height:none;height:auto;padding:0}
+  body.pdw .dw-head{position:static;padding:0 0 10px;border-bottom:1.5px solid #ccc}
+  body.pdw .dw-tabs,body.pdw .dw-print{display:none}
+  /* 紙に押せないボタンを残さない（チェック欄の .item は残す） */
+  body.pdw .dw-body .btn,body.pdw .dw-body button.lnk{display:none}
+  body.pdw .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none;border:1px solid #ddd}
+}
 </style>
 </head>
 <body>
@@ -1615,8 +1636,11 @@ function mtgText(){
 /* ============================================================
    メンバー詳細（右から出てくるパネル）
    ============================================================ */
-const DW_TABS=[['step','キャリアステップ'],['notes','申し送り'],['scores','テスト'],['profile','設定']];
-function openDrawer(id){ V.drawer=id; V.dwTab='step'; renderDrawer(); }
+/* カルテ（読む）とチェック（書く）を分ける。
+   引き継ぎMTG中に一覧を見ているつもりで誤タップし、
+   本人画面にまで反映されてしまうのを避けるため。 */
+const DW_TABS=[['summary','カルテ'],['step','チェック'],['notes','申し送り'],['scores','テスト'],['profile','設定']];
+function openDrawer(id){ V.drawer=id; V.dwTab='summary'; renderDrawer(); }
 function closeDrawer(){ V.drawer=null; document.getElementById('drawer').classList.remove('on'); document.getElementById('scrim').classList.remove('on'); }
 function renderDrawer(){
   const r=BY_ID[V.drawer]; if(!r){ closeDrawer(); return; }
@@ -1637,13 +1661,17 @@ function renderDrawer(){
       '<b class="mono" style="font-size:12px">'+r.done+' / '+r.total+'</b></div>'+
     '<div class="dw-tabs">'+DW_TABS.map(x=>
       '<button data-act="dwTab" data-t="'+x[0]+'" class="'+(V.dwTab===x[0]?'on':'')+'">'+x[1]+
-      (x[0]==='notes'&&r.noteCount?' '+r.noteCount:'')+'</button>').join('')+'</div>'+
+      (x[0]==='notes'&&r.noteCount?' '+r.noteCount:'')+'</button>').join('')+
+      '<span class="spacer"></span>'+
+      '<button class="btn ghost sm dw-print" data-act="printDw" title="いま開いているタブを1人ぶんの紙として印刷します">印刷／PDF</button>'+
+      '</div>'+
   '</div><div class="dw-body">'+dwBody(r)+'</div>';
   document.getElementById('drawerInner').innerHTML=h;
   document.getElementById('drawer').classList.add('on');
   document.getElementById('scrim').classList.add('on');
 }
 function dwBody(r){
+  if(V.dwTab==='summary') return dwSummary(r);
   if(V.dwTab==='notes')   return dwNotes(r);
   if(V.dwTab==='scores')  return dwScores(r);
   if(V.dwTab==='profile') return dwProfile(r);
@@ -1731,8 +1759,102 @@ function dwWorkCard(r){
     w.skills.map(t=>'<span class="chip v" style="margin-right:5px">'+esc(t)+'</span>').join('')+'</div>';
   return h+'</div>';
 }
+/* ------------------------------------------------------------
+   進捗の推移。progress.checked_at はこれまで「最終更新日」を出すためだけに
+   使っていたが、月ごとに数えれば「3ヶ月前から止まっている」「先月から急に
+   伸びた」が読める。引き継ぎで「最近どうだったか」を聞かれたときの答え。
+   ------------------------------------------------------------ */
+function monthlyChecks(r,months){
+  const n=months||6, now=new Date(), out=[], idx={};
+  for(let i=n-1;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    idx[k]=out.length; out.push({k:k, label:(d.getMonth()+1)+'月', c:0});
+  }
+  Object.keys(r.raw||{}).forEach(k=>{
+    const v=r.raw[k]; if(!v||v===true) return;
+    const m=String(v).slice(0,7);
+    if(idx[m]!=null) out[idx[m]].c++;
+  });
+  return out;
+}
+function dwTrendCard(r){
+  const ms=monthlyChecks(r,6);
+  const mx=Math.max(1,...ms.map(m=>m.c));
+  const sum=ms.reduce((a,m)=>a+m.c,0);
+  let h='<div class="card"><h2>進捗の推移 <span class="cnt">直近6ヶ月に入ったチェックの数</span></h2>'+
+    '<div class="spark">'+ms.map(m=>
+      '<div><b class="mono tiny">'+(m.c||'')+'</b>'+
+      '<i class="'+(m.c?'':'zero')+'" style="height:'+(m.c?Math.max(6,Math.round(m.c/mx*100)):2)+'%"></i>'+
+      '<span>'+m.label+'</span></div>').join('')+'</div>';
+  h+='<p class="tiny muted" style="margin:10px 0 0">'+
+    (sum? 'この6ヶ月で '+sum+' 件。最終更新は '+(r.quiet==null?'記録なし':r.quiet+'日前')+'です。'
+        : 'この6ヶ月はチェックが入っていません。'+(r.quiet==null?'':'最終更新は '+r.quiet+'日前です。'))+'</p>';
+  return h+'</div>';
+}
+/* ------------------------------------------------------------
+   カルテ本体。ドロワーを開くと最初に出る画面。
+   引き継ぎで新しいULが知りたい順に並べている
+   （どんな人か → いまの稼働 → 強み弱み → 推移 → 何があったか → 次の一手）。
+   チェックを入れる操作は「チェック」タブに分けてある。
+   ------------------------------------------------------------ */
+function dwSummary(r){
+  const t=tierOf(r.cg);
+  /* 位置づけ（グレード・在籍・昇格予定） */
+  let h='<div class="card"><h2>いまの位置</h2><div class="kv">'+
+    '<div><div class="tiny muted" style="font-weight:700">認定グレード</div>'+
+      '<b class="v">'+(r.certified?'G'+r.certified+'｜'+tierOf(r.certified).name:'未設定')+'</b></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">挑戦中</div>'+
+      '<b class="v">G'+r.cg+'</b> <span class="tiny muted">'+r.done+'/'+r.total+'（'+r.pct+'%）</span></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">在籍</div>'+
+      '<b class="v">'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'</b></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">昇格予定</div>'+
+      '<b class="v" style="font-size:13px">'+fmtDateFull(r.outlook.targetDate)+'</b> '+delayCell(r)+'</div>'+
+    '<div><div class="tiny muted" style="font-weight:700">テスト平均</div>'+
+      '<b class="v">'+(r.quizAvg==null?'—':r.quizAvg+'%')+'</b></div>'+
+  '</div>'+
+  '<div style="display:flex;gap:8px;align-items:center;margin-top:12px">'+
+    '<span class="mini" style="flex:1;height:8px"><i style="width:'+r.pct+'%;background:'+t.hex+'"></i></span>'+
+    '<b class="mono" style="font-size:11.5px">全体 '+r.overall+'%</b></div>'+
+  (alertsOf(r).length? '<div style="margin-top:10px">'+alertsOf(r).map(alertChip).join(' ')+'</div>' : '')+
+  '</div>';
+
+  h+=dwVoiceCard(r)+dwWorkCard(r)+dwCatCard(r)+dwTrendCard(r);
+
+  /* アタリマエは読むだけ。判定の入力は「チェック」タブに置いてある */
+  const am=r.state.atarimae||{};
+  h+='<div class="card"><h2>アタリマエ <span class="cnt">判定の入力は「チェック」タブです</span></h2><div class="kv">'+
+    ATARIMAE.map(a=>{ const v=am[a.k];
+      return '<div><div class="tiny muted" style="font-weight:700">'+esc(a.n)+'</div>'+
+        (v==='ok'?'<span class="chip m">○</span>':v==='ng'?'<span class="chip c">✕</span>':'<span class="chip g">未評価</span>')+'</div>';
+    }).join('')+'</div></div>';
+
+  /* いま詰まっているところ */
+  const st=stuckDisplay(r);
+  h+='<div class="card"><h2>いま詰まっているところ <span class="cnt">Grade '+r.cg+' の未達項目</span></h2>';
+  if(!st.length) h+='<div class="empty">'+(isSeniorTier(r.cg)?'リーダー等級以上は対象外です。':'ありません（昇格条件クリア）。')+'</div>';
+  else{
+    h+='<ul style="margin:0;padding-left:18px">'+st.slice(0,5).map(it=>
+      '<li class="tiny" style="margin:4px 0;line-height:1.7"><b>'+esc(it.cat.split('｜')[0])+'</b>／'+esc(it.t)+'</li>').join('')+'</ul>';
+    if(st.length>5) h+='<p class="tiny muted" style="margin:8px 0 0">ほか'+(st.length-5)+'項目。'+
+      '<button class="lnk" data-act="dwTab" data-t="step">チェックタブで全部見る</button></p>';
+  }
+  h+='</div>';
+
+  /* 直近の申し送り */
+  h+='<div class="card"><h2>直近の申し送り<span class="spacer"></span>'+
+    '<button class="btn vio sm" data-act="openNote" data-id="'+r.id+'">＋ 追加</button></h2>';
+  if(!r.notes.length) h+='<div class="empty">まだ記録がありません。</div>';
+  else{
+    h+=r.notes.slice(0,3).map(n=>noteHTML(n,false)).join('');
+    if(r.notes.length>3) h+='<p class="tiny muted" style="margin:8px 0 0">ほか'+(r.notes.length-3)+'件。'+
+      '<button class="lnk" data-act="dwTab" data-t="notes">すべて見る</button></p>';
+  }
+  h+='</div>';
+  return h;
+}
 function dwStep(r){
-  let h=dwVoiceCard(r)+dwWorkCard(r)+dwCatCard(r);
+  let h='';
   h+='<div class="card"><h2>グレードごとの達成状況</h2>';
   GRADES.forEach(g=>{
     const p=gPct(r.checks,g.n), t=tierOf(g.n), dn=gDone(r.checks,g.n);
@@ -2331,6 +2453,17 @@ document.addEventListener('click',async e=>{
     catch(err){ downloadBlob('リーダーMTG_'+todayStr()+'.txt',t,'text/plain'); toast('テキストで書き出しました'); }
   }
   else if(a==='printMtg'){ window.print(); }
+  /* カルテを1人1枚で印刷する。body に pdw を付けている間だけ、
+     印刷用CSSがドロワーだけを紙に出す。 */
+  else if(a==='printDw'){
+    document.body.classList.add('pdw');
+    let done=false;
+    const off=()=>{ if(done) return; done=true;
+      document.body.classList.remove('pdw');
+      window.removeEventListener('afterprint',off); };
+    window.addEventListener('afterprint',off);
+    setTimeout(()=>{ window.print(); setTimeout(off,1500); },40);
+  }
 });
 document.getElementById('scrim').onclick=()=>{ closeDrawer(); };
 document.addEventListener('keydown',e=>{
