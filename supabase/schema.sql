@@ -211,13 +211,49 @@ alter table public.app_config enable row level security;
 -- 古い版で関数を作ってしまっていた場合は、ここで確実に落とす。
 drop function if exists public.set_passcodes(text, text);
 
--- 共通パスコードが合っているかだけを返す。未設定のあいだは true（誰でも登録できる）。
+-- 共通パスコードが合っているかだけを返す。
+--
+-- 【重要】ここは必ず「合っていなければ false」で返すこと（fail-closed）。
+-- 以前は未設定のあいだ true を返していたが、それだと
+--   ・app_config の行が消えた
+--   ・スキーマを貼り直した直後
+--   ・移行の途中
+-- といった状況で、誰でも登録し放題の状態に黙って戻ってしまう。
+-- 認証の既定は常に「拒否」でなければならない。
+--
+-- 未設定のときは false になるので誰も登録できないが、SETUP.md は
+-- 手順5（パスコードを決める）→ 手順7（URLを配る）の順なので、
+-- 通常の手順どおりなら詰まらない。万一未設定のまま配ってしまった場合は
+-- 下の register_me / claim_member が「まだ設定されていません」と
+-- 理由の分かるエラーを出す。
 create or replace function public.check_team_passcode(p_code text)
 returns boolean language sql stable security definer set search_path = public, extensions as $$
-  select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), true)
+  select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), false)
     from public.app_config where id = 1
 $$;
 grant execute on function public.check_team_passcode(text) to anon, authenticated;
+
+-- 共通パスコードが「設定されているか」だけを返す（中身は返さない）。
+-- 登録画面が「違います」と「まだ設定されていません」を出し分けるために使う。
+-- どちらの状態かはエラーメッセージからどのみち分かるので、これ自体は何も漏らさない。
+create or replace function public.team_passcode_set()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.app_config where id = 1 and team_passcode is not null)
+$$;
+grant execute on function public.team_passcode_set() to anon, authenticated;
+
+-- 共通パスコードを検証して、通らなければ理由の分かるエラーで止める。
+-- 「未設定」と「間違い」を分けるのは、配る側と入れる側で直す場所が違うため。
+create or replace function public.assert_team_passcode(p_code text)
+returns void language plpgsql stable security definer set search_path = public, extensions as $$
+begin
+  if not exists (select 1 from public.app_config where id = 1 and team_passcode is not null) then
+    raise exception '共通パスコードがまだ設定されていません。ULに連絡してください（SETUP.md 手順5）';
+  end if;
+  if not public.check_team_passcode(p_code) then
+    raise exception 'パスコードが違います';
+  end if;
+end $$;
 
 -- パスコードが設定済みかどうか（管理者画面で注意を出すため）。中身は返さない。
 create or replace function public.config_status()
@@ -249,7 +285,7 @@ returns uuid language plpgsql security definer set search_path = public as $$
 declare v_slug text; v_id uuid;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if not coalesce(public.check_team_passcode(p_code), true) then raise exception 'パスコードが違います'; end if;
+  perform public.assert_team_passcode(p_code);
   v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));
 
   -- すでに紐付いているなら、それを返す
@@ -301,7 +337,7 @@ create or replace function public.register_me(
 declare v_id uuid; v_slug text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if not coalesce(public.check_team_passcode(p_code), true) then raise exception 'パスコードが違います'; end if;
+  perform public.assert_team_passcode(p_code);
   if nullif(trim(p_name),'') is null then raise exception '氏名を入力してください'; end if;
 
   v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));

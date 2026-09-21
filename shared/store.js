@@ -77,6 +77,36 @@ const Store = (() => {
     }
     return res ? res.data : null;
   }
+  /* ------------------------------------------------------------
+     全件を取り切る。
+     ------------------------------------------------------------
+     Supabase（PostgREST）は1回の取得で返す行数に上限があり、
+     既定では1000行で打ち切られる。しかもエラーにはならず、
+     「そこまでしか無かった」かのように返ってくる。
+
+     progress は 1人あたり最大196行（全項目）あるので、
+     20人も使えば簡単に1000行を超える。そのまま使うと
+     管理者画面の達成数・遅れ・停滞が、実際より少ない数字で
+     黙って表示される（一番まずい壊れ方）。
+
+     そこで range() で端から順に取り切る。
+     引数は「クエリを作る関数」であることに注意。Supabaseの
+     クエリビルダは一度 await すると使い回せないため、
+     ページごとに作り直す必要がある。
+     ------------------------------------------------------------ */
+  const PAGE = 1000;
+  async function pageAll(build){
+    const out=[];
+    for(let from=0; ; from+=PAGE){
+      const rows = chk(await build().range(from, from+PAGE-1)) || [];
+      out.push(...rows);
+      /* 1ページ未満しか返らなければ、そこで終わり */
+      if(rows.length < PAGE) return out;
+      /* 念のための歯止め。ここに達する規模なら集計をサーバーへ移すべき */
+      if(out.length >= PAGE*50) return out;
+    }
+  }
+
   const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'intern-career-path.vercel.app');
   const newSlug  = () => 'm-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
   const todayISO = () => new Date().toISOString().slice(0,10);
@@ -288,12 +318,38 @@ const Store = (() => {
       }catch(e){ return []; }
     },
 
-    /* 共通パスコードが合っているか。未設定のあいだは true が返る */
+    /* 共通パスコードが合っているか。
+       画面を早めに止めるための前チェックで、本当の判定はサーバー側
+       （register_me / claim_member の assert_team_passcode）がする。
+
+       合っているとき以外はすべて false を返す（fail-closed）。
+       以前は判定できないとき true を返していたが、それだと
+       「通信が失敗した」「関数が無い」だけで登録画面を通してしまう。
+       認証まわりの既定は必ず拒否にしておく。 */
     async checkPasscode(code){
       need();
       const r=await sb.rpc('check_team_passcode',{p_code:code});
       const v=chk(r);
-      return v===null||v===undefined? true : !!v;
+      return v===true;
+    },
+
+    /* 共通パスコードがそもそも設定されているか。
+       「違います」と「まだ配られていません」は、直す人も直す場所も違うので
+       画面では分けて出す。古いサーバー（関数が無い）では null を返し、
+       呼び出し側は従来どおり「違います」にフォールバックする。 */
+    async passcodeConfigured(){
+      try{
+        const v=chk(await sb.rpc('team_passcode_set'));
+        return v===true ? true : (v===false ? false : null);
+      }catch(e){ return null; }
+    },
+
+    /* 前チェックで弾くときのメッセージを決める */
+    async passcodeError(){
+      const set=await api.passcodeConfigured();
+      return set===false
+        ? '共通パスコードがまだ設定されていません。ULに連絡してください（SETUP.md 手順5）'
+        : 'パスコードが違います';
     },
 
     /* ---------- 新規登録 ----------
@@ -303,7 +359,7 @@ const Store = (() => {
          password … 本人だけが知るログインパスワード */
     async registerMember(p, passcode, password){
       need();
-      if(!(await api.checkPasscode(passcode))) throw new Error('パスコードが違います');
+      if(!(await api.checkPasscode(passcode))) throw new Error(await api.passcodeError());
 
       const email=emailFor(newSlug());
       let res=await sb.auth.signUp({email,password});
@@ -338,7 +394,7 @@ const Store = (() => {
        共通パスコードと新しいパスワードを入れて繋ぎ直す。 */
     async setPassword(member, passcode, password){
       need();
-      if(!(await api.checkPasscode(passcode))) throw new Error('パスコードが違います');
+      if(!(await api.checkPasscode(passcode))) throw new Error(await api.passcodeError());
       const email=emailFor(member.slug);
       let res=await sb.auth.signUp({email,password});
       chk(res);
@@ -502,31 +558,36 @@ const Store = (() => {
       need();
       await detectManagerCaps();
       const pcols='member_id,item_id,checked_at';
+      /* すべて range() で取り切る。1000行で黙って切られると
+         達成数・遅れ・停滞が実際より少なく出るため（pageAll のコメント参照）。
+         range() は並び順が決まっていないと結果が安定しないので、
+         ページングするクエリには必ず order を付ける。 */
       const [m,p,s,n,q]=await Promise.all([
-        sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name'),
-        sb.from('progress').select(pcols),
-        sb.from('member_state').select('*'),
-        sb.from('notes').select('*').order('occurred_on',{ascending:false}),
-        sb.from('quiz_scores').select('*').order('taken_on',{ascending:false})
+        pageAll(()=>sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name').order('id')),
+        pageAll(()=>sb.from('progress').select(pcols).order('member_id').order('item_id')),
+        pageAll(()=>sb.from('member_state').select('*').order('member_id')),
+        pageAll(()=>sb.from('notes').select('*').order('occurred_on',{ascending:false}).order('id')),
+        pageAll(()=>sb.from('quiz_scores').select('*').order('taken_on',{ascending:false}).order('id'))
       ]);
       const progress={};
-      (chk(p)||[]).forEach(r=>{
+      p.forEach(r=>{
         (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
       });
-      const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
+      const states={};   s.forEach(r=>states[r.member_id]=r);
       /* 期と割当。supabase/schema.sql をまだ貼り直していない環境では
          caps.terms が false なので、空のまま返して画面側で案内を出す。 */
       let terms=[], assignments=[];
       if(caps.terms){
         try{
+          /* assignments は「人数 × 期」で増えるので、ここもページングする */
           const [t,a]=await Promise.all([
-            sb.from('terms').select('*').order('starts_on',{ascending:false}),
-            sb.from('assignments').select('*')
+            pageAll(()=>sb.from('terms').select('*').order('starts_on',{ascending:false}).order('id')),
+            pageAll(()=>sb.from('assignments').select('*').order('term_id').order('member_id'))
           ]);
-          terms=chk(t)||[]; assignments=chk(a)||[];
+          terms=t; assignments=a;
         }catch(e){ caps.terms=false; }
       }
-      return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[],
+      return { members:m, progress, states, notes:n, scores:q,
                terms:terms, assignments:assignments,
                fetchedAt:Date.now() };
     },
