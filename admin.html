@@ -593,11 +593,18 @@ async function doClaim(){
 /* ============================================================
    読み込み＆計算
    ============================================================ */
-async function loadAll(){
-  A = await Store.adminLoad();
+/* only に ['notes'] のようにテーブル名を渡すと、そこだけ取り直して
+   手元の A にかぶせる。保存のたびに全部引き直さないため。
+   何が変わるか読み切れないところ（取り込み・引き継ぎ・削除など）は
+   従来どおり引数なしで全部取る。 */
+async function loadAll(only){
+  const fresh = await Store.adminLoad(only);
+  A = Object.assign({}, A, fresh);
   compute();
   if(CONFIG_STATUS===null) CONFIG_STATUS = await Store.configStatus();
-  /* しきい値をサーバーに置いてあるなら、そちらを優先する（UL全員で同じ基準になる） */
+  /* しきい値をサーバーに置いてあるなら、そちらを優先する（UL全員で同じ基準になる）。
+     一部だけ取り直すときは、すでに読んである値をそのまま使う。 */
+  if(only && APP_SETTINGS && Object.keys(APP_SETTINGS).length) return;
   try{
     const s=await Store.getSettings();
     if(s){
@@ -1526,7 +1533,7 @@ async function saveNote(){
     if(NF.editing) await Store.updateNote(NF.editing,payload);
     else await Store.addNote(payload);
     NF={ member_id:'', kind:'memo', occurred_on:'', grade:'', body:'', next_action:'', visibility:'shared', open:false, editing:null };
-    await loadAll(); render();
+    await loadAll(['notes']); render();
     toast('保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
@@ -1633,7 +1640,7 @@ async function saveScore(){
     await Store.saveScores([{member_id:mid,quiz_name:quiz,score:+sc,max_score:max,
       passed: max? (+sc/max>=0.9) : null, taken_on:dt, source:'manual'}]);
     SF={open:false,member_id:'',quiz_name:'',score:'',max_score:'10',taken_on:''};
-    await loadAll(); render(); toast('保存しました');
+    await loadAll(['scores']); render(); toast('保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
 function csvScores(){
@@ -1687,7 +1694,7 @@ async function importCSVText(text){
   }
   try{
     await Store.saveScores(out);
-    await loadAll(); render();
+    await loadAll(['scores']); render();
     toast(out.length+'件を取り込みました');
     if(missing.size) alert(out.length+'件を取り込みました。\n\n名簿に見つからず飛ばした名前：\n'+Array.from(missing).slice(0,20).join('\n'));
   }catch(e){ toast(e.message||'取り込みに失敗しました','bad'); }
@@ -2328,7 +2335,7 @@ async function saveHoFor(memberId,termId){
   h.filled_by=meName(); h.filled_at=new Date().toISOString();
   try{
     await Store.saveHandover(termId,memberId,h);
-    await loadAll(); renderDrawer(); render();
+    await loadAll(['notes']); renderDrawer(); render();
     toast(hoDone(h)? '保存しました（記入済み）' : '保存しました（必須の欄がまだ空です）');
   }catch(e){ toast(e.message||'保存に失敗しました','bad',6000); }
 }
@@ -2399,7 +2406,7 @@ async function newTermFlow(){
   const ends=prompt('終了日（YYYY-MM-DD・空でもOK）',r.e);
   try{
     const t=await Store.createTerm({name:String(name).trim(),starts_on:starts,ends_on:ends||null});
-    await loadAll();
+    await loadAll(['terms']);
     V.term=t&&t.id||''; ASG_EDIT={termId:'',rows:{},dirty:false};
     render();
     toast('期をつくりました。「いまの名簿から取り込む」で割当の下地を作れます','xp',6000);
@@ -2414,7 +2421,7 @@ async function delTermFlow(id){
     await Store.deleteTerm(id);
     if(V.term===id) V.term='';
     ASG_EDIT={termId:'',rows:{},dirty:false};
-    await loadAll(); render(); toast('削除しました');
+    await loadAll(['terms']); render(); toast('削除しました');
   }catch(e){ toast(e.message||'削除に失敗しました','bad'); }
 }
 /* いまの名簿とマイシートの稼働を、その期の割当の下地として保存する */
@@ -2430,7 +2437,7 @@ async function seedTermFlow(id){
   try{
     await Store.saveAssignments(rows);
     ASG_EDIT={termId:'',rows:{},dirty:false};
-    await loadAll(); render(); toast(rows.length+'人ぶんを取り込みました');
+    await loadAll(['terms']); render(); toast(rows.length+'人ぶんを取り込みました');
   }catch(e){ toast(e.message||'取り込みに失敗しました','bad',6000); }
 }
 /* 画面で編集した割当をまとめて保存する（まだ名簿には反映しない） */
@@ -2446,7 +2453,7 @@ async function saveAsgFlow(id){
   try{
     await Store.saveAssignments(rows);
     ASG_EDIT={termId:'',rows:{},dirty:false};
-    await loadAll(); render(); toast(rows.length+'人ぶんを保存しました');
+    await loadAll(['terms']); render(); toast(rows.length+'人ぶんを保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad',6000); }
 }
 /* 期を確定する。名簿に書き戻し、動いた人には申し送りを1件ずつ残す */
@@ -2487,7 +2494,7 @@ async function applyTermFlow(id){
       }catch(e){}
     }
     ASG_EDIT={termId:'',rows:{},dirty:false};
-    await loadAll(); render();
+    await loadAll(['notes']); render();
     toast(t.name+' を確定しました（'+n+'人に反映）','xp',6000);
   }catch(e){ toast(e.message||'確定に失敗しました','bad',6000); }
 }
@@ -2994,7 +3001,7 @@ async function saveWorkFor(id){
   const g=x=>(document.getElementById(x)||{}).value;
   try{
     await saveWorkPatch(r,{ hours:g('wkHours'), accStd:g('wkStd'), accAdv:g('wkAdv'), until:g('wkUntil') });
-    await loadAll(); render(); renderDrawer(); toast('保存しました');
+    await loadAll(['states']); render(); renderDrawer(); toast('保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
 async function saveProfileFor(id){
@@ -3004,7 +3011,7 @@ async function saveProfileFor(id){
     promotion_target:g('pfTarget')||null, role:g('pfRole')||'member' };
   try{
     await Store.upsertMember(patch);
-    await loadAll(); render(); renderDrawer(); toast('保存しました');
+    await loadAll(['states']); render(); renderDrawer(); toast('保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
 /* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す。
@@ -3258,7 +3265,7 @@ document.addEventListener('click',async e=>{
         await Store.addNote({ member_id:r.id, kind:'memo', occurred_on:todayStr(),
           body:'チェックを外しました：'+(it?it.t:id)+'（管理画面からの操作です）', visibility:'admin' });
       }
-      await loadAll();
+      await loadAll(['progress','notes']);
       const nr=BY_ID[V.drawer];
       renderDrawer(); render();
       if(on && nr.cg>r.cg) toast('Grade '+r.cg+' が埋まりました','xp');
@@ -3271,7 +3278,7 @@ document.addEventListener('click',async e=>{
     cur[k]=(cur[k]===v?null:v);
     try{
       await Store.saveStateFor(r.id,{atarimae:cur});
-      await loadAll(); renderDrawer(); render();
+      await loadAll(['states']); renderDrawer(); render();
     }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
   }
   else if(a==='clearProgress'){
@@ -3283,7 +3290,7 @@ document.addEventListener('click',async e=>{
     if(!confirm(r.name+' さんのチェックを全件消します。元に戻せません。よろしいですか？')) return;
     try{
       const n=await Store.clearProgressFor(r.id);
-      await loadAll(); renderDrawer(); render();
+      await loadAll(['progress','notes']); renderDrawer(); render();
       toast(n?n+'件を消去しました':'消去しました');
     }catch(err){ toast(err.message||'消去に失敗しました','bad'); }
   }
@@ -3295,7 +3302,7 @@ document.addEventListener('click',async e=>{
     if(i>=0) list.splice(i,1); else list.push(el.dataset.t);
     try{
       await saveWorkPatch(r,{skills:list});
-      await loadAll(); renderDrawer(); render();
+      await loadAll(['states']); renderDrawer(); render();
     }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
   }
   /* ---------- 期・ユニット編成 ---------- */
@@ -3356,7 +3363,7 @@ document.addEventListener('click',async e=>{
     try{
       const cnt=await Store.reassignCharge(HANDOVER.field,froms,to);
       HANDOVER={ field:HANDOVER.field, froms:[], to:'' };
-      await loadAll(); render();
+      await loadAll(['members']); render();
       toast(cnt+'人分を引き継ぎました','xp');
     }catch(err){ toast(err.message||'引き継ぎに失敗しました','bad'); }
   }
@@ -3373,7 +3380,7 @@ document.addEventListener('click',async e=>{
       await Store.addNote({member_id:r.id, kind:'memo', occurred_on:date,
         body:type+'として記録し、一覧から外しました。'+(reason?'（'+reason+'）':''), visibility:'admin'});
       closeDrawer();
-      await loadAll(); render();
+      await loadAll(['notes']); render();
       toast(r.name+' さんを'+type+'として記録しました','xp');
     }catch(err){ toast(err.message||'記録に失敗しました','bad'); }
   }
@@ -3384,7 +3391,7 @@ document.addEventListener('click',async e=>{
       await Store.upsertMember({id:m.id, active:true});
       await Store.addNote({member_id:m.id, kind:'memo', occurred_on:todayStr(),
         body:'現役に戻しました。', visibility:'admin'});
-      await loadAll(); render();
+      await loadAll(['notes']); render();
       toast(m.name+' さんを現役に戻しました','xp');
     }catch(err){ toast(err.message||'更新に失敗しました','bad'); }
   }
@@ -3463,7 +3470,7 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='delNote'){
     if(!confirm('この記録を削除します。よろしいですか？')) return;
-    try{ await Store.deleteNote(el.dataset.id); await loadAll(); render(); toast('削除しました'); }
+    try{ await Store.deleteNote(el.dataset.id); await loadAll(['notes']); render(); toast('削除しました'); }
     catch(err){ toast(err.message||'削除に失敗しました','bad'); }
   }
   else if(a==='closeNote'){ readNoteForm(); NF.open=false; NF.editing=null; render(); }
@@ -3477,7 +3484,7 @@ document.addEventListener('click',async e=>{
   else if(a==='saveScore'){ await saveScore(); }
   else if(a==='delScore'){
     if(!confirm('この結果を削除します。よろしいですか？')) return;
-    try{ await Store.deleteScore(el.dataset.id); await loadAll(); renderDrawer(); render(); toast('削除しました'); }
+    try{ await Store.deleteScore(el.dataset.id); await loadAll(['scores']); renderDrawer(); render(); toast('削除しました'); }
     catch(err){ toast(err.message||'削除に失敗しました','bad'); }
   }
   else if(a==='importCSV'){ document.getElementById('csvFile').click(); }

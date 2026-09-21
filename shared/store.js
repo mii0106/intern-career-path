@@ -593,42 +593,66 @@ const Store = (() => {
     },
 
     /* ---------- 管理者用：まとめて読む ---------- */
-    async adminLoad(){
+    /* 管理者画面のデータをまとめて取る。
+
+       only に ['notes'] のようにテーブル名を渡すと、そこだけ取り直す。
+       申し送りを1件足すたびに members・progress・notes・scores・
+       states・terms・assignments を全部引き直していたので、
+       30人規模だと1回の保存で数MB動いていた。触った表だけでいい。
+
+       only を省いたときは従来どおり全部取る。 */
+    async adminLoad(only){
       need();
       await detectManagerCaps();
+      const want = k => !only || only.indexOf(k)>=0;
       const pcols='member_id,item_id,checked_at';
       /* すべて range() で取り切る。1000行で黙って切られると
          達成数・遅れ・停滞が実際より少なく出るため（pageAll のコメント参照）。
          range() は並び順が決まっていないと結果が安定しないので、
          ページングするクエリには必ず order を付ける。 */
-      const [m,p,s,n,q]=await Promise.all([
-        pageAll(()=>sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name').order('id')),
-        pageAll(()=>sb.from('progress').select(pcols).order('member_id').order('item_id')),
-        pageAll(()=>sb.from('member_state').select('*').order('member_id')),
-        pageAll(()=>sb.from('notes').select('*').order('occurred_on',{ascending:false}).order('id')),
-        pageAll(()=>sb.from('quiz_scores').select('*').order('taken_on',{ascending:false}).order('id'))
-      ]);
-      const progress={};
-      p.forEach(r=>{
-        (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
-      });
-      const states={};   s.forEach(r=>states[r.member_id]=r);
+      const jobs = {
+        members: ()=>pageAll(()=>sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name').order('id')),
+        progress:()=>pageAll(()=>sb.from('progress').select(pcols).order('member_id').order('item_id')),
+        states:  ()=>pageAll(()=>sb.from('member_state').select('*').order('member_id')),
+        notes:   ()=>pageAll(()=>sb.from('notes').select('*').order('occurred_on',{ascending:false}).order('id')),
+        scores:  ()=>pageAll(()=>sb.from('quiz_scores').select('*').order('taken_on',{ascending:false}).order('id'))
+      };
+      const keys = Object.keys(jobs).filter(want);
+      const got  = await Promise.all(keys.map(k=>jobs[k]()));
+      const raw  = {};
+      keys.forEach((k,i)=>raw[k]=got[i]);
+
+      const out = { fetchedAt:Date.now() };
+      if(raw.members) out.members = raw.members;
+      if(raw.notes)   out.notes   = raw.notes;
+      if(raw.scores)  out.scores  = raw.scores;
+      if(raw.progress){
+        const progress={};
+        raw.progress.forEach(r=>{
+          (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
+        });
+        out.progress = progress;
+      }
+      if(raw.states){
+        const states={}; raw.states.forEach(r=>states[r.member_id]=r);
+        out.states = states;
+      }
       /* 期と割当。supabase/schema.sql をまだ貼り直していない環境では
          caps.terms が false なので、空のまま返して画面側で案内を出す。 */
-      let terms=[], assignments=[];
-      if(caps.terms){
-        try{
-          /* assignments は「人数 × 期」で増えるので、ここもページングする */
-          const [t,a]=await Promise.all([
-            pageAll(()=>sb.from('terms').select('*').order('starts_on',{ascending:false}).order('id')),
-            pageAll(()=>sb.from('assignments').select('*').order('term_id').order('member_id'))
-          ]);
-          terms=t; assignments=a;
-        }catch(e){ caps.terms=false; }
+      if(want('terms')){
+        out.terms=[]; out.assignments=[];
+        if(caps.terms){
+          try{
+            /* assignments は「人数 × 期」で増えるので、ここもページングする */
+            const [t,a]=await Promise.all([
+              pageAll(()=>sb.from('terms').select('*').order('starts_on',{ascending:false}).order('id')),
+              pageAll(()=>sb.from('assignments').select('*').order('term_id').order('member_id'))
+            ]);
+            out.terms=t; out.assignments=a;
+          }catch(e){ caps.terms=false; }
+        }
       }
-      return { members:m, progress, states, notes:n, scores:q,
-               terms:terms, assignments:assignments,
-               fetchedAt:Date.now() };
+      return out;
     },
 
     /* ---------- 管理者用：書き込み ---------- */
