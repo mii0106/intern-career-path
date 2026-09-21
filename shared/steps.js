@@ -424,6 +424,37 @@ function visStats(checks,gn){
   const its=ITEMS[gn].filter(i=>i.id.split('.')[1]==='v');
   return {t:its.length, d:its.filter(i=>checks[i.id]).length};
 }
+/* ============================================================
+   カテゴリ別の達成率
+   ------------------------------------------------------------
+   グレードは「どこまで来たか」しか分からないので、
+   「この人は運用は強いが組織運営が弱い」を見るための軸を別に作る。
+   項目の cat（セクション見出し）を CATS の頭文字で引き当てて集計する。
+   数えるのは Grade 1 〜 maxGrade。まだ開いていない上のグレードまで
+   分母に入れると、全員がほぼ0%になって比較にならないため。
+   ============================================================ */
+function catOf(it){
+  return CATS.find(c=> c.k==='vision' ? !!it.vision
+                                      : (!it.vision && String(it.cat).indexOf(c.k)===0)) || null;
+}
+function catStats(checks,maxGrade){
+  const lim=Math.max(1,Math.min(GRADES.length,+maxGrade||GRADES.length));
+  const out=CATS.map(c=>({k:c.k,n:c.n,d:0,t:0}));
+  const byKey={}; out.forEach(o=>byKey[o.k]=o);
+  for(let n=1;n<=lim;n++){
+    ITEMS[n].forEach(it=>{
+      const c=catOf(it); if(!c) return;
+      const o=byKey[c.k]; o.t++; if(checks[it.id]) o.d++;
+    });
+  }
+  return out.filter(o=>o.t>0).map(o=>{ o.pct=Math.round(o.d/o.t*100); return o; });
+}
+/* カルテで見せる用。「なりたい姿」は各グレードの要約で、
+   強み弱みの軸としては読みにくいので外す。 */
+function catProfile(checks,maxGrade){
+  return catStats(checks,maxGrade).filter(c=>c.k!=='vision');
+}
+
 /* ------------------------------------------------------------
    項目が属するセクション（「スタンス」「タスク管理」など）を引く。
    グレード全体は長いので、セクションを1つ埋めたところで小さく褒めるのに使う。

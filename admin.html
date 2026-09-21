@@ -137,6 +137,15 @@ tbody tr:hover td.st{background:#FBFAFF}
 .note .hdr{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:3px}
 .note .body{white-space:pre-wrap;word-break:break-word;font-size:12.5px}
 .note .na{margin-top:5px;font-size:11.5px;background:var(--amber-soft);border-radius:8px;padding:6px 9px;white-space:pre-wrap}
+/* 本人がマイシートに書いた文をそのまま出すブロック（カルテで使う） */
+.quote{font-size:12px;line-height:1.8;background:var(--violet-soft);border-radius:9px;
+  padding:7px 10px;white-space:pre-wrap;word-break:break-word;margin:0 0 6px}
+.quote.warn{background:var(--amber-soft)}
+.quote b{font-weight:800;color:var(--ink2);margin-right:5px}
+/* カテゴリ別の達成率の1行 */
+.cbar{display:flex;align-items:center;gap:10px}
+.cbar .cl{width:118px;flex:0 0 auto;font-size:12px;font-weight:700}
+.cbar .cn{width:74px;text-align:right;font-size:11.5px}
 .note .acts{opacity:0;transition:.14s;display:flex;gap:6px;margin-left:auto}
 .note:hover .acts{opacity:1}
 .note .acts button{font-size:11px;color:var(--ink2);text-decoration:underline}
@@ -521,6 +530,11 @@ function compute(){
       noCharge: !(String(m.ul||'').trim() || String(m.mentor||'').trim()),
       checks:checks, raw:raw,
       concern:(st.custom&&st.custom.__concern)||'',
+      /* 本人がマイシートに書いたもの。これまで管理者側で一度も表示しておらず、
+         引き継ぎでいちばん効く情報が使われずに捨てられていた。 */
+      buddy: st.buddy||'',
+      goals: Object.assign({basic:'',skill:''},st.goals||{}),
+      creed: (Array.isArray(st.creed)?st.creed:[]).filter(c=>c&&String(c.t||'').trim()),
       state:st,
       cg:cg, cleared:cleared, done:gDone(checks,cg), total:gTotal(cg), pct:gPct(checks,cg),
       overall:gOverallPct(checks), checked:gTotalChecked(checks),
@@ -533,6 +547,8 @@ function compute(){
       lastActivity:lastAct, quiet: lastAct? Math.max(0,daysAgo(lastAct)||0) : null,
       registeredAt:m.created_at||null, regDays: m.created_at? daysAgo(m.created_at) : null,
       stuck: stuckItems(checks,null,certified),
+      /* 強み・弱みの軸。挑戦中グレードまでを分母にする */
+      cats: catProfile(checks,cg),
       notes:notes, lastNote:notes[0]||null,
       noteCount:notes.length,
       scores:scores,
@@ -1076,12 +1092,19 @@ function vRoster(){
 }
 function csvRoster(){
   const rows=[['名前','Unit','UL','メンター','入社日','在籍月数','認定グレード','完了グレード数','挑戦中グレード',
-    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','アタリマエ✕','詰まっている項目1','詰まっている項目2','登録日']];
+    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','アタリマエ✕',
+    '強いカテゴリ','弱いカテゴリ','詰まっている項目1','詰まっている項目2','登録日']];
+  /* 強み・弱みは、編成をスプレッドシートで検討するときに使う */
+  const topCat=(r,worst)=>{
+    const cs=(r.cats||[]).slice().sort((a,b)=>worst? a.pct-b.pct : b.pct-a.pct);
+    return cs.length? cs[0].n+'（'+cs[0].pct+'%）' : '';
+  };
   sorted(filtered()).forEach(r=>rows.push([r.name,r.unit,r.m.ul||'',r.m.mentor||'',r.m.join_date||'',
     r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pct,r.overall,
     r.outlook.targetDate||'',r.delay==null?'':r.delay,r.lastCheck?String(r.lastCheck).slice(0,10):'',
     r.quizAvg==null?'':r.quizAvg,r.noteCount,
     r.ngAtarimae.length?r.ngAtarimae.join(' / '):'',
+    topCat(r,false), topCat(r,true),
     r.stuck[0]?r.stuck[0].cat+'：'+r.stuck[0].t:'', r.stuck[1]?r.stuck[1].cat+'：'+r.stuck[1].t:'',
     r.registeredAt?String(r.registeredAt).slice(0,10):'']));
   downloadCSV('キャリアステップ現状一覧_'+todayStr()+'.csv',rows);
@@ -1605,8 +1628,62 @@ function dwBody(r){
   if(V.dwTab==='profile') return dwProfile(r);
   return dwStep(r);
 }
+/* ------------------------------------------------------------
+   本人の言葉。マイシートの「相棒の名前」「なりたい姿」「五箇条」
+   「気にしていること」は member_state に入っているのに、
+   これまで管理者画面のどこにも出していなかった。
+   引き継ぎで新しいULがいちばん先に知りたいのはここなので、
+   カルテの先頭に置く。
+   ------------------------------------------------------------ */
+function dwVoiceCard(r){
+  const g=r.goals||{}, creed=r.creed||[];
+  let h='<div class="card"><h2>本人の言葉 <span class="cnt">マイシートに本人が書いたもの</span></h2>';
+  if(!(r.buddy||g.basic||g.skill||creed.length||r.concern))
+    return h+'<div class="empty">まだ書かれていません。<br>'+
+      '面談のときに一緒に埋めておくと、次のULへの引き継ぎで効きます。</div></div>';
+  if(r.buddy) h+='<p class="tiny muted" style="margin:0 0 8px">相棒の名前：<b>'+esc(r.buddy)+'</b></p>';
+  if(g.basic||g.skill){
+    h+='<div class="tiny" style="font-weight:700;color:var(--ink2);margin:0 0 4px">卒業した時にどうなっていたいか</div>';
+    if(g.basic) h+='<div class="quote"><b>社会人基礎</b>'+esc(g.basic)+'</div>';
+    if(g.skill) h+='<div class="quote"><b>業務スキル</b>'+esc(g.skill)+'</div>';
+  }
+  if(creed.length){
+    h+='<div class="tiny" style="font-weight:700;color:var(--ink2);margin:11px 0 4px">自身の五箇条</div>'+
+      '<ol style="margin:0;padding-left:19px">'+creed.map(c=>
+        '<li class="tiny" style="margin:3px 0;line-height:1.7">'+esc(c.t)+
+        (c.s?' <span class="chip g">自己評価 '+c.s+'/5</span>':'')+'</li>').join('')+'</ol>';
+  }
+  if(r.concern) h+='<div class="quote warn" style="margin-top:11px"><b>気にしていること</b>'+esc(r.concern)+'</div>';
+  return h+'</div>';
+}
+/* ------------------------------------------------------------
+   強み・弱み。グレードは「どこまで来たか」しか表さないので、
+   「運用は強いが組織運営が弱い」を見る軸をここで別に出す。
+   分母は Grade 1〜挑戦中グレード（まだ開いていない上のグレードまで
+   入れると全員がほぼ0%になって比較にならない）。
+   ------------------------------------------------------------ */
+function dwCatCard(r){
+  const cs=r.cats||[];
+  if(!cs.length) return '';
+  let h='<div class="card"><h2>強み・弱み <span class="cnt">Grade 1〜'+r.cg+' の項目をカテゴリでまとめたもの</span></h2>'+
+    '<div style="display:flex;flex-direction:column;gap:7px">';
+  cs.forEach(c=>{
+    const col = c.pct>=80?'var(--mint)' : c.pct>=50?'var(--violet)' : 'var(--coral)';
+    h+='<div class="cbar"><span class="cl">'+esc(c.n)+'</span>'+
+      '<span class="mini" style="flex:1;height:9px"><i style="width:'+c.pct+'%;background:'+col+'"></i></span>'+
+      '<b class="mono cn">'+c.d+'/'+c.t+'・'+c.pct+'%</b></div>';
+  });
+  h+='</div>';
+  const sortd=cs.slice().sort((a,b)=>b.pct-a.pct);
+  const best=sortd[0], worst=sortd[sortd.length-1];
+  if(cs.length>1 && best.pct!==worst.pct)
+    h+='<p class="tiny muted" style="margin:11px 0 0">いちばん進んでいるのは<b>'+esc(best.n)+'</b>（'+best.pct+'%）、'+
+       'いちばん手がついていないのは<b>'+esc(worst.n)+'</b>（'+worst.pct+'%）です。</p>';
+  return h+'</div>';
+}
 function dwStep(r){
-  let h='<div class="card"><h2>グレードごとの達成状況</h2>';
+  let h=dwVoiceCard(r)+dwCatCard(r);
+  h+='<div class="card"><h2>グレードごとの達成状況</h2>';
   GRADES.forEach(g=>{
     const p=gPct(r.checks,g.n), t=tierOf(g.n), dn=gDone(r.checks,g.n);
     h+='<div class="gbar"><span class="gl" style="color:'+(p===100?'var(--mint)':(g.n===r.cg?t.hex:'var(--ink2)'))+'">'+
@@ -1656,7 +1733,6 @@ function dwStep(r){
       '</span>'+
       '<span class="tiny muted" style="flex:1">'+esc(cut(a.d,70))+'</span></div>';
   });
-  if(r.concern) h+='<div class="na" style="margin-top:10px">本人が気にしていること：'+esc(r.concern)+'</div>';
   h+='</div>';
   return h;
 }
