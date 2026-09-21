@@ -796,7 +796,7 @@ function vDash(){
   h+='</div>';
 
   h+='<div class="grid g3" style="margin-bottom:14px">'+
-    kpi('メンバー数',all.length,'人',F.unit||'全Unit','')+
+    kpi('メンバー数',all.length,'人',filterNote(),'')+
     kpi('平均進捗',avg,'%','チェック済みの項目で計算','')+
     kpi('昇格面談の対象',promo.length,'人','認定グレードの項目を完了','promo')+
   '</div>';
@@ -842,16 +842,24 @@ function vDash(){
   });
   h+='</tbody></table></div></div></div>';
 
-  /* 登録状況 — 一括投入ではなく、使い始めた人から順に増えていく */
-  const newest=ROWS.filter(r=>r.registeredAt).sort((a,b)=>String(b.registeredAt).localeCompare(String(a.registeredAt)));
+  /* 登録状況 — 一括投入ではなく、使い始めた人から順に増えていく。
+     ここの数字は上のKPIと同じ filtered() を通す。以前は「登録済み」だけが
+     絞り込みを無視した全件（ROWS.length）だったため、上の「メンバー数」と
+     食い違って見えていた。 */
+  const reg=filtered();
+  const newest=reg.filter(r=>r.registeredAt).sort((a,b)=>String(b.registeredAt).localeCompare(String(a.registeredAt)));
   const last7=newest.filter(r=>r.regDays!=null&&r.regDays<=7).length;
-  const noProfile=all.filter(r=>!r.m.join_date||!r.m.unit);
+  const noProfile=reg.filter(r=>!r.m.join_date||!r.m.unit);
+  const hidden=ROWS.length-reg.length;
   h+='<div class="card"><h2>登録状況 <span class="cnt">メンバーが自分で登録した分だけ集まります</span></h2>'+
     '<div class="grid g3" style="margin-bottom:12px">'+
-      kpi('登録済み',ROWS.length,'人',MANAGER_LABEL+'を含む','')+
-      kpi('直近7日の新規登録',last7,'人','','')+
+      kpi('登録済み',reg.length,'人',filterNote(),'')+
+      kpi('直近7日の新規登録',last7,'人',filterNote(),'')+
       kpi('情報が足りない人',noProfile.length,'人','Unitか入社日が未入力','')+
     '</div>';
+  if(hidden>0) h+='<p class="tiny muted" style="margin:0 0 10px">'+
+    'いまの絞り込みで <b>'+hidden+'人</b> を表示から外しています（登録は全部で'+ROWS.length+'人）。'+
+    '<button class="lnk" data-act="clearFilters" style="color:var(--violet);font-weight:700">絞り込みをすべて外す</button></p>';
   if(noProfile.length){
     h+='<p class="tiny muted" style="margin:0 0 8px">入社日が空の人は昇格予定を計算できません。'+
       '名前を押して<b>設定</b>タブから補ってください（本人にマイシートで入れてもらってもOK）。</p>'+
@@ -904,6 +912,24 @@ function kpi(lab,val,unit,sub,alert){
     '<div class="sub">'+esc(sub)+'</div></div>';
 }
 function cnt(n,c){ return n? '<span class="chip '+c+'">'+n+'</span>' : '<span class="muted">0</span>'; }
+
+/* ------------------------------------------------------------
+   いま効いている絞り込みを、そのまま言葉にして返す。
+   KPIの数字が減っているとき「なぜこの数なのか」をその場で読めるように、
+   Unitだけでなく役割・自分の担当・アラート・検索語まで全部書き出す。
+   （以前は Unit しか出していなかったため、検索が残っていても
+     「全Unit」と表示されて数字だけ減って見えていた）
+   ------------------------------------------------------------ */
+function filterNote(){
+  const p=[F.unit||'全Unit'];
+  p.push(F.role==='member' ? 'メンバーのみ'
+       : F.role==='manager'? MANAGER_LABEL+'のみ'
+       :                     MANAGER_LABEL+'を含む');
+  if(F.mine) p.push('自分の担当だけ');
+  if(F.alert) p.push((ALERT_LABEL[F.alert]||[F.alert])[0]+'だけ');
+  if(F.q.trim()) p.push('検索「'+F.q.trim()+'」');
+  return p.join(' / ');
+}
 
 /* ------------------------------------------------------------
    リマインド文をつくってコピーする。
