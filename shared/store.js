@@ -125,7 +125,7 @@ const Store = (() => {
      まだ流していない環境でも、画面がそのまま動くようにする。
      使える機能だけをオンにして、無い機能は従来のやり方に落とす。
      ============================================================ */
-  const caps = { rpcCheck:false, rosterSearch:false, settings:false };
+  const caps = { rpcCheck:false, rosterSearch:false, settings:false, terms:false };
   let capsDone = false;   /* 一度でも通信できたか。電波が悪いだけの結果を信じない */
   async function detectCaps(){
     let ok=true;
@@ -145,6 +145,9 @@ const Store = (() => {
   /* 管理者としてログインしたあとに分かるもの */
   async function detectManagerCaps(){
     try{ const r=await sb.rpc('get_app_settings'); caps.settings = !r.error; }catch(e){ caps.settings=false; }
+    /* 期（terms / assignments）はあとから足した表なので、
+       古いスキーマのままでも画面が落ちないように、有無をここで見ておく。 */
+    try{ const r=await sb.from('terms').select('id').limit(1); caps.terms = !r.error; }catch(e){ caps.terms=false; }
   }
 
   /* ============================================================
@@ -511,7 +514,20 @@ const Store = (() => {
         (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
       });
       const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
+      /* 期と割当。supabase/schema.sql をまだ貼り直していない環境では
+         caps.terms が false なので、空のまま返して画面側で案内を出す。 */
+      let terms=[], assignments=[];
+      if(caps.terms){
+        try{
+          const [t,a]=await Promise.all([
+            sb.from('terms').select('*').order('starts_on',{ascending:false}),
+            sb.from('assignments').select('*')
+          ]);
+          terms=chk(t)||[]; assignments=chk(a)||[];
+        }catch(e){ caps.terms=false; }
+      }
       return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[],
+               terms:terms, assignments:assignments,
                fetchedAt:Date.now() };
     },
 
@@ -587,6 +603,49 @@ const Store = (() => {
       return rows.length;
     },
 
+    /* ---------- 期（半期）とユニット編成 ---------- */
+    async createTerm(t){
+      need(); needTerms();
+      return chk(await sb.from('terms').insert({
+        name:t.name, starts_on:t.starts_on, ends_on:t.ends_on||null,
+        status:t.status||'draft', note:t.note||null }).select().single());
+    },
+    async updateTerm(id,patch){
+      need(); needTerms();
+      return chk(await sb.from('terms').update(patch).eq('id',id).select().single());
+    },
+    async deleteTerm(id){
+      need(); needTerms();
+      /* assignments は on delete cascade で一緒に消える */
+      chk(await sb.from('terms').delete().eq('id',id));
+    },
+    /* 割当のまとめ書き。(term_id, member_id) が同じ行は上書きする。 */
+    async saveAssignments(rows){
+      need(); needTerms();
+      if(!rows.length) return 0;
+      const now=new Date().toISOString();
+      chk(await sb.from('assignments')
+        .upsert(rows.map(r=>Object.assign({},r,{updated_at:now})),{onConflict:'term_id,member_id'}));
+      return rows.length;
+    },
+    async deleteAssignment(id){
+      need(); needTerms();
+      chk(await sb.from('assignments').delete().eq('id',id));
+    },
+    /* 期を確定して、その割当を名簿（members.unit/ul/mentor）に書き戻す */
+    async applyTerm(termId){
+      need(); needTerms();
+      return chk(await sb.rpc('apply_term',{p_term:termId}));
+    },
+    /* 本人画面用。自分の割当だけを、引き継ぎシートを除いた形で読む */
+    async myAssignments(){
+      need();
+      const r=await sb.from('my_assignments').select('*').order('starts_on',{ascending:false});
+      /* 古いスキーマのままなら、機能そのものが無いものとして空を返す */
+      if(r.error) return [];
+      return r.data||[];
+    },
+
     /* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す。
        本人は次に名前を選んだとき「初回パスワード設定」に進む。 */
     async resetLogin(memberId){
@@ -594,6 +653,11 @@ const Store = (() => {
       return chk(await sb.rpc('admin_reset_login',{p_member_id:memberId}));
     }
   };
+
+  /* 期の表がまだ無い環境で押されたときに、何をすればいいかを返す */
+  function needTerms(){
+    if(!caps.terms) throw new Error('この機能を使うには supabase/schema.sql を貼り直してください（SETUP.md 手順2）');
+  }
 
   /* ログイン中の人が誰で、管理者かどうかを確定させる */
   async function resolveMe(){

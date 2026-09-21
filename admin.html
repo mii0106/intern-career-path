@@ -274,6 +274,15 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
 .spark i{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--violet);min-height:2px}
 .spark i.zero{background:#E6E3F4}
 .spark span{font-size:9.5px;color:var(--ink3);line-height:1;white-space:nowrap}
+/* グレード帯（編成のバランスで使う）。平均より分布のほうが判断に効く */
+.tierbar{display:flex;height:16px;min-width:130px;border-radius:5px;overflow:hidden;background:#EDEBF8}
+.tierbar i{display:flex;align-items:center;justify-content:center;font-style:normal;
+  font-size:10px;font-weight:800;color:#fff;font-family:'Bricolage Grotesque',sans-serif;min-width:14px}
+/* 割当表の入力欄。行数が多いので小さめに */
+td .asg{width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:8px;
+  padding:5px 7px;font-size:12px;min-width:92px}
+td .asg.num{min-width:58px;text-align:right}
+td .asg:focus{border-color:var(--violet);background:#fff;outline:none}
 /* カルテの小見出し付きブロック */
 .kv{display:flex;flex-wrap:wrap;gap:6px 18px}
 .kv > div{min-width:118px}
@@ -350,12 +359,16 @@ function loadLocalSettings(){
 loadLocalSettings();
 
 /* 生データ */
-let A = { members:[], progress:{}, states:{}, notes:[], scores:[] };
+let A = { members:[], progress:{}, states:{}, notes:[], scores:[], terms:[], assignments:[] };
 let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済みか */
 /* メンバーごとに計算済みの行 */
 let ROWS = [], BY_ID = {};
 /* 画面の状態 */
-let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'step', mtgUnit:'' };
+let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'' };
+/* 期（半期）まわり。compute() で組み立てる */
+let TERMS=[], ASG_BY_TERM={}, ASG_BY_MEMBER={};
+/* 編集中の割当。保存を押すまでサーバーには送らない。{member_id:{unit,ul,...}} */
+let ASG_EDIT={ termId:'', rows:{}, dirty:false };
 let F = { unit:'', q:'', role:'member', alert:'', mine:false };
 
 /* ============================================================
@@ -585,6 +598,46 @@ function compute(){
     };
   });
   BY_ID={}; ROWS.forEach(r=>BY_ID[r.id]=r);
+  computeTerms();
+}
+/* ------------------------------------------------------------
+   期（半期）と、その期の割当を引ける形にしておく。
+   ・TERMS         … 新しい期が先（starts_on の降順）
+   ・ASG_BY_TERM   … 期ID → { メンバーID: 割当 }
+   ・ASG_BY_MEMBER … メンバーID → 割当の配列（新しい期が先）
+   ------------------------------------------------------------ */
+function computeTerms(){
+  TERMS=(A.terms||[]).slice().sort((a,b)=>String(b.starts_on).localeCompare(String(a.starts_on)));
+  const order={}; TERMS.forEach((t,i)=>order[t.id]=i);
+  ASG_BY_TERM={}; ASG_BY_MEMBER={};
+  (A.assignments||[]).forEach(a=>{
+    (ASG_BY_TERM[a.term_id]=ASG_BY_TERM[a.term_id]||{})[a.member_id]=a;
+    (ASG_BY_MEMBER[a.member_id]=ASG_BY_MEMBER[a.member_id]||[]).push(a);
+  });
+  Object.keys(ASG_BY_MEMBER).forEach(k=>
+    ASG_BY_MEMBER[k].sort((x,y)=>(order[x.term_id]==null?99:order[x.term_id])-(order[y.term_id]==null?99:order[y.term_id])));
+}
+function termById(id){ return TERMS.find(t=>t.id===id)||null; }
+function activeTerm(){ return TERMS.find(t=>t.status==='active')||null; }
+/* いま画面で選んでいる期。未選択なら 編成中 → いまの期 → 最新 の順で選ぶ */
+function currentTerm(){
+  if(V.term && termById(V.term)) return termById(V.term);
+  return TERMS.find(t=>t.status==='draft') || activeTerm() || TERMS[0] || null;
+}
+/* その期のひとつ前の期（開始日順で next） */
+function prevTermOf(t){
+  if(!t) return null;
+  const i=TERMS.findIndex(x=>x.id===t.id);
+  return i>=0? (TERMS[i+1]||null) : null;
+}
+function termLabel(t){
+  if(!t) return '—';
+  return t.name+'（'+fmtDateFull(t.starts_on)+(t.ends_on?'〜'+fmtDateFull(t.ends_on):'〜')+'）';
+}
+const TERM_STATUS={draft:['編成中','a'],active:['いまの期','v'],closed:['終了','g']};
+function termChip(t){
+  const x=TERM_STATUS[t.status]||TERM_STATUS.draft;
+  return '<span class="chip '+x[1]+'">'+x[0]+'</span>';
 }
 
 /* ---------- 担当（誰が対応するか） ---------- */
@@ -686,6 +739,7 @@ const TABS=[
   {k:'promo',  n:'昇格と詰まり',   i:'<path d="M12 20V7m0 0L6.5 12.5M12 7l5.5 5.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'},
   {k:'notes',  n:'申し送り・メモ',  i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
   {k:'scores', n:'テスト点数',     i:'<path d="M4 19.5V9m5 10.5V4.5m5 15V12m5 7.5V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
+  {k:'terms',  n:'期・ユニット編成', i:'<path d="M4 7.5h16M4 7.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7.5M4 7.5 6 4h12l2 3.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M9.5 12.5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>'},
   {k:'mtg',    n:'リーダーMTG',    i:'<circle cx="9" cy="9" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="16.5" cy="10.5" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M3.5 19.5c.9-3 3-4.6 5.5-4.6s4.6 1.6 5.5 4.6M15 19.5c.5-2 1.7-3.1 3.4-3.1 1.2 0 2.2.5 2.9 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
   {k:'settings',n:'設定',          i:'<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'}
 ];
@@ -1555,6 +1609,401 @@ async function importCSVText(text){
 /* ============================================================
    7. リーダーMTG用サマリ
    ============================================================ */
+/* ============================================================
+   6. 期・ユニット編成
+   ------------------------------------------------------------
+   半期ごとに編成が変わるのに、members.unit / ul / mentor は
+   1カラムしか無いので、上書きすると前期の情報が消えていた。
+   ここで「期」を作って、その期の割当を別に残す。
+   確定（apply_term）を押したときだけ、名簿の側に書き戻す。
+   ============================================================ */
+/* 編集中の割当を1人ぶん引く。まだ触っていなければ保存済みの値、
+   それも無ければ いまの名簿＋マイシートの稼働 を初期値にする。 */
+function asgOf(termId,r){
+  if(ASG_EDIT.termId===termId && ASG_EDIT.rows[r.id]) return ASG_EDIT.rows[r.id];
+  const saved=(ASG_BY_TERM[termId]||{})[r.id];
+  if(saved) return {
+    unit:saved.unit||'', ul:saved.ul||'', mentor:saved.mentor||'',
+    weekly_hours:saved.weekly_hours==null?'':String(saved.weekly_hours),
+    acc_std:saved.acc_std==null?'':String(saved.acc_std),
+    acc_adv:saved.acc_adv==null?'':String(saved.acc_adv), saved:true };
+  return {
+    unit:r.m.unit||'', ul:r.m.ul||'', mentor:r.m.mentor||'',
+    weekly_hours:r.work.hours==null?'':String(r.work.hours),
+    acc_std:r.work.accStd==null?'':String(r.work.accStd),
+    acc_adv:r.work.accAdv==null?'':String(r.work.accAdv), saved:false };
+}
+/* 描き直したあとに同じ欄へ焦点を戻せるよう、入力欄にはidを振っておく
+   （shared/ui.js の withFocus は id を手がかりにしている） */
+function asgId(r,k){ return 'asg_'+String(r.id).replace(/[^A-Za-z0-9_-]/g,'')+'_'+k; }
+function asgSet(termId,memberId,key,val){
+  if(ASG_EDIT.termId!==termId) ASG_EDIT={termId:termId,rows:{},dirty:false};
+  const r=BY_ID[memberId]; if(!r) return;
+  const cur=Object.assign({},asgOf(termId,r));
+  cur[key]=val;
+  ASG_EDIT.rows[memberId]=cur; ASG_EDIT.dirty=true;
+}
+/* 期のメンバー（卒業・退職した人は入れない） */
+function termMembers(){ return ROWS.filter(r=>r.role==='member'); }
+
+/* Unitごとの集計。編成のバランスを見るための数字をまとめて出す。
+   getUnit は「その人をどのUnitとして数えるか」を返す関数。 */
+function unitStats(list,getUnit){
+  const by={};
+  list.forEach(r=>{
+    const u=getUnit(r)||'（未設定）';
+    const o=by[u]=by[u]||{unit:u,members:[],hours:0,std:0,adv:0,junior:0,senior:0,
+                          promo:0,delayed:0,leaving:0,cats:{}};
+    o.members.push(r);
+    if(r.work.hours!=null) o.hours+=r.work.hours;
+    o.std+=r.work.accStd||0; o.adv+=r.work.accAdv||0;
+    if(r.cg<=2) o.junior++;
+    if(r.cg>=5) o.senior++;
+    if(r.readyPromo) o.promo++;
+    if(isDelayed(r)) o.delayed++;
+    const d=daysUntil(r.work.until);
+    if(d!=null && d>=0 && d<=183) o.leaving++;
+    (r.cats||[]).forEach(c=>{ const x=o.cats[c.k]=o.cats[c.k]||{n:c.n,d:0,t:0}; x.d+=c.d; x.t+=c.t; });
+  });
+  return Object.values(by).map(o=>{
+    o.n=o.members.length;
+    o.avgOverall=o.n? Math.round(o.members.reduce((a,r)=>a+r.overall,0)/o.n) : 0;
+    o.avgGrade=o.n? Math.round(o.members.reduce((a,r)=>a+r.cg,0)/o.n*10)/10 : 0;
+    /* 育成負荷比＝スターター／プレイヤー前半の人数 ÷ プロ以上の人数。
+       面倒を見られる人が足りているかの目安。senior が0なら「見る人がいない」 */
+    o.load = o.senior? Math.round(o.junior/o.senior*10)/10 : (o.junior? null : 0);
+    o.catList=Object.keys(o.cats).map(k=>({k:k,n:o.cats[k].n,
+      pct:o.cats[k].t? Math.round(o.cats[k].d/o.cats[k].t*100):0}));
+    return o;
+  }).sort((a,b)=>String(a.unit).localeCompare(String(b.unit),'ja'));
+}
+/* そのUnitに出す警告。編成の穴を、数字を読まなくても気づけるようにする */
+function unitWarnings(o){
+  const w=[];
+  if(!o.senior) w.push('プロ以上（G5+）が0人。アドバンス対応と面倒見を任せられる人がいません');
+  else if(o.load!=null && o.load>=2) w.push('育成負荷が高い（G1-2が'+o.junior+'人に対しG5+が'+o.senior+'人）');
+  if(o.leaving>=2) w.push('半年以内に'+o.leaving+'人が卒業・稼働終了の予定');
+  if(o.promo>=3) w.push('昇格面談の対象が'+o.promo+'人。面談が集中します');
+  /* 弱いカテゴリ。ぜんぶ弱い（＝まだ全員が新人）ときは、
+     並べても編成の判断材料にならないので出さない。
+     カテゴリ名に「・」が入るものがあるので、区切りは「／」にする。 */
+  const weak=o.catList.filter(c=>c.pct<=20).sort((a,b)=>a.pct-b.pct);
+  if(weak.length && weak.length<=Math.ceil(o.catList.length/2))
+    w.push('手がついていないカテゴリ：'+weak.slice(0,2).map(c=>c.n+'（'+c.pct+'%）').join('／'));
+  return w;
+}
+
+function vTerms(){
+  let h='<h1 class="h1 disp">期・ユニット編成</h1>'+
+    '<p class="lead">半期ごとの編成と、そのときの引き継ぎのための画面です。'+
+    '期をつくって割当を入れると、その期の所属・UL・稼働が履歴として残ります。'+
+    '<b>確定</b>を押すまで、いまの名簿は変わりません。</p>';
+
+  if(!Store.caps.terms){
+    return h+'<div class="card"><div class="empty" style="text-align:left;padding:20px 16px;line-height:2">'+
+      '<b style="font-size:14px;color:var(--ink)">この機能はまだ使えません</b><br>'+
+      '期（terms）と割当（assignments）の表がサーバーにありません。'+
+      '<b>supabase/schema.sql を貼り直す</b>と使えるようになります（SETUP.md 手順2）。<br>'+
+      '貼り直しても、いまのチェック・申し送り・テスト結果は消えません。</div></div>';
+  }
+
+  /* ---------- 期の一覧 ---------- */
+  const cur=currentTerm();
+  h+='<div class="card"><h2>期<span class="spacer"></span>'+
+    '<button class="btn vio sm" data-act="newTerm">＋ 新しい期をつくる</button></h2>';
+  if(!TERMS.length){
+    h+='<div class="empty" style="line-height:2">まだ期がありません。<br>'+
+      '「＋ 新しい期をつくる」から、いまの半期（例：2026上期）を作ってください。<br>'+
+      'いまの名簿をそのまま割当として取り込めます。</div>';
+  }else{
+    h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+      '<th class="nos nm">期</th><th class="nos">期間</th><th class="nos">状態</th>'+
+      '<th class="nos num">割当</th><th class="nos"></th></tr></thead><tbody>';
+    TERMS.forEach(t=>{
+      const n=Object.keys(ASG_BY_TERM[t.id]||{}).length;
+      h+='<tr'+(cur&&cur.id===t.id?' class="mine"':'')+'><td class="nm">'+
+        '<a class="lnk" href="#" data-act="pickTerm" data-id="'+t.id+'">'+esc(t.name)+'</a></td>'+
+        '<td class="tiny">'+fmtDateFull(t.starts_on)+' 〜 '+(t.ends_on?fmtDateFull(t.ends_on):'—')+'</td>'+
+        '<td>'+termChip(t)+'</td><td class="num mono">'+(n||'<span class="muted">0</span>')+'</td>'+
+        '<td><button class="btn ghost sm" data-act="delTerm" data-id="'+t.id+'">削除</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+
+  if(!cur) return h;
+
+  /* ---------- 選んでいる期の割当 ---------- */
+  const list=termMembers();
+  const saved=ASG_BY_TERM[cur.id]||{};
+  const savedN=Object.keys(saved).length;
+  const missing=list.filter(r=>!saved[r.id]).length;
+
+  h+='<div class="card"><h2>'+esc(cur.name)+' の割当 '+termChip(cur)+
+    '<span class="spacer"></span>'+
+    (missing? '<button class="btn ghost sm" data-act="seedTerm" data-id="'+cur.id+'">'+
+       'いまの名簿から'+missing+'人ぶん取り込む</button>' : '')+
+    '<button class="btn vio sm" data-act="saveAsg" data-id="'+cur.id+'">保存する</button></h2>'+
+    '<p class="tiny muted" style="margin:-4px 0 10px;line-height:1.9">'+
+    'ここを変えても、いまの名簿（メンバーの所属・UL）はまだ変わりません。'+
+    '下の「この期を確定する」を押したときに、はじめて書き戻されます。<br>'+
+    '週の稼働と担当社数の初期値は、本人がマイシートに入れた値です。</p>';
+
+  if(!list.length) h+='<div class="empty">メンバーがいません。</div>';
+  else{
+    const uls=ulNameOptions();
+    h+='<div class="tw"><table><thead><tr>'+
+      '<th class="nos nm">名前</th><th class="nos">いまの所属</th><th class="nos">この期のUnit</th>'+
+      '<th class="nos">UL</th><th class="nos">メンター</th>'+
+      '<th class="nos num">週の稼働</th><th class="nos num">ｽﾀﾝﾀﾞｰﾄﾞ</th><th class="nos num">ｱﾄﾞﾊﾞﾝｽ</th>'+
+      '</tr></thead><tbody>';
+    sorted(list).forEach(r=>{
+      const a=asgOf(cur.id,r);
+      const moved=normalizeUnit(a.unit)!==r.unit;
+      h+='<tr'+(moved?' class="mine"':'')+'><td class="nm">'+memberLink(r)+
+          ' '+gradeChip(r.cg)+'</td>'+
+        '<td class="tiny muted">'+esc(r.unit)+(r.m.ul?'／'+esc(r.m.ul):'')+'</td>'+
+        '<td><select id="'+asgId(r,'unit')+'" class="asg" data-act="asg" data-k="unit" data-id="'+r.id+'">'+
+          unitOptionsHTML(a.unit,rosterUnitValues())+'</select></td>'+
+        '<td><select id="'+asgId(r,'ul')+'" class="asg" data-act="asg" data-k="ul" data-id="'+r.id+'">'+
+          selectOptionsHTML(a.ul,uls)+'</select></td>'+
+        '<td><input id="'+asgId(r,'mentor')+'" class="asg" data-act="asg" data-k="mentor" data-id="'+r.id+'" type="text" '+
+          'list="dlMentorT" value="'+esc(a.mentor)+'"></td>'+
+        '<td class="num"><input id="'+asgId(r,'weekly_hours')+'" class="asg num" data-act="asg" data-k="weekly_hours" data-id="'+r.id+'" '+
+          'type="number" min="0" max="80" value="'+esc(a.weekly_hours)+'"></td>'+
+        '<td class="num"><input id="'+asgId(r,'acc_std')+'" class="asg num" data-act="asg" data-k="acc_std" data-id="'+r.id+'" '+
+          'type="number" min="0" max="20" value="'+esc(a.acc_std)+'"></td>'+
+        '<td class="num"><input id="'+asgId(r,'acc_adv')+'" class="asg num" data-act="asg" data-k="acc_adv" data-id="'+r.id+'" '+
+          'type="number" min="0" max="20" value="'+esc(a.acc_adv)+'"></td></tr>';
+    });
+    h+='</tbody></table></div>'+
+      '<datalist id="dlMentorT">'+currentCharges('mentor').map(u=>'<option value="'+esc(u)+'">').join('')+'</datalist>';
+  }
+  h+='<p class="tiny muted" style="margin:10px 0 0">'+
+    (savedN? savedN+'人ぶんが保存済みです。' : 'まだ保存されていません。')+
+    (ASG_EDIT.termId===cur.id&&ASG_EDIT.dirty? ' <b style="color:var(--coral)">未保存の変更があります。</b>':'')+
+    '色が付いている行は、いまの所属から動く人です。</p>';
+  h+='</div>';
+
+  /* ---------- 新しい編成のバランス ---------- */
+  const stats=unitStats(list,r=>normalizeUnit(asgOf(cur.id,r).unit)||'（未設定）');
+  h+=unitBalanceHTML(stats,'この編成のバランス','下の表は、上の割当をそのまま集計したものです。動かすと数字も変わります。');
+
+  /* ---------- 前の期との差分 ---------- */
+  h+=termDiffHTML(cur);
+
+  /* ---------- 確定 ---------- */
+  h+='<div class="card"><h2>この期を確定する</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px;line-height:1.9">'+
+    '<b>'+esc(cur.name)+'</b> の割当を、いまの名簿（メンバーの所属・UL・メンター）に書き戻します。'+
+    'この期が「いまの期」になり、ほかの期は終了になります。<br>'+
+    '所属やULが変わる人には、申し送り（本人にも見える「申し送り」種別）が1件ずつ残ります。<br>'+
+    '前の期の割当は消えません。あとから履歴として見られます。</p>'+
+    '<button class="btn vio" data-act="applyTerm" data-id="'+cur.id+'">'+
+      esc(cur.name)+' を確定して名簿に反映する</button></div>';
+  return h;
+}
+
+/* Unitごとのバランス表。編成タブでも、あとの棚卸しでも使う */
+function unitBalanceHTML(stats,title,lead){
+  let h='<div class="card"><h2>'+esc(title)+'</h2>'+
+    (lead?'<p class="tiny muted" style="margin:-4px 0 10px">'+esc(lead)+'</p>':'');
+  if(!stats.length) return h+'<div class="empty">—</div></div>';
+  const mxH=Math.max(1,...stats.map(o=>o.hours));
+  h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">Unit</th><th class="nos num">人数</th>'+
+    '<th class="nos">グレードの分布</th>'+
+    '<th class="nos num" title="週の稼働時間の合計">合計稼働</th>'+
+    '<th class="nos num" title="スタンダード／アドバンスの担当社数">担当社数</th>'+
+    '<th class="nos num" title="G1-2の人数 ÷ G5以上の人数。2.0を超えると面倒を見きれません">育成負荷</th>'+
+    '<th class="nos num">昇格対象</th><th class="nos num">遅れ</th>'+
+    '</tr></thead><tbody>';
+  stats.forEach(o=>{
+    h+='<tr><td class="nm">'+esc(o.unit)+'</td><td class="num mono">'+o.n+'</td>'+
+      '<td>'+tierBarHTML(o.members)+'</td>'+
+      '<td class="num"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
+        '<span class="mini" style="min-width:40px"><i style="width:'+Math.round(o.hours/mxH*100)+'%;background:var(--sky)"></i></span>'+
+        '<b class="mono">'+(o.hours||0)+'h</b></div></td>'+
+      '<td class="num mono">'+(o.std+o.adv)+'<span class="tiny muted">（'+o.std+'/'+o.adv+'）</span></td>'+
+      '<td class="num">'+(o.load==null? '<span class="chip c">G5+が0</span>'
+        : '<span class="'+(o.load>=2?'chip a':'mono')+'">'+o.load.toFixed(1)+'</span>')+'</td>'+
+      '<td class="num">'+(o.promo||'<span class="muted">0</span>')+'</td>'+
+      '<td class="num">'+(o.delayed?'<span class="chip a">'+o.delayed+'</span>':'<span class="muted">0</span>')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  /* 警告 */
+  const warns=stats.map(o=>({u:o.unit,w:unitWarnings(o)})).filter(x=>x.w.length);
+  if(warns.length){
+    h+='<div style="margin-top:12px;display:flex;flex-direction:column;gap:7px">';
+    warns.forEach(x=>{ x.w.forEach(msg=>{
+      h+='<div class="banner" style="margin:0;background:var(--coral-soft);border-color:#F5CBD3">'+
+        '<span>⚠️</span><div><b>'+esc(x.u)+'</b>　'+esc(msg)+'</div></div>';
+    }); });
+    h+='</div>';
+  }else{
+    h+='<p class="tiny muted" style="margin:10px 0 0">目立った偏りはありません。</p>';
+  }
+  return h+'</div>';
+}
+/* グレード帯（スターター／プレイヤー／プロ／リーダー／エグゼ）の色帯。
+   平均グレードより分布のほうが、編成の判断には効く。 */
+function tierBarHTML(members){
+  const keys=['starter','player','pro','leader','exec'];
+  const cnt={}; keys.forEach(k=>cnt[k]=0);
+  members.forEach(r=>{ cnt[GRADES[r.cg-1].tier]++; });
+  const n=members.length||1;
+  let h='<span class="tierbar" title="'+keys.map(k=>TIERS[k].name+' '+cnt[k]).join(' / ')+'">';
+  keys.forEach(k=>{ if(cnt[k]) h+='<i style="width:'+(cnt[k]/n*100)+'%;background:'+TIERS[k].hex+'">'+cnt[k]+'</i>'; });
+  return h+'</span>';
+}
+/* 前の期との差分。引き継ぎの単位はここで決まる */
+function termDiffHTML(t){
+  const prev=prevTermOf(t);
+  const cur=ASG_BY_TERM[t.id]||{};
+  let h='<div class="card"><h2>前の期との差分 '+
+    '<span class="cnt">'+(prev? esc(prev.name)+' → '+esc(t.name) : 'いまの名簿 → '+esc(t.name))+'</span></h2>';
+  const from = prev? (ASG_BY_TERM[prev.id]||{}) : null;
+  const rows=[];
+  termMembers().forEach(r=>{
+    const a=asgOf(t.id,r);
+    const before = from? (from[r.id]||null) : {unit:r.m.unit,ul:r.m.ul,mentor:r.m.mentor};
+    const bu=normalizeUnit(before&&before.unit)||'（未設定）', au=normalizeUnit(a.unit)||'（未設定）';
+    const bl=String((before&&before.ul)||'').trim(), al=String(a.ul||'').trim();
+    if(bu!==au || bl!==al) rows.push({r:r,bu:bu,au:au,bl:bl,al:al,isNew:!before});
+  });
+  if(!rows.length) h+='<div class="empty">Unit・ULが変わる人はいません。</div>';
+  else{
+    h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+      '<th class="nos nm">名前</th><th class="nos">Unit</th><th class="nos">UL</th>'+
+      '</tr></thead><tbody>';
+    rows.forEach(x=>{
+      h+='<tr><td class="nm">'+memberLink(x.r)+(x.isNew?' <span class="chip v">新規</span>':'')+'</td>'+
+        '<td class="tiny">'+(x.bu!==x.au? esc(x.bu)+' <b>→</b> '+esc(x.au) : '<span class="muted">'+esc(x.au)+'</span>')+'</td>'+
+        '<td class="tiny">'+(x.bl!==x.al? esc(x.bl||'—')+' <b>→</b> '+esc(x.al||'—') : '<span class="muted">'+esc(x.al||'—')+'</span>')+'</td></tr>';
+    });
+    h+='</tbody></table></div>'+
+      '<p class="tiny muted" style="margin:10px 0 0">'+rows.length+'人が動きます。'+
+      '確定すると、この人たちに申し送りが1件ずつ残ります。</p>';
+  }
+  return h+'</div>';
+}
+
+/* ------------------------------------------------------------
+   期の作成・取り込み・保存・確定
+   ------------------------------------------------------------ */
+/* 「2026上期」のような名前を、いまの日付から作っておく */
+function suggestTermName(d){
+  const t=d||new Date();
+  return t.getFullYear()+(t.getMonth()<6?'上期':'下期');
+}
+function halfRange(d){
+  const t=d||new Date(), y=t.getFullYear(), first=t.getMonth()<6;
+  return first? {s:y+'-01-01',e:y+'-06-30'} : {s:y+'-07-01',e:y+'-12-31'};
+}
+async function newTermFlow(){
+  const def=suggestTermName();
+  const name=prompt('期の名前を入れてください（例：'+def+'）',def);
+  if(name==null) return;
+  if(!String(name).trim()){ toast('名前を入れてください','bad'); return; }
+  if(TERMS.some(t=>t.name===String(name).trim())){ toast('同じ名前の期がすでにあります','bad'); return; }
+  const r=halfRange();
+  const starts=prompt('開始日（YYYY-MM-DD）',r.s); if(starts==null) return;
+  const ends=prompt('終了日（YYYY-MM-DD・空でもOK）',r.e);
+  try{
+    const t=await Store.createTerm({name:String(name).trim(),starts_on:starts,ends_on:ends||null});
+    await loadAll();
+    V.term=t&&t.id||''; ASG_EDIT={termId:'',rows:{},dirty:false};
+    render();
+    toast('期をつくりました。「いまの名簿から取り込む」で割当の下地を作れます','xp',6000);
+  }catch(e){ toast(e.message||'作成に失敗しました','bad',6000); }
+}
+async function delTermFlow(id){
+  const t=termById(id); if(!t) return;
+  const n=Object.keys(ASG_BY_TERM[id]||{}).length;
+  if(!confirm(t.name+' を削除します。\n\nこの期の割当'+n+'件も一緒に消えます。元に戻せません。\n'+
+    'メンバーのチェック・申し送り・テスト結果は消えません。\n\nよろしいですか？')) return;
+  try{
+    await Store.deleteTerm(id);
+    if(V.term===id) V.term='';
+    ASG_EDIT={termId:'',rows:{},dirty:false};
+    await loadAll(); render(); toast('削除しました');
+  }catch(e){ toast(e.message||'削除に失敗しました','bad'); }
+}
+/* いまの名簿とマイシートの稼働を、その期の割当の下地として保存する */
+async function seedTermFlow(id){
+  const t=termById(id); if(!t) return;
+  const saved=ASG_BY_TERM[id]||{};
+  const rows=termMembers().filter(r=>!saved[r.id]).map(r=>({
+    term_id:id, member_id:r.id,
+    unit:r.m.unit||null, ul:r.m.ul||null, mentor:r.m.mentor||null,
+    weekly_hours:r.work.hours, acc_std:r.work.accStd, acc_adv:r.work.accAdv
+  }));
+  if(!rows.length){ toast('取り込む人がいません'); return; }
+  try{
+    await Store.saveAssignments(rows);
+    ASG_EDIT={termId:'',rows:{},dirty:false};
+    await loadAll(); render(); toast(rows.length+'人ぶんを取り込みました');
+  }catch(e){ toast(e.message||'取り込みに失敗しました','bad',6000); }
+}
+/* 画面で編集した割当をまとめて保存する（まだ名簿には反映しない） */
+async function saveAsgFlow(id){
+  const t=termById(id); if(!t) return;
+  const num=v=>{ const x=String(v==null?'':v).trim(); if(!x) return null; const n=+x; return isNaN(n)?null:n; };
+  const rows=termMembers().map(r=>{
+    const a=asgOf(id,r);
+    return { term_id:id, member_id:r.id,
+      unit:a.unit||null, ul:a.ul||null, mentor:a.mentor||null,
+      weekly_hours:num(a.weekly_hours), acc_std:num(a.acc_std), acc_adv:num(a.acc_adv) };
+  });
+  try{
+    await Store.saveAssignments(rows);
+    ASG_EDIT={termId:'',rows:{},dirty:false};
+    await loadAll(); render(); toast(rows.length+'人ぶんを保存しました');
+  }catch(e){ toast(e.message||'保存に失敗しました','bad',6000); }
+}
+/* 期を確定する。名簿に書き戻し、動いた人には申し送りを1件ずつ残す */
+async function applyTermFlow(id){
+  const t=termById(id); if(!t) return;
+  if(ASG_EDIT.termId===id && ASG_EDIT.dirty){
+    if(!confirm('未保存の変更があります。先に保存してから確定しますか？')) return;
+    await saveAsgFlow(id);
+  }
+  /* 確定前に、誰がどう動くかをそのまま文にして確認する */
+  const moves=[];
+  termMembers().forEach(r=>{
+    const a=(ASG_BY_TERM[id]||{})[r.id]; if(!a) return;
+    const bu=r.unit, au=normalizeUnit(a.unit)||'（未設定）';
+    const bl=String(r.m.ul||'').trim(), al=String(a.ul||'').trim();
+    if(bu!==au||bl!==al) moves.push({r:r,bu:bu,au:au,bl:bl,al:al});
+  });
+  const head=t.name+' を確定します。\n\n'+
+    'いまの名簿の 所属Unit・UL・メンター が、この期の割当で置き換わります。\n'+
+    (moves.length? moves.length+'人が動きます：\n'+
+      moves.slice(0,12).map(m=>'  '+m.r.name+'：'+
+        (m.bu!==m.au? m.bu+'→'+m.au : m.au)+
+        (m.bl!==m.al? '／UL '+(m.bl||'—')+'→'+(m.al||'—') : ''))
+        .join('\n')+(moves.length>12?'\n  ほか'+(moves.length-12)+'人':'')
+    : '所属とULが変わる人はいません。')+
+    '\n\n前の期の割当は消えません。よろしいですか？';
+  if(!confirm(head)) return;
+  try{
+    const n=await Store.applyTerm(id);
+    /* 動いた人に申し送りを残す。あとから「いつ誰から誰に移ったか」を追えるように */
+    for(const m of moves){
+      const parts=[];
+      if(m.bu!==m.au) parts.push('所属が '+m.bu+' から '+m.au+' に変わりました');
+      if(m.bl!==m.al) parts.push('ULが '+(m.bl||'未設定')+' から '+(m.al||'未設定')+' に変わりました');
+      try{
+        await Store.addNote({ member_id:m.r.id, kind:'handover', occurred_on:todayStr(),
+          body:'【'+t.name+'】'+parts.join('。')+'。', visibility:'shared' });
+      }catch(e){}
+    }
+    ASG_EDIT={termId:'',rows:{},dirty:false};
+    await loadAll(); render();
+    toast(t.name+' を確定しました（'+n+'人に反映）','xp',6000);
+  }catch(e){ toast(e.message||'確定に失敗しました','bad',6000); }
+}
+
 function vMtg(){
   const us=unitsInUse();
   const unit=V.mtgUnit||us[0]||'';
@@ -1760,6 +2209,30 @@ function dwWorkCard(r){
   return h+'</div>';
 }
 /* ------------------------------------------------------------
+   所属の履歴。members.unit は上書きされてしまうので、
+   期ごとの割当（assignments）から「どこで誰の下にいたか」を出す。
+   引き継ぎで最初に聞かれるのがここ。
+   ------------------------------------------------------------ */
+function dwHistoryCard(r){
+  const list=ASG_BY_MEMBER[r.id]||[];
+  if(!Store.caps.terms) return '';
+  let h='<div class="card"><h2>所属の履歴 <span class="cnt">期ごとの所属とUL</span></h2>';
+  if(!list.length) return h+'<div class="empty">まだ期の割当がありません。<br>'+
+    '「期・ユニット編成」タブで期をつくると、ここに残るようになります。</div></div>';
+  h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">期</th><th class="nos">Unit</th><th class="nos">UL</th>'+
+    '<th class="nos">メンター</th><th class="nos num">稼働</th></tr></thead><tbody>';
+  list.forEach(a=>{
+    const t=termById(a.term_id);
+    h+='<tr><td class="nm">'+esc(t?t.name:'—')+' '+(t?termChip(t):'')+'</td>'+
+      '<td>'+esc(normalizeUnit(a.unit)||'—')+'</td>'+
+      '<td class="tiny">'+esc(a.ul||'—')+'</td>'+
+      '<td class="tiny">'+esc(a.mentor||'—')+'</td>'+
+      '<td class="num mono">'+(a.weekly_hours==null?'—':a.weekly_hours+'h')+'</td></tr>';
+  });
+  return h+'</tbody></table></div></div>';
+}
+/* ------------------------------------------------------------
    進捗の推移。progress.checked_at はこれまで「最終更新日」を出すためだけに
    使っていたが、月ごとに数えれば「3ヶ月前から止まっている」「先月から急に
    伸びた」が読める。引き継ぎで「最近どうだったか」を聞かれたときの答え。
@@ -1819,7 +2292,7 @@ function dwSummary(r){
   (alertsOf(r).length? '<div style="margin-top:10px">'+alertsOf(r).map(alertChip).join(' ')+'</div>' : '')+
   '</div>';
 
-  h+=dwVoiceCard(r)+dwWorkCard(r)+dwCatCard(r)+dwTrendCard(r);
+  h+=dwVoiceCard(r)+dwWorkCard(r)+dwHistoryCard(r)+dwCatCard(r)+dwTrendCard(r);
 
   /* アタリマエは読むだけ。判定の入力は「チェック」タブに置いてある */
   const am=r.state.atarimae||{};
@@ -2213,7 +2686,8 @@ function vSettings(){
   h+='<div class="card"><h2>この環境で使える機能</h2><div class="tiny muted">'+
     [['チェックの保存（関数経由）',caps.rpcCheck],
      ['ログイン画面の名前検索',caps.rosterSearch],
-     ['しきい値の共有',caps.settings]]
+     ['しきい値の共有',caps.settings],
+     ['期・ユニット編成（履歴を残す）',caps.terms]]
     .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/schema.sql の貼り直しで有効になります）')+'</div>').join('')+
     '</div></div>';
   return h;
@@ -2231,6 +2705,7 @@ function render(){
   else if(V.tab==='promo')  v.innerHTML=vPromo();
   else if(V.tab==='notes')  v.innerHTML=vNotes();
   else if(V.tab==='scores') v.innerHTML=vScores();
+  else if(V.tab==='terms')  v.innerHTML=vTerms();
   else if(V.tab==='settings')v.innerHTML=vSettings();
   else                      v.innerHTML=vMtg();
   renderNav();
@@ -2305,6 +2780,13 @@ document.addEventListener('click',async e=>{
       await loadAll(); renderDrawer(); render();
     }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
   }
+  /* ---------- 期・ユニット編成 ---------- */
+  else if(a==='pickTerm'){ V.term=el.dataset.id; ASG_EDIT={termId:'',rows:{},dirty:false}; render(); window.scrollTo(0,0); }
+  else if(a==='newTerm'){ await newTermFlow(); }
+  else if(a==='delTerm'){ await delTermFlow(el.dataset.id); }
+  else if(a==='seedTerm'){ await seedTermFlow(el.dataset.id); }
+  else if(a==='saveAsg'){ await saveAsgFlow(el.dataset.id); }
+  else if(a==='applyTerm'){ await applyTermFlow(el.dataset.id); }
   else if(a==='hoField'){ HANDOVER={ field:el.dataset.f, froms:[], to:'' }; render(); }
   else if(a==='hoFrom'){
     const n=el.dataset.n, i=HANDOVER.froms.indexOf(n);
@@ -2464,6 +2946,19 @@ document.addEventListener('click',async e=>{
     window.addEventListener('afterprint',off);
     setTimeout(()=>{ window.print(); setTimeout(off,1500); },40);
   }
+});
+/* 割当表の入力。1文字ごとに描き替えるとカーソルが飛ぶので、
+   メモリだけ更新し、select（Unit・UL）を変えたときだけ集計を描き直す。 */
+document.addEventListener('input',e=>{
+  const el=e.target.closest('[data-act="asg"]'); if(!el) return;
+  const t=currentTerm(); if(!t) return;
+  asgSet(t.id,el.dataset.id,el.dataset.k,el.value);
+});
+document.addEventListener('change',e=>{
+  const el=e.target.closest('[data-act="asg"]'); if(!el) return;
+  const t=currentTerm(); if(!t) return;
+  asgSet(t.id,el.dataset.id,el.dataset.k,el.value);
+  if(el.dataset.k==='unit'||el.dataset.k==='ul') render();
 });
 document.getElementById('scrim').onclick=()=>{ closeDrawer(); };
 document.addEventListener('keydown',e=>{
