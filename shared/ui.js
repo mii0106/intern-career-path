@@ -91,6 +91,40 @@ function selectOptionsHTML(value,list){
    extra には名簿にある値を渡す（config.js に書き忘れたUnitを拾うため）。 */
 function unitOptionsHTML(value,extra){ return selectOptionsHTML(normalizeUnit(value),unitOptions(extra)); }
 
+/* ============================================================
+   いまの稼働 — 週の稼働時間・担当アカウント数・卒業予定・得意領域
+   ------------------------------------------------------------
+   member_state.custom.__work に入れている（テーブル追加が要らないので、
+   SQLを貼り直さなくてもその日から使える）。
+
+   グレードと進捗率だけではユニット編成の判断材料にならない。
+   キャリアステップ定義そのものが、UL業務のアカウント差配について
+   「勤務時間・スキル・アカウント数字・求められていることの理解などを鑑みる」
+   と書いているので、その4つを持てるようにしてある。
+   ============================================================ */
+const WORK_KEY='__work';
+function workOf(custom){
+  const w=(custom&&custom[WORK_KEY])||{};
+  const num=v=>{ if(v===''||v==null) return null; const n=+v; return isNaN(n)?null:n; };
+  return {
+    hours:  num(w.hours),                                   // 週の稼働時間（目安）
+    accStd: num(w.accStd),                                  // スタンダード運用の社数
+    accAdv: num(w.accAdv),                                  // アドバンス運用の社数
+    until:  String(w.until||''),                            // 卒業・稼働終了の予定
+    skills: Array.isArray(w.skills)? w.skills.filter(Boolean) : []
+  };
+}
+function skillTags(){ return ((window.STEP_CONFIG||{}).SKILL_TAGS)||[]; }
+function workFilled(w){ return !!(w.hours!=null||w.accStd!=null||w.accAdv!=null||w.until||w.skills.length); }
+function accTotal(w){ return (w.accStd||0)+(w.accAdv||0); }
+/* 卒業・稼働終了まで何日か。過ぎていれば負の数 */
+function daysUntil(d){
+  if(!d) return null;
+  const t=new Date(String(d).slice(0,10)+'T00:00:00');
+  if(isNaN(t)) return null;
+  return Math.round((t.getTime()-new Date().setHours(0,0,0,0))/864e5);
+}
+
 function star(cx,cy,r,f){
   return '<path d="M'+cx+' '+(cy-r)+' L'+(cx+r*0.32)+' '+(cy-r*0.32)+' L'+(cx+r)+' '+cy+' L'+(cx+r*0.32)+' '+(cy+r*0.32)+' L'+cx+' '+(cy+r)+' L'+(cx-r*0.32)+' '+(cy+r*0.32)+' L'+(cx-r)+' '+cy+' L'+(cx-r*0.32)+' '+(cy-r*0.32)+' Z" fill="'+f+'"/>';
 }

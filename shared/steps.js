@@ -365,14 +365,24 @@ function gDone(checks,gn){ return ITEMS[gn].filter(i=>checks[i.id]).length; }
 function gIsDone(checks,gn){ return gDone(checks,gn)===gTotal(gn); }
 function gPct(checks,gn){ return Math.round(gDone(checks,gn)/gTotal(gn)*100); }
 function gradeOf(id){ return +id.slice(1).split('.')[0]; }
-/* 挑戦中のグレード＝まだ埋まりきっていない最も低いグレード */
-function gCurrentGrade(checks){ for(const g of GRADES){ if(!gIsDone(checks,g.n)) return g.n; } return 10; }
+/* 挑戦中のグレード。
+   「まだ埋まりきっていない最も低いグレード」だが、社内で認定されている
+   グレードより下は探しにいかない。
+   認定G5の人がG1のチェックを付け忘れていると挑戦中がG1になり、
+   そこから逆算する昇格予定・遅れが実態とかけ離れた値になっていたため。
+   認定グレードは「そこまでは社内が認めている」という宣言なので、
+   それより下は埋まっている扱いにする。 */
+function gCurrentGrade(checks,certified){
+  const from=Math.max(1,+certified||1);
+  for(let n=from;n<=GRADES.length;n++){ if(!gIsDone(checks,n)) return n; }
+  return GRADES.length;
+}
 /* ロック：ひとつ下のグレードが埋まっていれば開く。
    加えて「社内で認定されているグレード」以下は最初から開いている。
    在籍が長い人に、終わったはずの下位グレードを埋め直させないため。 */
 function gIsLocked(checks,gn,certified){
   if(certified && gn<=+certified) return false;
-  return gn>gCurrentGrade(checks);
+  return gn>gCurrentGrade(checks,certified);
 }
 /* 認定グレード以下＝すでに社内で認定されている範囲（画面で印を出すのに使う） */
 function gIsCertified(gn,certified){ return !!(certified && gn<=+certified); }
@@ -388,8 +398,16 @@ function checksOf(raw){
   Object.keys(raw||{}).forEach(k=>{ if(raw[k]) all[k]=true; });
   return all;
 }
-function gClearedCount(checks){ return GRADES.filter(g=>gIsDone(checks,g.n)).length; }
-function gStage(checks){ return Math.min(gClearedCount(checks)+1,10); }
+/* 完了したグレード数＝挑戦中グレードのひとつ下まで。
+   「埋まっているグレードを数える」やり方だと、G5だけ飛び飛びで終えた人が
+   1 と数えられ、認定G1なら昇格面談の対象として拾われてしまっていた。
+   挑戦中グレードから引く形にすると、認定ぶんと連続して埋めたぶんが
+   そのまま「どこまで到達しているか」になる。 */
+function gClearedCount(checks,certified){
+  const cg=gCurrentGrade(checks,certified);
+  return (cg===GRADES.length && gIsDone(checks,GRADES.length)) ? GRADES.length : cg-1;
+}
+function gStage(checks,certified){ return Math.min(gClearedCount(checks,certified)+1,10); }
 function gTotalChecked(checks){ return ALL_ITEMS.filter(i=>checks[i.id]).length; }
 function gOverallPct(checks){ return Math.round(gTotalChecked(checks)/TOTAL_ITEMS*100); }
 function tierOf(gn){ return TIERS[GRADES[gn-1].tier]; }
@@ -406,6 +424,37 @@ function visStats(checks,gn){
   const its=ITEMS[gn].filter(i=>i.id.split('.')[1]==='v');
   return {t:its.length, d:its.filter(i=>checks[i.id]).length};
 }
+/* ============================================================
+   カテゴリ別の達成率
+   ------------------------------------------------------------
+   グレードは「どこまで来たか」しか分からないので、
+   「この人は運用は強いが組織運営が弱い」を見るための軸を別に作る。
+   項目の cat（セクション見出し）を CATS の頭文字で引き当てて集計する。
+   数えるのは Grade 1 〜 maxGrade。まだ開いていない上のグレードまで
+   分母に入れると、全員がほぼ0%になって比較にならないため。
+   ============================================================ */
+function catOf(it){
+  return CATS.find(c=> c.k==='vision' ? !!it.vision
+                                      : (!it.vision && String(it.cat).indexOf(c.k)===0)) || null;
+}
+function catStats(checks,maxGrade){
+  const lim=Math.max(1,Math.min(GRADES.length,+maxGrade||GRADES.length));
+  const out=CATS.map(c=>({k:c.k,n:c.n,d:0,t:0}));
+  const byKey={}; out.forEach(o=>byKey[o.k]=o);
+  for(let n=1;n<=lim;n++){
+    ITEMS[n].forEach(it=>{
+      const c=catOf(it); if(!c) return;
+      const o=byKey[c.k]; o.t++; if(checks[it.id]) o.d++;
+    });
+  }
+  return out.filter(o=>o.t>0).map(o=>{ o.pct=Math.round(o.d/o.t*100); return o; });
+}
+/* カルテで見せる用。「なりたい姿」は各グレードの要約で、
+   強み弱みの軸としては読みにくいので外す。 */
+function catProfile(checks,maxGrade){
+  return catStats(checks,maxGrade).filter(c=>c.k!=='vision');
+}
+
 /* ------------------------------------------------------------
    項目が属するセクション（「スタンス」「タスク管理」など）を引く。
    グレード全体は長いので、セクションを1つ埋めたところで小さく褒めるのに使う。
@@ -456,7 +505,7 @@ function addMonths(dateStr,months){
 }
 /* 昇格見込み：挑戦中グレードを終える標準時期と、そこからの遅れ月数 */
 function promotionOutlook(member,checks,now){
-  const cg=gCurrentGrade(checks);
+  const cg=gCurrentGrade(checks,member&&member.certified_grade);
   const pm=periodMonths(cg);
   const elapsed=monthsSince(member.join_date,now);
   const target=member.promotion_target || addMonths(member.join_date,pm);
@@ -465,8 +514,8 @@ function promotionOutlook(member,checks,now){
   return {grade:cg, targetDate:target, standardMonths:pm, elapsedMonths:elapsed==null?null:Math.round(elapsed*10)/10, delayMonths:delay};
 }
 /* 詰まっている項目：挑戦中グレードの未チェック項目をカテゴリごとにまとめて返す */
-function stuckItems(checks,limit){
-  const cg=gCurrentGrade(checks);
+function stuckItems(checks,limit,certified){
+  const cg=gCurrentGrade(checks,certified);
   const rest=ITEMS[cg].filter(i=>!checks[i.id]);
   return limit?rest.slice(0,limit):rest;
 }

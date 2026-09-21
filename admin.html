@@ -137,6 +137,15 @@ tbody tr:hover td.st{background:#FBFAFF}
 .note .hdr{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:3px}
 .note .body{white-space:pre-wrap;word-break:break-word;font-size:12.5px}
 .note .na{margin-top:5px;font-size:11.5px;background:var(--amber-soft);border-radius:8px;padding:6px 9px;white-space:pre-wrap}
+/* 本人がマイシートに書いた文をそのまま出すブロック（カルテで使う） */
+.quote{font-size:12px;line-height:1.8;background:var(--violet-soft);border-radius:9px;
+  padding:7px 10px;white-space:pre-wrap;word-break:break-word;margin:0 0 6px}
+.quote.warn{background:var(--amber-soft)}
+.quote b{font-weight:800;color:var(--ink2);margin-right:5px}
+/* カテゴリ別の達成率の1行 */
+.cbar{display:flex;align-items:center;gap:10px}
+.cbar .cl{width:118px;flex:0 0 auto;font-size:12px;font-weight:700}
+.cbar .cn{width:74px;text-align:right;font-size:11.5px}
 .note .acts{opacity:0;transition:.14s;display:flex;gap:6px;margin-left:auto}
 .note:hover .acts{opacity:1}
 .note .acts button{font-size:11px;color:var(--ink2);text-decoration:underline}
@@ -259,7 +268,28 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
   .bar input[type=search]{min-width:0;flex:1}
   .act-n{flex-basis:48px;font-size:15px}
 }
-@media print{aside,.bar,.dw-close{display:none}#shell{grid-template-columns:1fr}.tw{max-height:none}}
+/* 進捗の推移（月ごとに何項目チェックが入ったか） */
+.spark{display:flex;align-items:flex-end;gap:5px;height:56px}
+.spark div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;height:100%}
+.spark i{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--violet);min-height:2px}
+.spark i.zero{background:#E6E3F4}
+.spark span{font-size:9.5px;color:var(--ink3);line-height:1;white-space:nowrap}
+/* カルテの小見出し付きブロック */
+.kv{display:flex;flex-wrap:wrap;gap:6px 18px}
+.kv > div{min-width:118px}
+.kv b.v{font-size:14px}
+@media print{aside,.bar,.dw-close{display:none}#shell{grid-template-columns:1fr}.tw{max-height:none}
+  /* カルテ1人ぶんを印刷するとき（body.pdw）。ドロワーだけを紙に出す */
+  /* #shell は起動時に style="display:grid" を直接書き込んでいるので !important が要る */
+  body.pdw #shell,body.pdw #scrim{display:none !important}
+  body.pdw #drawer{position:static;width:auto;max-width:none;height:auto;transform:none;box-shadow:none;border:0}
+  body.pdw .dw-body{overflow:visible;max-height:none;height:auto;padding:0}
+  body.pdw .dw-head{position:static;padding:0 0 10px;border-bottom:1.5px solid #ccc}
+  body.pdw .dw-tabs,body.pdw .dw-print{display:none}
+  /* 紙に押せないボタンを残さない（チェック欄の .item は残す） */
+  body.pdw .dw-body .btn,body.pdw .dw-body button.lnk{display:none}
+  body.pdw .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none;border:1px solid #ddd}
+}
 </style>
 </head>
 <body>
@@ -499,12 +529,18 @@ function compute(){
     const raw=A.progress[m.id]||{};
     /* 承認はないので、チェックが入っていればそのまま達成として数える。 */
     const checks=checksOf(raw);
-    const cg=gCurrentGrade(checks), cleared=gClearedCount(checks);
+    const certified=m.certified_grade||null;
+    const cg=gCurrentGrade(checks,certified), cleared=gClearedCount(checks,certified);
     const st=A.states[m.id]||{};
     const notes=(notesBy[m.id]||[]).slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on)));
     const scores=(scoresBy[m.id]||[]);
     let last=null;
     Object.keys(raw).forEach(k=>{ const v=raw[k]; if(v&&v!==true&&(!last||String(v)>String(last))) last=v; });
+    /* 「動きなし」の判定には、チェックだけでなく申し送りの記録日も数える。
+       面談して記録を残しているのに「しばらく動きなし」と出るのはおかしいため。 */
+    let lastAct=last? String(last).slice(0,10) : null;
+    notes.forEach(n=>{ const d=String(n.occurred_on||'').slice(0,10);
+      if(d && (!lastAct || d>lastAct)) lastAct=d; });
     const outlook=promotionOutlook(m,checks,now);
     const atarimae=st.atarimae||{};
     return {
@@ -515,23 +551,37 @@ function compute(){
       noCharge: !(String(m.ul||'').trim() || String(m.mentor||'').trim()),
       checks:checks, raw:raw,
       concern:(st.custom&&st.custom.__concern)||'',
+      /* 本人がマイシートに書いたもの。これまで管理者側で一度も表示しておらず、
+         引き継ぎでいちばん効く情報が使われずに捨てられていた。 */
+      buddy: st.buddy||'',
+      /* いまの稼働（週の稼働時間・担当社数・卒業予定・得意領域）。
+         本人がマイシートで申告し、UL側もカルテの「設定」から直せる。 */
+      work: workOf(st.custom),
+      goals: Object.assign({basic:'',skill:''},st.goals||{}),
+      creed: (Array.isArray(st.creed)?st.creed:[]).filter(c=>c&&String(c.t||'').trim()),
       state:st,
       cg:cg, cleared:cleared, done:gDone(checks,cg), total:gTotal(cg), pct:gPct(checks,cg),
       overall:gOverallPct(checks), checked:gTotalChecked(checks),
-      certified:m.certified_grade||null,
+      certified:certified,
       outlook:outlook,
       months: outlook.elapsedMonths,
       delay: outlook.delayMonths,
       lastCheck:last, stale: last? daysAgo(last) : null,
+      /* 申し送りは未来日でも登録できるので、負の日数にならないよう下限0にする */
+      lastActivity:lastAct, quiet: lastAct? Math.max(0,daysAgo(lastAct)||0) : null,
       registeredAt:m.created_at||null, regDays: m.created_at? daysAgo(m.created_at) : null,
-      stuck: stuckItems(checks),
+      stuck: stuckItems(checks,null,certified),
+      /* 強み・弱みの軸。挑戦中グレードまでを分母にする */
+      cats: catProfile(checks,cg),
       notes:notes, lastNote:notes[0]||null,
       noteCount:notes.length,
       scores:scores,
       quizAvg: scores.length? Math.round(scores.reduce((a,s)=>a+(s.max_score?(+s.score/+s.max_score):0),0)/scores.length*100) : null,
       ngAtarimae: Object.keys(atarimae).filter(k=>atarimae[k]==='ng'),
-      /* 認定グレードの内容を終えている＝昇格面談の対象 */
-      readyPromo: !!(m.certified_grade && cleared>=m.certified_grade)
+      /* 認定グレードの内容を終えている＝昇格面談の対象。
+         cleared は挑戦中グレードのひとつ下なので、これは
+         「認定グレードの項目が全部埋まった」と同じ意味になる。 */
+      readyPromo: !!(certified && cleared>=certified)
     };
   });
   BY_ID={}; ROWS.forEach(r=>BY_ID[r.id]=r);
@@ -574,13 +624,22 @@ function units(){
 /* リーダー等級（G7）以上は在籍月数の標準期間という考え方がそぐわないため、
    「遅れ」の対象から外す。 */
 function isDelayed(r){ return r.delay!=null && r.delay>=DELAY_ALERT && !isSeniorTier(r.cg); }
+/* 「しばらく動きなし」の判定。
+   ・登録したばかりの人は、まだ何も無くて当然なので対象外にする
+     （初日から赤い印が付くと、アラート全体が信用されなくなる）
+   ・チェックだけでなく申し送りの記録日も「動き」に数える（r.quiet）
+     面談して記録を残しているのに動きなし扱いになるのはおかしいため。 */
+function isStale(r){
+  if(r.regDays!=null && r.regDays<STALE_DAYS) return false;
+  return r.quiet==null || r.quiet>=STALE_DAYS;
+}
 /* 「詰まり」も同じ理由でリーダー等級以上は対象外にする（表示・集計のみ。
    棚卸し用CSVには実データを残したいので、そちらは r.stuck をそのまま使う）。 */
 function stuckDisplay(r){ return isSeniorTier(r.cg) ? [] : r.stuck; }
 function alertsOf(r){
   const out=[];
   if(isDelayed(r)) out.push('delay');
-  if(r.stale==null || r.stale>=STALE_DAYS) out.push('stale');
+  if(isStale(r)) out.push('stale');
   if(r.readyPromo) out.push('promo');
   if(r.ngAtarimae.length) out.push('atarimae');
   return out;
@@ -602,9 +661,12 @@ function sorted(list){
   const val=r=>({
     name:r.name, unit:r.unit, months:r.months==null?-1:r.months, certified:r.certified||0,
     cleared:r.cleared, cg:r.cg, pct:r.pct, overall:r.overall,
-    delay:r.delay==null?-99:r.delay, stale:r.stale==null?9999:r.stale,
+    delay:r.delay==null?-99:r.delay, stale:r.quiet==null?9999:r.quiet,
     target:r.outlook.targetDate||'9999', notes:r.noteCount, quiz:r.quizAvg==null?-1:r.quizAvg,
     registered:r.registeredAt||'',
+    hours:r.work.hours==null?-1:r.work.hours,
+    acc:(r.work.accStd==null&&r.work.accAdv==null)?-1:accTotal(r.work),
+    until:r.work.until||'9999',
     /* 自分の担当 → 担当あり → 未登録 の順に寄せる */
     charge:r.mine?2:(r.noCharge?0:1)
   })[k];
@@ -676,10 +738,12 @@ function delayCell(r){
   return delayChip(r.delay);
 }
 function staleChip(r){
-  if(r.stale==null) return '<span class="chip c">記録なし</span>';
-  if(r.stale>=STALE_DAYS) return '<span class="chip c">'+r.stale+'日</span>';
-  if(r.stale>=7) return '<span class="chip a">'+r.stale+'日</span>';
-  return '<span class="muted">'+r.stale+'日</span>';
+  if(r.quiet==null) return isStale(r)
+    ? '<span class="chip c">記録なし</span>'
+    : '<span class="muted" title="登録したばかりなので、まだ動きが無くて当然です">登録直後</span>';
+  if(isStale(r)) return '<span class="chip c">'+r.quiet+'日</span>';
+  if(r.quiet>=7) return '<span class="chip a">'+r.quiet+'日</span>';
+  return '<span class="muted">'+r.quiet+'日</span>';
 }
 const NOTE_KIND={
   memo:{n:'メモ',c:'g'}, handover:{n:'申し送り',c:'s'}, interview:{n:'面談',c:'v'},
@@ -742,7 +806,7 @@ function vDash(){
   const all=filtered().filter(r=>r.role==='member');
   const n=all.length||1;
   const delayed=all.filter(isDelayed);
-  const stale=all.filter(r=>r.stale==null||r.stale>=STALE_DAYS);
+  const stale=all.filter(isStale);
   const promo=all.filter(r=>r.readyPromo);
   const ng=all.filter(r=>r.ngAtarimae.length);
   const avg=Math.round(all.reduce((a,r)=>a+r.overall,0)/n);
@@ -772,7 +836,7 @@ function vDash(){
     s:'認定グレードの項目を完了しています',
     m:mineOf(promo),mu:'人',b:'昇格タブを開く',act:'tab',v:'promo'});
   if(stale.length) acts.push({t:'しばらく動きがない',n:stale.length+'人',
-    s:STALE_DAYS+'日以上チェックが動いていません',
+    s:STALE_DAYS+'日以上、チェックも申し送りも動いていません',
     m:mineOf(stale),mu:'人',b:'リマインド文をコピー',act:'remind',v:'stale'});
 
   /* 自分の担当ぶんを先に出す。誰の宿題かをはっきりさせるため */
@@ -802,7 +866,7 @@ function vDash(){
   '</div>';
   h+='<div class="grid g3" style="margin-bottom:14px">'+
     kpi('標準期間より遅れ',delayed.length,'人',DELAY_ALERT+'ヶ月以上の超過','delay')+
-    kpi('しばらく動きなし',stale.length,'人',STALE_DAYS+'日以上チェックなし','stale')+
+    kpi('しばらく動きなし',stale.length,'人',STALE_DAYS+'日以上動きなし','stale')+
     kpi('アタリマエに✕',ng.length,'人','UL・メンターの判定に✕がある','atarimae')+
   '</div>';
 
@@ -837,7 +901,7 @@ function vDash(){
       '<td class="num">'+l.length+'</td>'+
       '<td class="num">'+Math.round(l.reduce((a,r)=>a+r.overall,0)/l.length)+'%</td>'+
       '<td class="num">'+cnt(l.filter(isDelayed).length,'c')+'</td>'+
-      '<td class="num">'+cnt(l.filter(r=>r.stale==null||r.stale>=STALE_DAYS).length,'a')+'</td>'+
+      '<td class="num">'+cnt(l.filter(isStale).length,'a')+'</td>'+
       '<td class="num">'+cnt(l.filter(r=>r.readyPromo).length,'m')+'</td></tr>';
   });
   h+='</tbody></table></div></div></div>';
@@ -939,10 +1003,10 @@ function filterNote(){
 const APP_URL=location.origin+location.pathname.replace(/admin\.html$/,'');
 function remindText(){
   const list=filtered().filter(r=>r.role==='member')
-    .filter(r=>r.stale==null||r.stale>=STALE_DAYS);
+    .filter(isStale);
   if(!list.length) return null;
   return '【キャリアステップの更新をお願いします】\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+
-    STALE_DAYS+'日以上チェックが動いていません。できたことがあれば入れておいてください。\n'+APP_URL;
+    STALE_DAYS+'日以上、チェックが動いていません。できたことがあれば入れておいてください。\n'+APP_URL;
 }
 const ALERT_LABEL={delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],atarimae:['アタリマエ✕','c']};
 function alertChip(a){ const x=ALERT_LABEL[a]||[a,'g']; return '<span class="chip '+x[1]+'">'+x[0]+'</span>'; }
@@ -961,10 +1025,11 @@ const COLDEF={
               cell:r=>r.months==null?'—':r.months.toFixed(1)+'ヶ月'},
   certified: {h:'認定G',   sort:'certified',cls:'num', tip:'社内で認定されている、いまのグレード',
               cell:r=>r.certified?'G'+r.certified:'—'},
-  cleared:   {h:'完了G',   sort:'cleared',cls:'num', tip:'全項目にチェックが入ったグレードの数。認定G以上なら昇格面談の対象',
+  cleared:   {h:'完了G',   sort:'cleared',cls:'num', tip:'どのグレードまで終えているか。認定グレードより下は認定ぶんとして完了扱いにしています。認定G以上なら昇格面談の対象',
               cell:r=>r.cleared},
   heat:      {h:'Grade 1 → 10', cell:r=>heat(r)},
-  cg:        {h:'挑戦中',  sort:'cg', cell:r=>gradeChip(r.cg)},
+  cg:        {h:'挑戦中',  sort:'cg', tip:'いま埋めている途中のグレード。認定グレードより下は探しにいきません',
+              cell:r=>gradeChip(r.cg)},
   pct:       {h:'挑戦中の進捗', sort:'pct', cls:'num', tip:'挑戦中のグレードでチェック済みの割合',
               cell:r=>'<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
                 '<span class="mini"><i style="width:'+r.pct+'%;background:'+tierOf(r.cg).hex+'"></i></span>'+
@@ -975,20 +1040,32 @@ const COLDEF={
               cell:r=>fmtDateFull(r.outlook.targetDate)},
   delay:     {h:'標準との差', sort:'delay', cls:'num', tip:'標準期間と、実際の在籍月数の差（リーダー等級以上は対象外）',
               cell:r=>delayCell(r)},
-  stale:     {h:'最終更新', sort:'stale', cls:'num', tip:'いちばん最後にチェックが動いた日からの日数',
+  stale:     {h:'最終更新', sort:'stale', cls:'num', tip:'チェックか申し送りが最後に動いた日からの日数。登録直後の人は「動きなし」に数えません',
               cell:r=>staleChip(r)},
   quiz:      {h:'テスト',  sort:'quiz', cls:'num', cell:r=>r.quizAvg==null?'<span class="muted">—</span>':r.quizAvg+'%'},
   notes:     {h:'申し送り', sort:'notes', cls:'num', cell:r=>r.noteCount||'<span class="muted">0</span>'},
   charge:    {h:'担当',    sort:'charge', tip:'その人のマイシートに入っているUL・メンター。自分が入っていれば「自分」と出ます',
               cell:r=>chargeChips(r)},
   registered:{h:'登録日',  sort:'registered', cell:r=>r.registeredAt?fmtDateFull(r.registeredAt):'<span class="muted">—</span>'},
+  work:      {h:'週の稼働', sort:'hours', cls:'num', tip:'本人が申告した週の稼働時間（目安）',
+              cell:r=>r.work.hours==null?'<span class="muted">—</span>':'<span class="mono">'+r.work.hours+'h</span>'},
+  acc:       {h:'担当社数', sort:'acc', cls:'num', tip:'スタンダード＋アドバンスの社数',
+              cell:r=>(r.work.accStd==null&&r.work.accAdv==null)?'<span class="muted">—</span>'
+                : '<span class="mono">'+accTotal(r.work)+'</span><span class="tiny muted">（'+(r.work.accStd||0)+'/'+(r.work.accAdv||0)+'）</span>'},
+  until:     {h:'卒業予定', sort:'until', tip:'卒業・稼働終了の予定。編成の途中で抜ける人を先に見つけるため',
+              cell:r=>{ if(!r.work.until) return '<span class="muted">未定</span>';
+                const d=daysUntil(r.work.until);
+                return fmtDateFull(r.work.until)+(d!=null&&d>=0&&d<=183?' <span class="chip a">あと'+Math.round(d/30.4*10)/10+'ヶ月</span>':''); }},
+  skills:    {h:'得意領域', tip:'本人が申告した得意・のばしたい領域',
+              cell:r=>r.work.skills.length? '<span class="wrap tiny">'+r.work.skills.map(esc).join('・')+'</span>' : '<span class="muted">—</span>'},
   stuck:     {h:'いちばん詰まっているところ', tip:'挑戦中グレードの未達項目（リーダー等級以上は対象外）',
               cell:r=>{ const st=stuckDisplay(r); return '<span class="wrap tiny">'+(st[0]?esc(st[0].cat.split('｜')[0])+'：'+esc(cut(st[0].t,42)):'—')+'</span>'; }}
 };
 const PRESETS={
   meeting:{n:'面談用', cols:['unit','charge','cg','pct','stuck','stale']},
   promo:  {n:'昇格判定用', cols:['unit','charge','months','certified','cleared','heat','target','delay']},
-  all:    {n:'棚卸し用（全部）', cols:['unit','charge','months','certified','cleared','heat','cg','pct','overall','target','delay','stale','quiz','notes','registered']}
+  unitplan:{n:'編成用', cols:['unit','charge','months','certified','cg','work','acc','skills','until']},
+  all:    {n:'棚卸し用（全部）', cols:['unit','charge','months','certified','cleared','heat','cg','pct','overall','target','delay','stale','quiz','notes','work','acc','until','registered']}
 };
 function colPreset(){
   if(!V.preset){ try{ V.preset=localStorage.getItem('careerstep:preset')||'meeting'; }catch(e){ V.preset='meeting'; } }
@@ -1047,19 +1124,29 @@ function vRoster(){
   });
   h+='</tbody></table></div>';
   h+='<p class="tiny muted" style="margin-top:10px">'+
-    '「完了G」は全項目にチェックが入ったグレードの数、「認定G」は社内で認定されている現グレード。'+
+    '「完了G」はどのグレードまで終えているか、「認定G」は社内で認定されている現グレード。'+
     '完了Gが認定G以上になっていれば、昇格面談の対象です。'+
     '見出しにカーソルを合わせると、その列の意味が出ます。</p>';
   return h;
 }
 function csvRoster(){
   const rows=[['名前','Unit','UL','メンター','入社日','在籍月数','認定グレード','完了グレード数','挑戦中グレード',
-    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','アタリマエ✕','詰まっている項目1','詰まっている項目2','登録日']];
+    '挑戦中の進捗%','全体進捗%','昇格予定','標準比（月）','最終更新','テスト平均%','申し送り件数','アタリマエ✕',
+    '強いカテゴリ','弱いカテゴリ','週の稼働時間','スタンダード社数','アドバンス社数','卒業予定','得意領域',
+    '詰まっている項目1','詰まっている項目2','登録日']];
+  /* 強み・弱みは、編成をスプレッドシートで検討するときに使う */
+  const topCat=(r,worst)=>{
+    const cs=(r.cats||[]).slice().sort((a,b)=>worst? a.pct-b.pct : b.pct-a.pct);
+    return cs.length? cs[0].n+'（'+cs[0].pct+'%）' : '';
+  };
   sorted(filtered()).forEach(r=>rows.push([r.name,r.unit,r.m.ul||'',r.m.mentor||'',r.m.join_date||'',
     r.months==null?'':r.months.toFixed(1),r.certified||'',r.cleared,r.cg,r.pct,r.overall,
     r.outlook.targetDate||'',r.delay==null?'':r.delay,r.lastCheck?String(r.lastCheck).slice(0,10):'',
     r.quizAvg==null?'':r.quizAvg,r.noteCount,
     r.ngAtarimae.length?r.ngAtarimae.join(' / '):'',
+    topCat(r,false), topCat(r,true),
+    r.work.hours==null?'':r.work.hours, r.work.accStd==null?'':r.work.accStd,
+    r.work.accAdv==null?'':r.work.accAdv, r.work.until||'', r.work.skills.join(' / '),
     r.stuck[0]?r.stuck[0].cat+'：'+r.stuck[0].t:'', r.stuck[1]?r.stuck[1].cat+'：'+r.stuck[1].t:'',
     r.registeredAt?String(r.registeredAt).slice(0,10):'']));
   downloadCSV('キャリアステップ現状一覧_'+todayStr()+'.csv',rows);
@@ -1483,7 +1570,7 @@ function vMtg(){
   if(!list.length){ return h+'<div class="card"><div class="empty">このUnitにメンバーがいません。</div></div>'; }
 
   const delayed=list.filter(isDelayed).length;
-  const stale=list.filter(r=>r.stale==null||r.stale>=STALE_DAYS).length;
+  const stale=list.filter(isStale).length;
   const promo=list.filter(r=>r.readyPromo).length;
   h+='<div class="grid g4" style="margin-bottom:14px">'+
     kpi('メンバー',list.length,'人',unit,'')+
@@ -1509,7 +1596,7 @@ function vMtg(){
           '<div style="display:flex;align-items:center;gap:7px;margin-top:3px">'+
           '<span class="mini" style="flex:1"><i style="width:'+r.pct+'%;background:'+t.hex+'"></i></span>'+
           '<b class="mono">'+r.done+'/'+r.total+'</b></div>'+
-          '<div class="tiny muted" style="margin-top:3px">全体 '+r.overall+'%　最終更新 '+(r.stale==null?'記録なし':r.stale+'日前')+'</div></div>'+
+          '<div class="tiny muted" style="margin-top:3px">全体 '+r.overall+'%　最終更新 '+(r.quiet==null?'記録なし':r.quiet+'日前')+'</div></div>'+
         '<div><div class="tiny muted" style="font-weight:700">昇格予定</div>'+
           '<div style="margin-top:3px">'+fmtDateFull(r.outlook.targetDate)+'　'+delayCell(r)+'</div>'+
           '<div class="tiny muted" style="margin-top:3px">標準 '+(r.outlook.standardMonths||'—')+'ヶ月／在籍 '+(r.months==null?'—':r.months.toFixed(1))+'ヶ月</div></div>'+
@@ -1539,7 +1626,7 @@ function mtgText(){
     L.push('　昇格予定：'+fmtDateFull(r.outlook.targetDate)+
       (r.delay!=null&&!isSeniorTier(r.cg)? '（標準比 '+(r.delay>=0?'+':'')+r.delay.toFixed(1)+'ヶ月）':''));
     if(stuckDisplay(r).length) L.push('　詰まり：'+stuckDisplay(r).slice(0,3).map(it=>it.cat.split('｜')[0]+'／'+it.t).join(' ／ '));
-    L.push('　最終更新：'+(r.stale==null?'記録なし':r.stale+'日前'));
+    L.push('　最終更新：'+(r.quiet==null?'記録なし':r.quiet+'日前'));
     if(r.notes[0]) L.push('　直近：'+fmtDateFull(r.notes[0].occurred_on)+' '+r.notes[0].body);
     L.push('');
   });
@@ -1549,8 +1636,11 @@ function mtgText(){
 /* ============================================================
    メンバー詳細（右から出てくるパネル）
    ============================================================ */
-const DW_TABS=[['step','キャリアステップ'],['notes','申し送り'],['scores','テスト'],['profile','設定']];
-function openDrawer(id){ V.drawer=id; V.dwTab='step'; renderDrawer(); }
+/* カルテ（読む）とチェック（書く）を分ける。
+   引き継ぎMTG中に一覧を見ているつもりで誤タップし、
+   本人画面にまで反映されてしまうのを避けるため。 */
+const DW_TABS=[['summary','カルテ'],['step','チェック'],['notes','申し送り'],['scores','テスト'],['profile','設定']];
+function openDrawer(id){ V.drawer=id; V.dwTab='summary'; renderDrawer(); }
 function closeDrawer(){ V.drawer=null; document.getElementById('drawer').classList.remove('on'); document.getElementById('scrim').classList.remove('on'); }
 function renderDrawer(){
   const r=BY_ID[V.drawer]; if(!r){ closeDrawer(); return; }
@@ -1558,7 +1648,7 @@ function renderDrawer(){
   let h='<div class="dw-head"><button class="dw-close" data-act="closeDw">✕</button>'+
     '<div style="display:flex;align-items:center;gap:12px">'+
       '<div style="width:52px;height:52px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;'+
-        'background:radial-gradient(circle at 32% 26%,#36425F,#141A2B)">'+creature(gStage(r.checks),46,'')+'</div>'+
+        'background:radial-gradient(circle at 32% 26%,#36425F,#141A2B)">'+creature(gStage(r.checks,r.certified),46,'')+'</div>'+
       '<div><div style="font-size:17px;font-weight:700">'+esc(r.name)+
         (r.role!=='member'?' <span class="chip g">'+roleName(r.role)+'</span>':'')+'</div>'+
       '<div class="tiny muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">'+
@@ -1571,20 +1661,201 @@ function renderDrawer(){
       '<b class="mono" style="font-size:12px">'+r.done+' / '+r.total+'</b></div>'+
     '<div class="dw-tabs">'+DW_TABS.map(x=>
       '<button data-act="dwTab" data-t="'+x[0]+'" class="'+(V.dwTab===x[0]?'on':'')+'">'+x[1]+
-      (x[0]==='notes'&&r.noteCount?' '+r.noteCount:'')+'</button>').join('')+'</div>'+
+      (x[0]==='notes'&&r.noteCount?' '+r.noteCount:'')+'</button>').join('')+
+      '<span class="spacer"></span>'+
+      '<button class="btn ghost sm dw-print" data-act="printDw" title="いま開いているタブを1人ぶんの紙として印刷します">印刷／PDF</button>'+
+      '</div>'+
   '</div><div class="dw-body">'+dwBody(r)+'</div>';
   document.getElementById('drawerInner').innerHTML=h;
   document.getElementById('drawer').classList.add('on');
   document.getElementById('scrim').classList.add('on');
 }
 function dwBody(r){
+  if(V.dwTab==='summary') return dwSummary(r);
   if(V.dwTab==='notes')   return dwNotes(r);
   if(V.dwTab==='scores')  return dwScores(r);
   if(V.dwTab==='profile') return dwProfile(r);
   return dwStep(r);
 }
+/* ------------------------------------------------------------
+   本人の言葉。マイシートの「相棒の名前」「なりたい姿」「五箇条」
+   「気にしていること」は member_state に入っているのに、
+   これまで管理者画面のどこにも出していなかった。
+   引き継ぎで新しいULがいちばん先に知りたいのはここなので、
+   カルテの先頭に置く。
+   ------------------------------------------------------------ */
+function dwVoiceCard(r){
+  const g=r.goals||{}, creed=r.creed||[];
+  let h='<div class="card"><h2>本人の言葉 <span class="cnt">マイシートに本人が書いたもの</span></h2>';
+  if(!(r.buddy||g.basic||g.skill||creed.length||r.concern))
+    return h+'<div class="empty">まだ書かれていません。<br>'+
+      '面談のときに一緒に埋めておくと、次のULへの引き継ぎで効きます。</div></div>';
+  if(r.buddy) h+='<p class="tiny muted" style="margin:0 0 8px">相棒の名前：<b>'+esc(r.buddy)+'</b></p>';
+  if(g.basic||g.skill){
+    h+='<div class="tiny" style="font-weight:700;color:var(--ink2);margin:0 0 4px">卒業した時にどうなっていたいか</div>';
+    if(g.basic) h+='<div class="quote"><b>社会人基礎</b>'+esc(g.basic)+'</div>';
+    if(g.skill) h+='<div class="quote"><b>業務スキル</b>'+esc(g.skill)+'</div>';
+  }
+  if(creed.length){
+    h+='<div class="tiny" style="font-weight:700;color:var(--ink2);margin:11px 0 4px">自身の五箇条</div>'+
+      '<ol style="margin:0;padding-left:19px">'+creed.map(c=>
+        '<li class="tiny" style="margin:3px 0;line-height:1.7">'+esc(c.t)+
+        (c.s?' <span class="chip g">自己評価 '+c.s+'/5</span>':'')+'</li>').join('')+'</ol>';
+  }
+  if(r.concern) h+='<div class="quote warn" style="margin-top:11px"><b>気にしていること</b>'+esc(r.concern)+'</div>';
+  return h+'</div>';
+}
+/* ------------------------------------------------------------
+   強み・弱み。グレードは「どこまで来たか」しか表さないので、
+   「運用は強いが組織運営が弱い」を見る軸をここで別に出す。
+   分母は Grade 1〜挑戦中グレード（まだ開いていない上のグレードまで
+   入れると全員がほぼ0%になって比較にならない）。
+   ------------------------------------------------------------ */
+function dwCatCard(r){
+  const cs=r.cats||[];
+  if(!cs.length) return '';
+  let h='<div class="card"><h2>強み・弱み <span class="cnt">Grade 1〜'+r.cg+' の項目をカテゴリでまとめたもの</span></h2>'+
+    '<div style="display:flex;flex-direction:column;gap:7px">';
+  cs.forEach(c=>{
+    const col = c.pct>=80?'var(--mint)' : c.pct>=50?'var(--violet)' : 'var(--coral)';
+    h+='<div class="cbar"><span class="cl">'+esc(c.n)+'</span>'+
+      '<span class="mini" style="flex:1;height:9px"><i style="width:'+c.pct+'%;background:'+col+'"></i></span>'+
+      '<b class="mono cn">'+c.d+'/'+c.t+'・'+c.pct+'%</b></div>';
+  });
+  h+='</div>';
+  const sortd=cs.slice().sort((a,b)=>b.pct-a.pct);
+  const best=sortd[0], worst=sortd[sortd.length-1];
+  if(cs.length>1 && best.pct!==worst.pct)
+    h+='<p class="tiny muted" style="margin:11px 0 0">いちばん進んでいるのは<b>'+esc(best.n)+'</b>（'+best.pct+'%）、'+
+       'いちばん手がついていないのは<b>'+esc(worst.n)+'</b>（'+worst.pct+'%）です。</p>';
+  return h+'</div>';
+}
+/* ------------------------------------------------------------
+   いまの稼働。ユニット編成でULが実際に見る「週どれくらい入れるか・
+   いま何社持っているか・いつまでいるか・何ができるか」。
+   ------------------------------------------------------------ */
+function dwWorkCard(r){
+  const w=r.work||workOf(null);
+  let h='<div class="card"><h2>いまの稼働 <span class="cnt">ユニット編成で使います</span></h2>';
+  if(!workFilled(w)) return h+'<div class="empty">まだ入っていません。<br>'+
+    '本人にマイシートの「いまの稼働」を埋めてもらうか、「設定」タブから代わりに入れられます。</div></div>';
+  const d=daysUntil(w.until);
+  h+='<div class="grid g3" style="gap:12px">'+
+    '<div><div class="tiny muted" style="font-weight:700">週の稼働</div>'+
+      '<div style="margin-top:3px"><b class="mono" style="font-size:15px">'+(w.hours==null?'—':w.hours)+'</b>'+
+      (w.hours==null?'':' <span class="tiny muted">時間／週</span>')+'</div></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">担当アカウント</div>'+
+      '<div style="margin-top:3px">'+
+      (accTotal(w)||w.accStd!=null||w.accAdv!=null
+        ? '<b class="mono" style="font-size:15px">'+accTotal(w)+'</b> <span class="tiny muted">社'+
+          '（ｽﾀﾝﾀﾞｰﾄﾞ '+(w.accStd||0)+'／ｱﾄﾞﾊﾞﾝｽ '+(w.accAdv||0)+'）</span>'
+        : '<span class="muted">—</span>')+'</div></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">卒業・稼働終了</div>'+
+      '<div style="margin-top:3px">'+(w.until? fmtDateFull(w.until)+
+        (d!=null? ' <span class="chip '+(d<0?'g':d<=120?'a':'')+'">'+(d<0?'終了済み':'あと'+Math.round(d/30.4*10)/10+'ヶ月')+'</span>' : '')
+        : '<span class="muted">未定</span>')+'</div></div>'+
+  '</div>';
+  if(w.skills.length) h+='<div style="margin-top:12px"><div class="tiny muted" style="font-weight:700;margin-bottom:5px">得意・のばしたい領域</div>'+
+    w.skills.map(t=>'<span class="chip v" style="margin-right:5px">'+esc(t)+'</span>').join('')+'</div>';
+  return h+'</div>';
+}
+/* ------------------------------------------------------------
+   進捗の推移。progress.checked_at はこれまで「最終更新日」を出すためだけに
+   使っていたが、月ごとに数えれば「3ヶ月前から止まっている」「先月から急に
+   伸びた」が読める。引き継ぎで「最近どうだったか」を聞かれたときの答え。
+   ------------------------------------------------------------ */
+function monthlyChecks(r,months){
+  const n=months||6, now=new Date(), out=[], idx={};
+  for(let i=n-1;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    idx[k]=out.length; out.push({k:k, label:(d.getMonth()+1)+'月', c:0});
+  }
+  Object.keys(r.raw||{}).forEach(k=>{
+    const v=r.raw[k]; if(!v||v===true) return;
+    const m=String(v).slice(0,7);
+    if(idx[m]!=null) out[idx[m]].c++;
+  });
+  return out;
+}
+function dwTrendCard(r){
+  const ms=monthlyChecks(r,6);
+  const mx=Math.max(1,...ms.map(m=>m.c));
+  const sum=ms.reduce((a,m)=>a+m.c,0);
+  let h='<div class="card"><h2>進捗の推移 <span class="cnt">直近6ヶ月に入ったチェックの数</span></h2>'+
+    '<div class="spark">'+ms.map(m=>
+      '<div><b class="mono tiny">'+(m.c||'')+'</b>'+
+      '<i class="'+(m.c?'':'zero')+'" style="height:'+(m.c?Math.max(6,Math.round(m.c/mx*100)):2)+'%"></i>'+
+      '<span>'+m.label+'</span></div>').join('')+'</div>';
+  h+='<p class="tiny muted" style="margin:10px 0 0">'+
+    (sum? 'この6ヶ月で '+sum+' 件。最終更新は '+(r.quiet==null?'記録なし':r.quiet+'日前')+'です。'
+        : 'この6ヶ月はチェックが入っていません。'+(r.quiet==null?'':'最終更新は '+r.quiet+'日前です。'))+'</p>';
+  return h+'</div>';
+}
+/* ------------------------------------------------------------
+   カルテ本体。ドロワーを開くと最初に出る画面。
+   引き継ぎで新しいULが知りたい順に並べている
+   （どんな人か → いまの稼働 → 強み弱み → 推移 → 何があったか → 次の一手）。
+   チェックを入れる操作は「チェック」タブに分けてある。
+   ------------------------------------------------------------ */
+function dwSummary(r){
+  const t=tierOf(r.cg);
+  /* 位置づけ（グレード・在籍・昇格予定） */
+  let h='<div class="card"><h2>いまの位置</h2><div class="kv">'+
+    '<div><div class="tiny muted" style="font-weight:700">認定グレード</div>'+
+      '<b class="v">'+(r.certified?'G'+r.certified+'｜'+tierOf(r.certified).name:'未設定')+'</b></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">挑戦中</div>'+
+      '<b class="v">G'+r.cg+'</b> <span class="tiny muted">'+r.done+'/'+r.total+'（'+r.pct+'%）</span></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">在籍</div>'+
+      '<b class="v">'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'</b></div>'+
+    '<div><div class="tiny muted" style="font-weight:700">昇格予定</div>'+
+      '<b class="v" style="font-size:13px">'+fmtDateFull(r.outlook.targetDate)+'</b> '+delayCell(r)+'</div>'+
+    '<div><div class="tiny muted" style="font-weight:700">テスト平均</div>'+
+      '<b class="v">'+(r.quizAvg==null?'—':r.quizAvg+'%')+'</b></div>'+
+  '</div>'+
+  '<div style="display:flex;gap:8px;align-items:center;margin-top:12px">'+
+    '<span class="mini" style="flex:1;height:8px"><i style="width:'+r.pct+'%;background:'+t.hex+'"></i></span>'+
+    '<b class="mono" style="font-size:11.5px">全体 '+r.overall+'%</b></div>'+
+  (alertsOf(r).length? '<div style="margin-top:10px">'+alertsOf(r).map(alertChip).join(' ')+'</div>' : '')+
+  '</div>';
+
+  h+=dwVoiceCard(r)+dwWorkCard(r)+dwCatCard(r)+dwTrendCard(r);
+
+  /* アタリマエは読むだけ。判定の入力は「チェック」タブに置いてある */
+  const am=r.state.atarimae||{};
+  h+='<div class="card"><h2>アタリマエ <span class="cnt">判定の入力は「チェック」タブです</span></h2><div class="kv">'+
+    ATARIMAE.map(a=>{ const v=am[a.k];
+      return '<div><div class="tiny muted" style="font-weight:700">'+esc(a.n)+'</div>'+
+        (v==='ok'?'<span class="chip m">○</span>':v==='ng'?'<span class="chip c">✕</span>':'<span class="chip g">未評価</span>')+'</div>';
+    }).join('')+'</div></div>';
+
+  /* いま詰まっているところ */
+  const st=stuckDisplay(r);
+  h+='<div class="card"><h2>いま詰まっているところ <span class="cnt">Grade '+r.cg+' の未達項目</span></h2>';
+  if(!st.length) h+='<div class="empty">'+(isSeniorTier(r.cg)?'リーダー等級以上は対象外です。':'ありません（昇格条件クリア）。')+'</div>';
+  else{
+    h+='<ul style="margin:0;padding-left:18px">'+st.slice(0,5).map(it=>
+      '<li class="tiny" style="margin:4px 0;line-height:1.7"><b>'+esc(it.cat.split('｜')[0])+'</b>／'+esc(it.t)+'</li>').join('')+'</ul>';
+    if(st.length>5) h+='<p class="tiny muted" style="margin:8px 0 0">ほか'+(st.length-5)+'項目。'+
+      '<button class="lnk" data-act="dwTab" data-t="step">チェックタブで全部見る</button></p>';
+  }
+  h+='</div>';
+
+  /* 直近の申し送り */
+  h+='<div class="card"><h2>直近の申し送り<span class="spacer"></span>'+
+    '<button class="btn vio sm" data-act="openNote" data-id="'+r.id+'">＋ 追加</button></h2>';
+  if(!r.notes.length) h+='<div class="empty">まだ記録がありません。</div>';
+  else{
+    h+=r.notes.slice(0,3).map(n=>noteHTML(n,false)).join('');
+    if(r.notes.length>3) h+='<p class="tiny muted" style="margin:8px 0 0">ほか'+(r.notes.length-3)+'件。'+
+      '<button class="lnk" data-act="dwTab" data-t="notes">すべて見る</button></p>';
+  }
+  h+='</div>';
+  return h;
+}
 function dwStep(r){
-  let h='<div class="card"><h2>グレードごとの達成状況</h2>';
+  let h='';
+  h+='<div class="card"><h2>グレードごとの達成状況</h2>';
   GRADES.forEach(g=>{
     const p=gPct(r.checks,g.n), t=tierOf(g.n), dn=gDone(r.checks,g.n);
     h+='<div class="gbar"><span class="gl" style="color:'+(p===100?'var(--mint)':(g.n===r.cg?t.hex:'var(--ink2)'))+'">'+
@@ -1634,7 +1905,6 @@ function dwStep(r){
       '</span>'+
       '<span class="tiny muted" style="flex:1">'+esc(cut(a.d,70))+'</span></div>';
   });
-  if(r.concern) h+='<div class="na" style="margin-top:10px">本人が気にしていること：'+esc(r.concern)+'</div>';
   h+='</div>';
   return h;
 }
@@ -1688,6 +1958,7 @@ function dwProfile(r){
         '<option value="'+o[0]+'"'+(r.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
     '<button class="btn vio" data-act="saveProfile" data-id="'+r.id+'">保存する</button>'+
     '</div>'+
+    workFormHTML(r)+
     '<div class="card"><h2>ログイン</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px">パスワードを忘れた人はここでリセットします。'+
     'チェック・申し送り・テスト結果は消えません。'+
@@ -1718,6 +1989,47 @@ function dwProfile(r){
     '<button class="btn ghost" style="color:var(--coral);border-color:var(--coral)" '+
       'data-act="retireMember" data-id="'+r.id+'">卒業・退職として記録し、一覧から外す</button>'+
     '</div>';
+}
+/* いまの稼働を管理者側からも直せるようにする。
+   本人がマイシートで入れるのが基本だが、面談中に聞いてその場で
+   入れられないと、結局どこにも残らないため。 */
+function workFormHTML(r){
+  const w=r.work||workOf(null), tags=skillTags();
+  const v=x=>x==null?'':String(x);
+  let h='<div class="card"><h2>いまの稼働 <span class="cnt">本人のマイシートと同じ欄です</span></h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">週の稼働時間と担当社数は、ユニット編成のバランスを見るのに使います。'+
+    '本人が未入力のときは、面談で聞いてここに入れてください。</p>'+
+    '<div class="fr">'+
+      '<div class="f"><label>週の稼働時間（目安）</label>'+
+        '<input type="number" min="0" max="80" step="1" id="wkHours" value="'+esc(v(w.hours))+'"></div>'+
+      '<div class="f"><label>卒業・稼働終了の予定</label>'+
+        '<input type="date" id="wkUntil" value="'+esc(w.until)+'"></div>'+
+    '</div>'+
+    '<div class="fr">'+
+      '<div class="f"><label>スタンダード運用（社）</label>'+
+        '<input type="number" min="0" max="20" step="1" id="wkStd" value="'+esc(v(w.accStd))+'"></div>'+
+      '<div class="f"><label>アドバンス運用（社）</label>'+
+        '<input type="number" min="0" max="20" step="1" id="wkAdv" value="'+esc(v(w.accAdv))+'"></div>'+
+    '</div>';
+  if(tags.length) h+='<div class="f"><label>得意・のばしたい領域</label><div class="radios">'+
+    tags.map(t=>'<button type="button" data-act="wkSkill" data-id="'+r.id+'" data-t="'+esc(t)+'" class="'+
+      (w.skills.indexOf(t)>=0?'on':'')+'">'+esc(t)+'</button>').join('')+'</div>'+
+    '<p class="tiny muted" style="margin:6px 0 0">領域は押した時点ですぐ保存されます。</p></div>';
+  return h+'<button class="btn vio" data-act="saveWork" data-id="'+r.id+'">いまの稼働を保存する</button></div>';
+}
+/* custom は丸ごと入れ替えになるので、既存のキーを保ったまま __work だけ差し替える */
+async function saveWorkPatch(r,patch){
+  const cur=Object.assign({},(r.state&&r.state.custom)||{});
+  cur[WORK_KEY]=Object.assign({},cur[WORK_KEY]||{},patch);
+  await Store.saveStateFor(r.id,{custom:cur});
+}
+async function saveWorkFor(id){
+  const r=BY_ID[id]; if(!r) return;
+  const g=x=>(document.getElementById(x)||{}).value;
+  try{
+    await saveWorkPatch(r,{ hours:g('wkHours'), accStd:g('wkStd'), accAdv:g('wkAdv'), until:g('wkUntil') });
+    await loadAll(); render(); renderDrawer(); toast('保存しました');
+  }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
 async function saveProfileFor(id){
   const g=x=>(document.getElementById(x)||{}).value;
@@ -1937,7 +2249,7 @@ document.addEventListener('click',async e=>{
   if(a!=='open') e.preventDefault();
 
   if(a==='tab'){ V.tab=el.dataset.tab; F.alert=''; render(); window.scrollTo(0,0); }
-  else if(a==='sort'){ const k=el.dataset.k; if(V.sort===k) V.dir=-V.dir; else { V.sort=k; V.dir=(k==='name'||k==='unit'||k==='target')?1:-1; } render(); }
+  else if(a==='sort'){ const k=el.dataset.k; if(V.sort===k) V.dir=-V.dir; else { V.sort=k; V.dir=(k==='name'||k==='unit'||k==='target'||k==='until')?1:-1; } render(); }
   else if(a==='alert'){ F.alert=el.dataset.a; V.tab='roster'; render(); window.scrollTo(0,0); }
   else if(a==='open'){ e.preventDefault(); openDrawer(el.dataset.id); }
   else if(a==='closeDw'){ closeDrawer(); }
@@ -1956,7 +2268,7 @@ document.addEventListener('click',async e=>{
       await loadAll();
       const nr=BY_ID[V.drawer];
       renderDrawer(); render();
-      if(on && gCurrentGrade(nr.checks)>gCurrentGrade(r.checks)) toast('Grade '+r.cg+' が埋まりました','xp');
+      if(on && nr.cg>r.cg) toast('Grade '+r.cg+' が埋まりました','xp');
     }catch(err){ toast(err.message||'更新に失敗しました','bad'); }
   }
   else if(a==='setAtari'){
@@ -1981,6 +2293,17 @@ document.addEventListener('click',async e=>{
       await loadAll(); renderDrawer(); render();
       toast(n?n+'件を消去しました':'消去しました');
     }catch(err){ toast(err.message||'消去に失敗しました','bad'); }
+  }
+  else if(a==='saveWork'){ await saveWorkFor(el.dataset.id); }
+  else if(a==='wkSkill'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    const list=(r.work.skills||[]).slice();
+    const i=list.indexOf(el.dataset.t);
+    if(i>=0) list.splice(i,1); else list.push(el.dataset.t);
+    try{
+      await saveWorkPatch(r,{skills:list});
+      await loadAll(); renderDrawer(); render();
+    }catch(err){ toast(err.message||'保存に失敗しました','bad'); }
   }
   else if(a==='hoField'){ HANDOVER={ field:el.dataset.f, froms:[], to:'' }; render(); }
   else if(a==='hoFrom'){
@@ -2130,6 +2453,17 @@ document.addEventListener('click',async e=>{
     catch(err){ downloadBlob('リーダーMTG_'+todayStr()+'.txt',t,'text/plain'); toast('テキストで書き出しました'); }
   }
   else if(a==='printMtg'){ window.print(); }
+  /* カルテを1人1枚で印刷する。body に pdw を付けている間だけ、
+     印刷用CSSがドロワーだけを紙に出す。 */
+  else if(a==='printDw'){
+    document.body.classList.add('pdw');
+    let done=false;
+    const off=()=>{ if(done) return; done=true;
+      document.body.classList.remove('pdw');
+      window.removeEventListener('afterprint',off); };
+    window.addEventListener('afterprint',off);
+    setTimeout(()=>{ window.print(); setTimeout(off,1500); },40);
+  }
 });
 document.getElementById('scrim').onclick=()=>{ closeDrawer(); };
 document.addEventListener('keydown',e=>{
