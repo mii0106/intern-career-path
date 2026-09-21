@@ -278,6 +278,33 @@ thead th .q{display:inline-grid;place-items:center;width:13px;height:13px;border
 .tierbar{display:flex;height:16px;min-width:130px;border-radius:5px;overflow:hidden;background:#EDEBF8}
 .tierbar i{display:flex;align-items:center;justify-content:center;font-style:normal;
   font-size:10px;font-weight:800;color:#fff;font-family:'Bricolage Grotesque',sans-serif;min-width:14px}
+/* 編成ボード。列＝ユニット、カード＝メンバー。横に並べてドラッグで動かす */
+.board{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px;align-items:flex-start}
+.bcol{flex:0 0 218px;background:#F6F5FC;border:1.5px solid var(--line);border-radius:12px;
+  min-height:120px;transition:.12s}
+.bcol.none{background:#FBFAFF;border-style:dashed}
+.bcol.over{border-color:var(--violet);background:var(--violet-soft)}
+.bhead{display:flex;align-items:baseline;gap:6px;padding:9px 10px 5px}
+.bhead b{font-size:13px}
+.bhead .mono{margin-left:auto;font-size:11px;color:var(--ink2)}
+.bstat{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 6px}
+.bstat span{font-size:10.5px;font-weight:700;color:var(--ink2);background:#fff;
+  border-radius:99px;padding:2px 7px;border:1px solid var(--line2)}
+.bstat span.bad{color:#C0344B;border-color:#F5CBD3;background:var(--coral-soft)}
+.bwarn{margin:0 8px 6px;font-size:10.5px;line-height:1.65;color:#C0344B;
+  background:var(--coral-soft);border-radius:8px;padding:5px 8px}
+.bbody{padding:0 8px 8px;display:flex;flex-direction:column;gap:6px;min-height:46px}
+.bempty{font-size:11px;color:var(--ink3);text-align:center;padding:14px 4px;
+  border:1.5px dashed var(--line);border-radius:9px}
+.mcard{background:#fff;border:1px solid var(--line);border-left-width:4px;border-radius:9px;
+  padding:7px 9px;cursor:grab;user-select:none}
+.mcard:active{cursor:grabbing}
+.mcard.dragging{opacity:.4}
+.mc-top{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.mc-top b{font-size:12.5px}
+.mc-top .chip{font-size:9.5px;padding:1px 5px}
+.mc-sub{font-size:10.5px;color:var(--ink2);margin-top:3px}
+.mc-sk{font-size:10px;color:var(--ink3);margin-top:2px}
 /* 割当表の入力欄。行数が多いので小さめに */
 td .asg{width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:8px;
   padding:5px 7px;font-size:12px;min-width:92px}
@@ -381,10 +408,15 @@ loadLocalSettings();
 /* 生データ */
 let A = { members:[], progress:{}, states:{}, notes:[], scores:[], terms:[], assignments:[] };
 let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済みか */
+/* app_config.settings の中身。set_app_settings は丸ごと置き換えるので、
+   しきい値だけを保存して編成の決めごとを消す、ということが起きないよう
+   ここに読んだ全体を持っておき、保存するときは必ず混ぜてから送る。 */
+let APP_SETTINGS = {};
 /* メンバーごとに計算済みの行 */
 let ROWS = [], BY_ID = {};
 /* 画面の状態 */
-let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'' };
+let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'',
+          asgView:'board' };
 /* 期（半期）まわり。compute() で組み立てる */
 let TERMS=[], ASG_BY_TERM={}, ASG_BY_MEMBER={};
 /* 編集中の割当。保存を押すまでサーバーには送らない。{member_id:{unit,ul,...}} */
@@ -539,10 +571,15 @@ async function loadAll(){
   try{
     const s=await Store.getSettings();
     if(s){
+      APP_SETTINGS=s;
       if(s.stale_days) STALE_DAYS=+s.stale_days;
       if(s.delay_months!=null) DELAY_ALERT=+s.delay_months;
     }
   }catch(e){}
+  if(!Store.caps.settings){
+    /* しきい値の共有が使えない環境では、決めごともこのブラウザに置く */
+    try{ APP_SETTINGS=JSON.parse(localStorage.getItem('careerstep:settings')||'{}'); }catch(e){ APP_SETTINGS={}; }
+  }
 }
 function compute(){
   const now=new Date();
@@ -1761,15 +1798,21 @@ function vTerms(){
 
   h+='<div class="card"><h2>'+esc(cur.name)+' の割当 '+termChip(cur)+
     '<span class="spacer"></span>'+
+    '<span class="seg2">'+[['board','ボードで組む'],['table','表で直す']].map(x=>
+      '<button data-act="asgView" data-v="'+x[0]+'" class="'+(V.asgView===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+'</span>'+
     (missing? '<button class="btn ghost sm" data-act="seedTerm" data-id="'+cur.id+'">'+
        'いまの名簿から'+missing+'人ぶん取り込む</button>' : '')+
+    '<button class="btn ghost sm" data-act="autoAsg" data-id="'+cur.id+'">自動で割り振る</button>'+
     '<button class="btn vio sm" data-act="saveAsg" data-id="'+cur.id+'">保存する</button></h2>'+
     '<p class="tiny muted" style="margin:-4px 0 10px;line-height:1.9">'+
     'ここを変えても、いまの名簿（メンバーの所属・UL）はまだ変わりません。'+
     '下の「この期を確定する」を押したときに、はじめて書き戻されます。<br>'+
-    '週の稼働と担当社数の初期値は、本人がマイシートに入れた値です。</p>';
+    '週の稼働と担当社数の初期値は、本人がマイシートに入れた値です。'+
+    (V.asgView==='board'? 'カードをドラッグすると、その場でバランスが変わります。'
+                        : 'UL・メンター・稼働・担当社数は、この表で直します。')+'</p>';
 
   if(!list.length) h+='<div class="empty">メンバーがいません。</div>';
+  else if(V.asgView==='board'){ h+=vBoard(cur); }
   else{
     const uls=ulNameOptions();
     h+='<div class="tw"><table><thead><tr>'+
@@ -1802,12 +1845,16 @@ function vTerms(){
   h+='<p class="tiny muted" style="margin:10px 0 0">'+
     (savedN? savedN+'人ぶんが保存済みです。' : 'まだ保存されていません。')+
     (ASG_EDIT.termId===cur.id&&ASG_EDIT.dirty? ' <b style="color:var(--coral)">未保存の変更があります。</b>':'')+
-    '色が付いている行は、いまの所属から動く人です。</p>';
+    (V.asgView==='board'
+      ? 'いちばん左が未配属です。ドラッグが使えないときは「表で直す」に切り替えてください。'
+      : '色が付いている行は、いまの所属から動く人です。')+'</p>';
   h+='</div>';
 
   /* ---------- 新しい編成のバランス ---------- */
-  const stats=unitStats(list,r=>normalizeUnit(asgOf(cur.id,r).unit)||'（未設定）');
+  const getUnit=r=>normalizeUnit(asgOf(cur.id,r).unit)||NOUNIT;
+  const stats=unitStats(list,getUnit);
   h+=unitBalanceHTML(stats,'この編成のバランス','下の表は、上の割当をそのまま集計したものです。動かすと数字も変わります。');
+  h+=pairCardHTML(getUnit);
 
   /* ---------- 前の期との差分 ---------- */
   h+=termDiffHTML(cur);
@@ -1909,6 +1956,214 @@ function termDiffHTML(t){
       '確定すると、この人たちに申し送りが1件ずつ残ります。</p>';
   }
   return h+'</div>';
+}
+
+/* ============================================================
+   編成の決めごと（ピン留め）
+   ------------------------------------------------------------
+   「この2人は同じユニットにする／別にする」は、口頭でしか伝わらない
+   いちばん大事な情報なのに、これまでどこにも残らなかった。
+   app_config.settings.pairs に置いて、次の期にも引き継げるようにする。
+   ============================================================ */
+function pairs(){ return Array.isArray(APP_SETTINGS.pairs)? APP_SETTINGS.pairs : []; }
+async function savePairs(list){
+  const s=Object.assign({},APP_SETTINGS,{pairs:list});
+  APP_SETTINGS=s;
+  try{ localStorage.setItem('careerstep:settings',JSON.stringify(s)); }catch(e){}
+  if(Store.caps.settings){ await Store.saveSettings(s); }
+}
+/* 決めごとに違反している組み合わせを返す。getUnit は配置後のUnitを返す関数 */
+function pairViolations(getUnit){
+  const out=[];
+  pairs().forEach((p,i)=>{
+    const a=BY_ID[p.a], b=BY_ID[p.b];
+    if(!a||!b) return;                       /* 卒業などで居なくなった人は無視する */
+    const ua=getUnit(a), ub=getUnit(b);
+    if(p.type==='together' && ua!==ub) out.push({i:i,p:p,a:a,b:b,why:'別々になっています'});
+    if(p.type==='apart'    && ua===ub) out.push({i:i,p:p,a:a,b:b,why:'同じ '+ua+' に入っています'});
+  });
+  return out;
+}
+function pairCardHTML(getUnit){
+  const list=pairs(), bad=pairViolations(getUnit);
+  const names=ROWS.filter(r=>r.role==='member').slice()
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'));
+  const opts=v=>'<option value="">選んでください</option>'+names.map(r=>
+    '<option value="'+r.id+'"'+(v===r.id?' selected':'')+'>'+esc(r.name)+'</option>').join('');
+  let h='<div class="card"><h2>組み合わせの決めごと '+
+    '<span class="cnt">次の期にも引き継がれます</span></h2>'+
+    '<p class="tiny muted" style="margin:-4px 0 10px;line-height:1.9">'+
+    '「この2人は同じユニットにしたい」「この2人は離したい」を残しておくと、'+
+    '編成のたびに口頭で確認し直さずに済みます。自動で割り振るときも守ります。</p>';
+  if(bad.length){
+    h+='<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">'+
+      bad.map(x=>'<div class="banner" style="margin:0;background:var(--coral-soft);border-color:#F5CBD3">'+
+        '<span>⚠️</span><div><b>'+esc(x.a.name)+'</b> と <b>'+esc(x.b.name)+'</b> は'+
+        (x.p.type==='together'?'同じユニットにする':'別のユニットにする')+'決めごとですが、'+esc(x.why)+'</div></div>').join('')+
+      '</div>';
+  }
+  if(list.length){
+    h+='<div class="tw" style="max-height:none;box-shadow:none;margin-bottom:12px"><table><tbody>';
+    list.forEach((p,i)=>{
+      const a=BY_ID[p.a], b=BY_ID[p.b];
+      const ok=!bad.some(x=>x.i===i);
+      h+='<tr><td class="nm">'+esc(a?a.name:'（不明）')+' ・ '+esc(b?b.name:'（不明）')+'</td>'+
+        '<td>'+(p.type==='together'?'<span class="chip m">同じユニット</span>':'<span class="chip s">別のユニット</span>')+'</td>'+
+        '<td class="tiny muted" style="white-space:normal">'+esc(p.note||'')+'</td>'+
+        '<td>'+(ok?'<span class="chip g">守れています</span>':'<span class="chip c">違反</span>')+'</td>'+
+        '<td><button class="btn ghost sm" data-act="delPair" data-i="'+i+'">消す</button></td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  h+='<div class="fr">'+
+    '<div class="f"><label>1人目</label><select id="pairA">'+opts('')+'</select></div>'+
+    '<div class="f"><label>2人目</label><select id="pairB">'+opts('')+'</select></div>'+
+    '<div class="f"><label>どうする</label><select id="pairT">'+
+      '<option value="together">同じユニットにする</option>'+
+      '<option value="apart">別のユニットにする</option></select></div>'+
+    '</div>'+
+    '<div class="f"><label>理由（任意・あとで見て分かるように）</label>'+
+      '<input type="text" id="pairN" placeholder="例：同じクライアントを担当しているため"></div>'+
+    '<button class="btn vio" data-act="addPair">決めごとを足す</button>';
+  return h+'</div>';
+}
+
+/* ============================================================
+   編成ボード
+   ------------------------------------------------------------
+   表で1行ずつUnitを選び直すのは、編成を「考える」作業には向かない。
+   カードを動かしながら、その場でバランスが変わるのを見られるようにする。
+   （表のほうも残してある。キーボードだけで操作したいときはそちら）
+   ============================================================ */
+let DRAG=null;
+const NOUNIT='（未配属）';
+/* ボードに出す列。config の UNITS と、名簿にすでに居るUnit。
+   誰も居ない列も出す（そこへ動かせないと編成にならないため）。 */
+function boardColumns(list,getUnit){
+  const inUse=Array.from(new Set(list.map(getUnit)));
+  const all=unitOptions(rosterUnitValues()).concat(inUse).filter(u=>u&&u!==NOUNIT);
+  const cols=Array.from(new Set(all)).sort((a,b)=>String(a).localeCompare(String(b),'ja'));
+  /* 未配属は左端。編成はここから配っていくので、いちばん先に目に入る場所に置く */
+  return [NOUNIT].concat(cols);
+}
+function memberCardHTML(r,getUnit){
+  const w=r.work, d=daysUntil(w.until);
+  const flags=[];
+  if(isDelayed(r))        flags.push('<span class="chip a" title="標準期間より遅れています">遅</span>');
+  if(r.readyPromo)        flags.push('<span class="chip m" title="昇格面談の対象">昇</span>');
+  if(r.ngAtarimae.length) flags.push('<span class="chip c" title="アタリマエに✕があります">✕</span>');
+  if(d!=null&&d>=0&&d<=183) flags.push('<span class="chip s" title="半年以内に卒業・稼働終了の予定">卒</span>');
+  const t=tierOf(r.cg);
+  return '<div class="mcard" draggable="true" data-drag="'+r.id+'" '+
+      'style="border-left-color:'+t.hex+'" title="ドラッグして別のユニットに動かせます">'+
+    '<div class="mc-top"><b>'+esc(r.name)+'</b>'+
+      '<span class="chip" style="background:'+t.hex+'1A;color:'+t.hex+'">G'+r.cg+'</span>'+
+      flags.join('')+'</div>'+
+    '<div class="mc-sub">'+
+      [ (w.hours==null? '稼働 —' : w.hours+'h／週'),
+        ((w.accStd==null&&w.accAdv==null)? '担当 —' : '担当'+accTotal(w)+'社'),
+        '在籍'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')
+      ].join('　')+'</div>'+
+    (w.skills.length? '<div class="mc-sk">'+w.skills.slice(0,3).map(esc).join('・')+'</div>':'')+
+  '</div>';
+}
+function vBoard(term){
+  const list=termMembers();
+  const getUnit=r=>normalizeUnit(asgOf(term.id,r).unit)||NOUNIT;
+  const cols=boardColumns(list,getUnit);
+  const stats={}; unitStats(list,getUnit).forEach(o=>stats[o.unit]=o);
+
+  let h='<div class="board">';
+  cols.forEach(u=>{
+    const o=stats[u]||{n:0,hours:0,std:0,adv:0,junior:0,senior:0,members:[],load:0,catList:[]};
+    const warns=o.n? unitWarnings(o) : [];
+    h+='<div class="bcol'+(u===NOUNIT?' none':'')+'" data-drop="'+esc(u)+'">'+
+      '<div class="bhead"><b>'+esc(u)+'</b><span class="mono">'+o.n+'人</span></div>'+
+      '<div class="bstat">'+
+        '<span title="週の稼働時間の合計">'+Math.round(o.hours)+'h</span>'+
+        '<span title="担当社数（スタンダード／アドバンス）">'+(o.std+o.adv)+'社</span>'+
+        (u===NOUNIT?'':'<span title="G1-2の人数 ÷ G5以上の人数。2.0以上で警告" class="'+
+          (o.load==null||o.load>=2?'bad':'')+'">'+(o.load==null?'G5+なし':'負荷'+o.load.toFixed(1))+'</span>')+
+      '</div>'+
+      (o.n? '<div style="padding:0 8px 6px">'+tierBarHTML(o.members)+'</div>':'')+
+      (warns.length? '<div class="bwarn">'+warns.map(esc).join('<br>')+'</div>':'')+
+      '<div class="bbody">'+
+        (o.members.length? sorted(o.members).map(r=>memberCardHTML(r,getUnit)).join('')
+          : '<div class="bempty">ここにカードを置けます</div>')+
+      '</div></div>';
+  });
+  h+='</div>';
+  return h;
+}
+
+/* 自動で割り振る（叩き台）。
+   1. 「同じユニットにする」決めごとでまとめたかたまりを作る
+   2. プロ以上（G5+）を含むかたまりを各ユニットに1つずつ配る
+      （面倒を見られる人が1人もいないユニットを作らない）
+   3. 残りを、そのときいちばん稼働時間の合計が少ないユニットへ入れていく
+      （「別のユニットにする」決めごとに当たる場所は避ける）
+   相性・本人の希望・クライアントの事情は数字に出ないので、あくまで叩き台。 */
+function autoAssign(term){
+  const list=termMembers();
+  if(!list.length) return 0;
+  const cols=boardColumns(list,r=>normalizeUnit(asgOf(term.id,r).unit)||NOUNIT).filter(u=>u!==NOUNIT);
+  /* 未配属の列には自動では入れない（配るのが目的なので） */
+  if(!cols.length) return 0;
+
+  /* 1. かたまりを作る（union-find） */
+  const parent={}; list.forEach(r=>parent[r.id]=r.id);
+  const find=x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+  const uni=(a,b)=>{ const ra=find(a),rb=find(b); if(ra!==rb) parent[ra]=rb; };
+  pairs().filter(p=>p.type==='together').forEach(p=>{ if(BY_ID[p.a]&&BY_ID[p.b]) uni(p.a,p.b); });
+  const groups={};
+  list.forEach(r=>{ const k=find(r.id); (groups[k]=groups[k]||[]).push(r); });
+  const gs=Object.values(groups).map(members=>({
+    members:members,
+    hours:members.reduce((a,r)=>a+(r.work.hours||0),0),
+    maxGrade:Math.max.apply(null,members.map(r=>r.cg)),
+    hasSenior:members.some(r=>r.cg>=5)
+  }));
+
+  /* 「別のユニットにする」は、かたまり同士の禁止関係にする */
+  const apart={};
+  pairs().filter(p=>p.type==='apart').forEach(p=>{
+    if(!BY_ID[p.a]||!BY_ID[p.b]) return;
+    const ka=find(p.a), kb=find(p.b);
+    (apart[ka]=apart[ka]||new Set()).add(kb);
+    (apart[kb]=apart[kb]||new Set()).add(ka);
+  });
+  const keyOf=g=>find(g.members[0].id);
+
+  const bucket={}; cols.forEach(u=>bucket[u]={hours:0,n:0,keys:[]});
+  const place=(g,u)=>{ bucket[u].hours+=g.hours; bucket[u].n++; bucket[u].keys.push(keyOf(g)); g.unit=u; };
+  const allowed=(g,u)=>{
+    const ban=apart[keyOf(g)]; if(!ban) return true;
+    return !bucket[u].keys.some(k=>ban.has(k));
+  };
+  const pick=g=>{
+    const ok=cols.filter(u=>allowed(g,u));
+    const pool=ok.length?ok:cols;   /* どこにも置けないときは決めごとより配置を優先する */
+    return pool.slice().sort((a,b)=>(bucket[a].hours-bucket[b].hours)||(bucket[a].n-bucket[b].n)
+      ||String(a).localeCompare(String(b),'ja'))[0];
+  };
+
+  /* 2. 面倒を見られる人を先に配る */
+  const seniors=gs.filter(g=>g.hasSenior).sort((a,b)=>b.maxGrade-a.maxGrade||b.hours-a.hours);
+  const rest=gs.filter(g=>!g.hasSenior).sort((a,b)=>b.hours-a.hours||b.maxGrade-a.maxGrade);
+  let ci=0;
+  seniors.forEach(g=>{
+    if(ci<cols.length){
+      /* まだ誰も居ない列から順に。禁止に当たる場合は置ける列を探す */
+      let u=cols[ci];
+      if(!allowed(g,u)){ const alt=cols.find(x=>bucket[x].n===0&&allowed(g,x)); if(alt) u=alt; }
+      place(g,u); ci++;
+    }else place(g,pick(g));
+  });
+  rest.forEach(g=>place(g,pick(g)));
+
+  /* 3. 結果を編集中の割当に書き戻す */
+  gs.forEach(g=>g.members.forEach(r=>asgSet(term.id,r.id,'unit',g.unit)));
+  return list.length;
 }
 
 /* ============================================================
@@ -2993,6 +3248,34 @@ document.addEventListener('click',async e=>{
   else if(a==='seedTerm'){ await seedTermFlow(el.dataset.id); }
   else if(a==='saveAsg'){ await saveAsgFlow(el.dataset.id); }
   else if(a==='applyTerm'){ await applyTermFlow(el.dataset.id); }
+  else if(a==='asgView'){ V.asgView=el.dataset.v; render(); }
+  else if(a==='autoAsg'){
+    const t=termById(el.dataset.id); if(!t) return;
+    if(!confirm('いまの割当を、自動で作った叩き台で置き換えます。\n\n'+
+      '稼働時間のバランスと、面倒を見られる人（G5以上）が各ユニットに\n'+
+      '行きわたることだけを見ています。\n'+
+      '相性・本人の希望・クライアントの事情は入っていません。\n\n'+
+      '（保存を押すまでサーバーには送りません）\n\nよろしいですか？')) return;
+    const n=autoAssign(t);
+    render();
+    toast(n? n+'人ぶんの叩き台を作りました。ここから手で直してください':'割り振る人がいません','xp',6000);
+  }
+  else if(a==='addPair'){
+    const g=x=>(document.getElementById(x)||{}).value;
+    const a2=g('pairA'), b2=g('pairB');
+    if(!a2||!b2){ toast('2人とも選んでください','bad'); return; }
+    if(a2===b2){ toast('同じ人は選べません','bad'); return; }
+    const list=pairs().slice();
+    if(list.some(p=>(p.a===a2&&p.b===b2)||(p.a===b2&&p.b===a2))){ toast('その組み合わせはすでにあります','bad'); return; }
+    list.push({a:a2,b:b2,type:g('pairT')||'together',note:g('pairN')||''});
+    try{ await savePairs(list); render(); toast('決めごとを足しました'); }
+    catch(err){ toast(err.message||'保存に失敗しました','bad',6000); }
+  }
+  else if(a==='delPair'){
+    const list=pairs().slice(); list.splice(+el.dataset.i,1);
+    try{ await savePairs(list); render(); toast('消しました'); }
+    catch(err){ toast(err.message||'保存に失敗しました','bad',6000); }
+  }
   else if(a==='openHo'){
     V.hoTerm=el.dataset.term; V.drawer=el.dataset.id; V.dwTab='handover'; renderDrawer();
   }
@@ -3073,8 +3356,9 @@ document.addEventListener('click',async e=>{
   else if(a==='copyReset'){ await copyText(resetMessage(el.dataset.id),'コピーしました。本人に送ってください'); }
   else if(a==='saveSettings'){
     const g=x=>(document.getElementById(x)||{}).value;
-    const s={ stale_days:Math.max(1,+g('stStale')||14), delay_months:Math.max(0,+g('stDelay')||0) };
-    STALE_DAYS=s.stale_days; DELAY_ALERT=s.delay_months;
+    const s=Object.assign({},APP_SETTINGS,
+      { stale_days:Math.max(1,+g('stStale')||14), delay_months:Math.max(0,+g('stDelay')||0) });
+    STALE_DAYS=s.stale_days; DELAY_ALERT=s.delay_months; APP_SETTINGS=s;
     try{ localStorage.setItem('careerstep:settings',JSON.stringify(s)); }catch(err){}
     try{
       if(Store.caps.settings){ await Store.saveSettings(s); toast('保存しました（'+MANAGER_LABEL+'全員に反映されます）'); }
@@ -3158,6 +3442,39 @@ document.addEventListener('click',async e=>{
     setTimeout(()=>{ window.print(); setTimeout(off,1500); },40);
   }
 });
+/* ---------- 編成ボードのドラッグ＆ドロップ ----------
+   render() で中身を作り直すので、個々のカードではなく document で受ける。 */
+document.addEventListener('dragstart',e=>{
+  const c=e.target.closest&&e.target.closest('[data-drag]'); if(!c) return;
+  DRAG=c.dataset.drag;
+  c.classList.add('dragging');
+  try{ e.dataTransfer.setData('text/plain',DRAG); e.dataTransfer.effectAllowed='move'; }catch(err){}
+});
+document.addEventListener('dragend',e=>{
+  const c=e.target.closest&&e.target.closest('[data-drag]'); if(c) c.classList.remove('dragging');
+  document.querySelectorAll('.bcol.over').forEach(x=>x.classList.remove('over'));
+  DRAG=null;
+});
+document.addEventListener('dragover',e=>{
+  if(!DRAG) return;
+  const col=e.target.closest&&e.target.closest('[data-drop]'); if(!col) return;
+  e.preventDefault();
+  try{ e.dataTransfer.dropEffect='move'; }catch(err){}
+  if(!col.classList.contains('over')){
+    document.querySelectorAll('.bcol.over').forEach(x=>x.classList.remove('over'));
+    col.classList.add('over');
+  }
+});
+document.addEventListener('drop',e=>{
+  const col=e.target.closest&&e.target.closest('[data-drop]'); if(!col||!DRAG) return;
+  e.preventDefault();
+  const t=currentTerm(); if(!t){ DRAG=null; return; }
+  const to=col.dataset.drop;
+  asgSet(t.id,DRAG,'unit', to===NOUNIT? '' : to);
+  DRAG=null;
+  render();
+});
+
 /* 割当表の入力。1文字ごとに描き替えるとカーソルが飛ぶので、
    メモリだけ更新し、select（Unit・UL）を変えたときだけ集計を描き直す。 */
 document.addEventListener('input',e=>{
