@@ -412,7 +412,12 @@ const Store = (() => {
       chk(res);
       if(!res.data.session) chk(res=await sb.auth.signInWithPassword({email,password}));
       try{
-        chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:code}));
+        /* コードが違うときは、例外ではなく null が返る。
+           サーバー側で例外を投げるとトランザクションが巻き戻り、
+           間違えた回数を数えられないため（supabase/schema.sql 参照）。
+           エラー文はここで出す。 */
+        const got=chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:code}));
+        if(!got) throw new Error('ログイン用コードが違います');
       }catch(e){
         /* コードが違うまま中途半端なログインが残ると、次のやり直しで
            「このログインはすでに使われています」になって詰まる。 */
@@ -460,7 +465,9 @@ const Store = (() => {
         await resolveMe();
         return 'approved';
       }
-      chk(r);
+      /* 'bad-key' はキー違い。例外にしないのは claim_member と同じ理由
+         （投げると失敗回数が巻き戻り、5回でのロックが効かない）。 */
+      if(chk(r)==='bad-key') throw new Error('管理者キーが違います');
       await resolveMe();
       /* 承認制をやめる前のサーバーだと 'pending' が返ることがある。
          その場合は権限が付いていないので、そのまま知らせる。 */

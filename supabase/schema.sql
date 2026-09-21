@@ -325,7 +325,11 @@ begin
   end if;
   if r.claim_code_hash <> crypt(coalesce(p_code,''), r.claim_code_hash) then
     update public.members set claim_code_fails = claim_code_fails + 1 where id = r.id;
-    raise exception 'ログイン用コードが違います';
+    /* 【重要】ここで raise してはいけない。
+       例外を投げるとトランザクションが巻き戻り、いま足した失敗回数ごと
+       無かったことになる（＝何回間違えてもロックがかからない）。
+       間違いのときだけ NULL を返し、エラー文は呼び出し側（shared/store.js）が出す。 */
+    return null;
   end if;
 
   /* ここまで来たら本人。いま作ったログインに slug を合わせる。
@@ -752,7 +756,11 @@ begin
        set admin_key_fails = admin_key_fails + 1,
            admin_key_locked_until = case when admin_key_fails + 1 >= 5 then now() + interval '15 minutes' end
      where id = v_id;
-    raise exception '管理者キーが違います';
+    /* 【重要】ここで raise してはいけない（claim_member と同じ理由）。
+       例外でトランザクションが巻き戻ると、失敗回数が戻ってしまい、
+       「5回でロック」が一度も効かない。実際そうなっていた。
+       間違いのときは 'bad-key' を返し、エラー文は呼び出し側が出す。 */
+    return 'bad-key';
   end if;
   update public.members set admin_key_fails = 0, admin_key_locked_until = null where id = v_id;
 
