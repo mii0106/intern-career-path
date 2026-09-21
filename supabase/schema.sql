@@ -162,7 +162,14 @@ $$;
 -- ============================================================
 drop view if exists public.member_roster;
 create view public.member_roster with (security_invoker = false) as
-  select id, name, unit, ul, mentor, slug, role, (auth_id is not null) as linked
+  /* slug（＝ログインID）は、すでにパスワードを設定した人のぶんだけ出す。
+     未設定の行の slug を出すと、共通パスコードを知っている人が
+     名前で検索して他人の行を先に掴めてしまうため。
+     未設定の人の slug はどのみち誰も使わない（claim_member が
+     ログインのほうに slug を合わせる）。 */
+  select id, name, unit, ul, mentor,
+         case when auth_id is not null then slug end as slug,
+         role, (auth_id is not null) as linked
     from public.members where active order by unit nulls last, name;
 grant select on public.member_roster to anon, authenticated;
 
@@ -279,25 +286,59 @@ grant execute on function public.config_status() to authenticated;
 --   ・認証したメールのローカル部と slug が一致する行
 -- だけ。加えて共通パスコードの一致を必須にしているので、
 -- URLと名簿を見ただけの人が他人の行を掴むことはできない。
+-- ワンタイムのログインコードを入れる欄。
+-- ULが発行し、本人に口頭やDMで渡す。ハッシュで持つので読み出せない。
+alter table public.members add column if not exists claim_code_hash    text;
+alter table public.members add column if not exists claim_code_expires timestamptz;
+alter table public.members add column if not exists claim_code_fails   int not null default 0;
+
 drop function if exists public.claim_member(uuid);
 create or replace function public.claim_member(p_member_id uuid, p_code text)
-returns uuid language plpgsql security definer set search_path = public as $$
-declare v_slug text; v_id uuid;
+returns uuid language plpgsql security definer set search_path = public, extensions as $$
+declare v_slug text; v_id uuid; r record;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  perform public.assert_team_passcode(p_code);
   v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));
+  if v_slug = '' then raise exception 'ログイン情報を確認できません'; end if;
 
   -- すでに紐付いているなら、それを返す
   select id into v_id from public.members where auth_id = auth.uid();
   if v_id is not null then return v_id; end if;
 
-  update public.members
-     set auth_id = auth.uid()
-   where id = p_member_id and auth_id is null and lower(slug) = v_slug and active
-  returning id into v_id;
+  select id, claim_code_hash, claim_code_expires, claim_code_fails
+    into r
+    from public.members
+   where id = p_member_id and auth_id is null and active
+   for update;
 
-  if v_id is null then raise exception 'この名前は使用できません（すでにパスワード設定済み、または名前とログイン情報が一致しません）'; end if;
+  if r.id is null then
+    raise exception 'この名前は使用できません（すでにパスワードが設定されています）';
+  end if;
+  if r.claim_code_hash is null then
+    raise exception 'ログイン用コードが発行されていません。UL・育成に「STEPのログインコードを発行してほしい」と伝えてください';
+  end if;
+  if r.claim_code_expires is not null and r.claim_code_expires < now() then
+    raise exception 'ログイン用コードの有効期限が切れています。UL・育成に発行し直してもらってください';
+  end if;
+  if r.claim_code_fails >= 5 then
+    raise exception 'ログイン用コードを続けて間違えたため、このコードは使えなくなりました。発行し直してもらってください';
+  end if;
+  if r.claim_code_hash <> crypt(coalesce(p_code,''), r.claim_code_hash) then
+    update public.members set claim_code_fails = claim_code_fails + 1 where id = r.id;
+    raise exception 'ログイン用コードが違います';
+  end if;
+
+  /* ここまで来たら本人。いま作ったログインに slug を合わせる。
+     以前は「認証メールのローカル部と slug が一致すること」を条件にしていたが、
+     その slug は名前で検索すれば未ログインでも取れてしまうため、
+     共通パスコード（全員が知っている）さえあれば他人の行を掴めた。
+     コードで本人確認し、slug のほうを後から合わせる形にしている。 */
+  update public.members
+     set auth_id = auth.uid(),
+         slug    = v_slug,
+         claim_code_hash = null, claim_code_expires = null, claim_code_fails = 0
+   where id = r.id
+  returning id into v_id;
 
   insert into public.member_state(member_id) values (v_id) on conflict do nothing;
   return v_id;
@@ -312,18 +353,32 @@ end $$;
 -- slug を振り直すのは、外したあとに古いログイン（元のパスワードを知っている人）が
 -- そのまま繋ぎ直せてしまうのを防ぐため。
 create or replace function public.admin_reset_login(p_member_id uuid)
-returns text language plpgsql security definer set search_path = public as $$
-declare v_slug text;
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare v_slug text; v_code text;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   if p_member_id = public.current_member_id() then
     raise exception '自分のログインはリセットできません（他の管理者に依頼してください）';
   end if;
 
+  /* 読み上げ・書き写しで間違えない文字だけを使う。
+     0/O、1/I/l のような紛らわしい組み合わせは外してある。 */
+  select string_agg(substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+                           1 + floor(random()*32)::int, 1), '')
+    into v_code from generate_series(1,8);
+
   v_slug := 'm-' || replace(gen_random_uuid()::text, '-', '');
-  update public.members set auth_id = null, slug = v_slug where id = p_member_id;
+  update public.members
+     set auth_id = null,
+         slug    = v_slug,
+         claim_code_hash    = crypt(v_code, gen_salt('bf')),
+         claim_code_expires = now() + interval '7 days',
+         claim_code_fails   = 0
+   where id = p_member_id;
   if not found then raise exception '対象が見つかりません'; end if;
-  return v_slug;
+  /* 平文のコードを返すのはここ1回だけ。DBにはハッシュしか残らないので、
+     控え忘れたら発行し直す（それでいい。使い回さないほうが安全）。 */
+  return v_code;
 end $$;
 
 -- 自分で名簿に登録する。
@@ -595,7 +650,11 @@ create policy progress_delete on public.progress for delete to authenticated
 create or replace function public.roster_search(p_q text, p_managers boolean default false)
 returns table(id uuid, name text, unit text, ul text, slug text, role text, linked boolean)
 language sql stable security definer set search_path = public as $$
-  select m.id, m.name, m.unit, m.ul, m.slug, m.role, (m.auth_id is not null)
+  /* slug を出すのはパスワード設定済みの人だけ（member_roster と同じ理由）。
+     未設定の人の行は「パスワードを決める ›」に進むだけなので id で足りる。 */
+  select m.id, m.name, m.unit, m.ul,
+         case when m.auth_id is not null then m.slug end,
+         m.role, (m.auth_id is not null)
     from public.members m
    where m.active
      and length(coalesce(trim(p_q), '')) >= 2

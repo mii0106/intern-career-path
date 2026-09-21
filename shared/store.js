@@ -381,6 +381,10 @@ const Store = (() => {
        名前を選び、自分のパスワードを入れる。 */
     async signInMember(member, password){
       need();
+      /* slug（ログインID）は、パスワード設定済みの人のぶんしか名簿から返らない。
+         未設定の人がここに来るのは画面の分岐ミスなので、
+         undefined@... で意味不明なエラーになる前に止める。 */
+      if(!member || !member.slug) throw new Error('この名前はまだパスワードが設定されていません。「パスワードを決める ›」から進んでください');
       chk(await sb.auth.signInWithPassword({email:emailFor(member.slug),password}));
       const r=await resolveMe();
       if(!r) throw new Error('この名前はまだパスワードが設定されていません。「はじめて使う」から進んでください');
@@ -390,16 +394,31 @@ const Store = (() => {
     },
 
     /* ---------- 初回パスワード設定 ----------
-       名簿に行はあるがパスワード未設定の人（ULがログインをリセットした直後など）が、
-       共通パスコードと新しいパスワードを入れて繋ぎ直す。 */
-    async setPassword(member, passcode, password){
+       名簿に行はあるがパスワード未設定の人（ULがログインをリセットした直後、
+       先に名簿だけ作ってある人）が、ULから渡されたログイン用コードと
+       新しいパスワードを入れて繋ぎ直す。
+
+       共通パスコードではなくワンタイムのコードを使うのが要点。
+       共通パスコードは全員が知っているので、それだけで他人の行を
+       掴めてしまっていた。
+
+       ログインIDは、その人の古い slug を使い回さず新しく作る。
+       サーバー側（claim_member）が、コードを確認したうえで
+       名簿の slug をこの新しいIDに合わせる。 */
+    async setPassword(member, code, password){
       need();
-      if(!(await api.checkPasscode(passcode))) throw new Error(await api.passcodeError());
-      const email=emailFor(member.slug);
+      const email=emailFor(newSlug());
       let res=await sb.auth.signUp({email,password});
       chk(res);
       if(!res.data.session) chk(res=await sb.auth.signInWithPassword({email,password}));
-      chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:passcode}));
+      try{
+        chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:code}));
+      }catch(e){
+        /* コードが違うまま中途半端なログインが残ると、次のやり直しで
+           「このログインはすでに使われています」になって詰まる。 */
+        try{ await sb.auth.signOut(); }catch(_){}
+        throw e;
+      }
       const r=await resolveMe();
       api.migratedCount = r ? await migrateLegacy(r.member.id) : 0;
       return r;
@@ -409,6 +428,10 @@ const Store = (() => {
        名前とパスワードでログインし、まだ管理者でなければ管理者キーで昇格する。 */
     async signInManager(member, password, adminKey, wantRole){
       need();
+      /* slug（ログインID）は、パスワード設定済みの人のぶんしか名簿から返らない。
+         未設定の人がここに来るのは画面の分岐ミスなので、
+         undefined@... で意味不明なエラーになる前に止める。 */
+      if(!member || !member.slug) throw new Error('この名前はまだパスワードが設定されていません。「パスワードを決める ›」から進んでください');
       chk(await sb.auth.signInWithPassword({email:emailFor(member.slug),password}));
       let r=await resolveMe();
       if(!r){ await api.signOut(); throw new Error('このログインは名簿と紐付いていません。本人画面から登録し直してください'); }

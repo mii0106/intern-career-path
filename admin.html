@@ -220,6 +220,22 @@ tbody tr:hover td.st{background:#FBFAFF}
 .toast.xp{background:var(--violet)}
 .toast.bad{background:var(--coral)}
 
+/* ---------- ログイン用コードの表示 ----------
+   一度しか出ない値なので、消えるトーストではなく
+   自分で閉じるまで残るカードで出す。 */
+.codecard{position:fixed;inset:0;z-index:90;display:grid;place-items:center;
+  background:rgba(20,16,44,.55);padding:20px}
+.codecard .cc-in{background:#fff;border-radius:18px;padding:22px;max-width:420px;width:100%;
+  box-shadow:0 24px 60px -18px rgba(24,18,64,.5);text-align:center}
+.codecard .cc-h{font-size:13px;font-weight:700;color:var(--ink2)}
+.codecard .cc-code{font-size:34px;font-weight:800;letter-spacing:.22em;margin:14px 0 4px;
+  color:var(--violet);font-variant-numeric:tabular-nums;word-break:break-all;
+  /* 読み上げ・書き写しのために、指でなぞって選べるようにしておく */
+  user-select:all;-webkit-user-select:all}
+.codecard .cc-note{font-size:11.5px;line-height:1.7;color:var(--ink3);margin:10px 0 16px;text-align:left}
+.codecard .cc-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+@media (max-width:420px){ .codecard .cc-code{font-size:27px;letter-spacing:.14em} }
+
 /* ---------- 今日のアクション ---------- */
 .actions .act{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
 .actions .act:first-of-type{border-top:0}
@@ -2895,10 +2911,13 @@ function dwProfile(r){
     '<div class="card"><h2>ログイン</h2>'+
     '<p class="tiny muted" style="margin:0 0 10px">パスワードを忘れた人はここでリセットします。'+
     'チェック・申し送り・テスト結果は消えません。'+
-    'このあと本人が本人画面で自分の名前を選ぶと、共通パスコードを入れて新しいパスワードを決め直せます。</p>'+
+    'リセットすると、その人だけの<b>ログイン用コード（8文字）</b>が1回だけ画面に出ます。'+
+    'それを本人に渡すと、本人がパスワードを決め直せます。</p>'+
     (r.m.auth_id==null? '<p class="tiny" style="margin:0 0 10px;color:var(--violet);font-weight:700">'+
-      'いまパスワード未設定です。本人が本人画面で名前を選ぶと決められます。</p>':'')+
-    '<button class="btn ghost" data-act="resetLogin" data-id="'+r.id+'">ログインをリセットする</button>'+
+      'いまパスワード未設定です。ログイン用コードを渡すと本人が設定できます。'+
+      'コードに心当たりがなければ、下のボタンで発行し直してください。</p>':'')+
+    '<button class="btn ghost" data-act="resetLogin" data-id="'+r.id+'">'+
+      (r.m.auth_id==null? 'ログイン用コードを発行する' : 'ログインをリセットする')+'</button>'+
     '<button class="btn ghost" style="margin-left:8px" data-act="copyReset" data-id="'+r.id+'">本人に送る文をコピー</button>'+
     '</div>'+
     /* 本人画面から消せないようにした代わりに、ここに置いてある。
@@ -2974,40 +2993,64 @@ async function saveProfileFor(id){
     await loadAll(); render(); renderDrawer(); toast('保存しました');
   }catch(e){ toast(e.message||'保存に失敗しました','bad'); }
 }
-/* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す */
-/* リセットしたあと、本人に送る文。管理者ツールと本人画面で言い方をそろえる */
+/* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す。
+
+   リセットすると、その人ひとりのための「ログイン用コード」（8文字）が
+   1回だけ返る。サーバーにはハッシュしか残らないので、この画面を閉じると
+   二度と表示できない（そのときは発行し直せばいい）。
+
+   共通パスコードで決め直せる形をやめたのは、共通パスコードは全員が
+   知っているため、それだけで他人の行を先に掴めてしまっていたから。 */
+
+/* 発行したコードを、この画面が開いているあいだだけ覚えておく。
+   保存はしない（残す価値より、残る危なさのほうが大きい）。 */
+const ISSUED_CODES = {};
+
 function resetMessage(id){
   const r=BY_ID[id];
   const url=location.origin+location.pathname.replace(/admin\.html$/,'');
+  const code=ISSUED_CODES[id];
   return (r?r.name+'さん\n':'')+
     'STEPのログインをリセットしました。パスワードを決め直してください。\n'+
     '1. '+url+' をひらく\n'+
     '2. 自分の名前を入れて「パスワードを決める ›」を押す\n'+
-    '3. 共通パスコード（全員おなじもの）と、新しいパスワードを入れる\n'+
-    'これまでの記録（チェック・申し送り・テスト）は消えていません。';
+    '3. 下のログイン用コードと、新しいパスワードを入れる\n'+
+    (code? '\nログイン用コード：'+code+'\n（あなた専用・7日で期限切れ・使うと無効になります）\n' : '')+
+    '\nこれまでの記録（チェック・申し送り・テスト）は消えていません。';
 }
+
+/* 一度しか出ないコードを、消えるトーストで見せるわけにはいかない。
+   閉じるまで残るカードで出す。 */
+function showCodeCard(id, code){
+  const r=BY_ID[id];
+  document.querySelectorAll('.codecard').forEach(n=>n.remove());
+  const el=document.createElement('div');
+  el.className='codecard';
+  el.innerHTML=
+    '<div class="cc-in">'+
+      '<div class="cc-h">'+esc(r?r.name:'')+' さんのログイン用コード</div>'+
+      '<div class="cc-code">'+esc(code)+'</div>'+
+      '<p class="cc-note">この画面を閉じると二度と表示できません。'+
+        '本人に口頭かDMで渡してください。7日で期限切れ、1回使うと無効になります。'+
+        '控えそこねたら、もう一度リセットすれば新しいコードが出ます。</p>'+
+      '<div class="cc-btns">'+
+        '<button class="btn" data-act="copyReset" data-id="'+id+'">本人に送る文をコピー</button>'+
+        '<button class="btn ghost" data-act="closeCode">閉じる</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(el);
+}
+
 async function resetLoginFor(id){
   const r=BY_ID[id];
   if(!confirm((r?r.name:'この人')+' さんのログインをリセットします。\n\n'+
-    'これまでの記録は消えません。本人が本人画面で自分の名前を選ぶと、'+
-    '共通パスコードを入れて新しいパスワードを決められます。\n\nよろしいですか？')) return;
+    'これまでの記録は消えません。このあと画面に出る「ログイン用コード」を'+
+    '本人に渡すと、本人がパスワードを決め直せます。\n\nよろしいですか？')) return;
   try{
-    await Store.resetLogin(id);
+    const code=await Store.resetLogin(id);
+    ISSUED_CODES[id]=code;
     await loadAll(); render(); renderDrawer();
-    toast('リセットしました。本人に送る文をコピーできます','xp',6000);
-    /* 「で、本人に何て言えばいいの」で止まらないように、その場で文を出す */
-    setTimeout(()=>{
-      const box=document.getElementById('toasts');
-      if(!box) return;
-      const t=document.createElement('div');
-      t.className='toast';
-      t.style.cssText='pointer-events:auto;cursor:pointer;background:var(--violet)';
-      t.textContent='本人に送る文をコピーする';
-      t.onclick=()=>{ document.querySelector('[data-act="copyReset"][data-id="'+id+'"]')
-        ? null : null; copyResetText(id); t.remove(); };
-      box.appendChild(t);
-      setTimeout(()=>t.remove(),12000);
-    },50);
+    showCodeCard(id, code);
   }catch(e){ toast(e.message||'リセットに失敗しました','bad'); }
 }
 
@@ -3353,7 +3396,15 @@ document.addEventListener('click',async e=>{
     if(!id){ toast('だれのログインをリセットするか選んでください'); return; }
     await resetLoginFor(id);
   }
-  else if(a==='copyReset'){ await copyText(resetMessage(el.dataset.id),'コピーしました。本人に送ってください'); }
+  else if(a==='copyReset'){
+    const id=el.dataset.id;
+    if(!ISSUED_CODES[id]){
+      toast('ログイン用コードがこの画面に残っていません。「ログインをリセットする」を押して発行し直してください','bad',7000);
+      return;
+    }
+    await copyText(resetMessage(id),'コピーしました。本人に送ってください');
+  }
+  else if(a==='closeCode'){ document.querySelectorAll('.codecard').forEach(n=>n.remove()); }
   else if(a==='saveSettings'){
     const g=x=>(document.getElementById(x)||{}).value;
     const s=Object.assign({},APP_SETTINGS,

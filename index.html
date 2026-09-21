@@ -1680,12 +1680,13 @@ function showGate(err){
         'パスワードだけを決め直します。</div>'+
       '<div class="steps">'+
         '<div class="stp"><i>1</i><div><b>ULか育成の人に頼む</b>'+
-          '<span>「STEPのログインをリセットしてほしい」と伝えてください。'+
+          '<span>「STEPのログインをリセットして、ログイン用コードを教えてほしい」と伝えてください。'+
           '管理者ツールから1クリックでできます。</span></div></div>'+
         '<div class="stp"><i>2</i><div><b>この画面で自分の名前を選ぶ</b>'+
           '<span>リセットが済むと、名前の右が「パスワードを決める ›」に変わります。</span></div></div>'+
-        '<div class="stp"><i>3</i><div><b>共通パスコードと新しいパスワードを入れる</b>'+
-          '<span>共通パスコードは全員おなじものです（自分のパスワードではありません）。</span></div></div>'+
+        '<div class="stp"><i>3</i><div><b>ログイン用コードと新しいパスワードを入れる</b>'+
+          '<span>ログイン用コードは、リセットしたときにUL・育成の画面に出る8文字です。'+
+          'あなた専用の使い捨てで、共通パスコードとは別のものです。</span></div></div>'+
       '</div>'+
       '<button class="gbtn" data-act="copyReset">頼む文をコピーする</button>'+
       '<button class="gbtn alt" data-act="toPick">名前を選ぶ画面に戻る</button>'+
@@ -1720,13 +1721,18 @@ function showGate(err){
     body.innerHTML=who+
       '<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
         'この名前にはいまパスワードがありません。'+
-        '<b>登録した直後の人</b>と、<b>ログインをリセットしてもらった人</b>がここに来ます。'+
+        '<b>ログインをリセットしてもらった人</b>と、<b>先に名簿に入れてもらった人</b>がここに来ます。'+
         'ここで決めたパスワードで、次回からログインします。'+
         '<b>これまでの記録はそのまま残ります。</b></div>'+
-      '<div class="field"><label>部署共通のパスコード</label>'+
-        '<input type="password" id="sCode" autocomplete="off" placeholder="全員おなじパスコード">'+
-        '<p class="tiny muted" style="margin:4px 0 0">自分のパスワードではありません。'+
-        'ULから共有されている、全員で同じものです。</p></div>'+
+      '<div class="field"><label>ログイン用コード（8文字）</label>'+
+        '<input type="text" id="sCode" autocomplete="one-time-code" inputmode="latin" '+
+          'autocapitalize="characters" spellcheck="false" maxlength="8" '+
+          'style="text-transform:uppercase;letter-spacing:.18em;font-weight:700" '+
+          'placeholder="ULから渡されたコード">'+
+        '<p class="tiny muted" style="margin:4px 0 0">'+
+        '<b>共通パスコードではありません。</b>あなた一人のための使い捨てのコードで、'+
+        'UL・育成がリセットしたときに発行されます。'+
+        '受け取っていなければ、UL・育成に「STEPのログイン用コードを発行してほしい」と伝えてください。</p></div>'+
       '<div class="field"><label>新しいパスワード</label>'+
         '<input type="password" id="sPw" autocomplete="new-password" placeholder="自分で決めてください">'+PW_HINT+'</div>'+
       '<div class="field"><label>パスワード（確認）</label>'+
@@ -1789,8 +1795,9 @@ async function doSignIn(){
 }
 async function doSetPw(){
   const g=id=>(document.getElementById(id)||{}).value||'';
-  const code=g('sCode'), pw=g('sPw'), pw2=g('sPw2');
-  if(!code){ showGate('パスコードを入力してください'); return; }
+  /* 読み上げ・書き写しで小文字や前後の空白が混ざりやすいので、ここで寄せる */
+  const code=g('sCode').trim().toUpperCase().replace(/\s+/g,''), pw=g('sPw'), pw2=g('sPw2');
+  if(!code){ showGate('ログイン用コードを入力してください'); return; }
   const bad=checkPw(pw,pw2);
   if(bad){ showGate(bad); return; }
   gateBusy('[data-act="setpw"]','設定しています…');
@@ -1851,7 +1858,8 @@ document.addEventListener('click',async e=>{
     const t='STEP（キャリアステップシート）のパスワードを忘れてしまいました。\n'+
       '管理者ツールの「キャリア現状一覧」から '+nm+' を開いて、'+
       '設定タブの「ログインをリセットする」を押してもらえますか。\n'+
-      'リセットしてもらったら、自分でパスワードを決め直します。記録は消えません。\n'+
+      'リセットすると画面に「ログイン用コード」（8文字）が出るので、それも教えてください。\n'+
+      'コードをもらったら、自分でパスワードを決め直します。記録は消えません。\n'+
       location.origin+location.pathname;
     copyText(t,'コピーしました。ULか育成の人に送ってください');
   }
