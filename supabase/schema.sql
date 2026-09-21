@@ -162,7 +162,14 @@ $$;
 -- ============================================================
 drop view if exists public.member_roster;
 create view public.member_roster with (security_invoker = false) as
-  select id, name, unit, ul, mentor, slug, role, (auth_id is not null) as linked
+  /* slug（＝ログインID）は、すでにパスワードを設定した人のぶんだけ出す。
+     未設定の行の slug を出すと、共通パスコードを知っている人が
+     名前で検索して他人の行を先に掴めてしまうため。
+     未設定の人の slug はどのみち誰も使わない（claim_member が
+     ログインのほうに slug を合わせる）。 */
+  select id, name, unit, ul, mentor,
+         case when auth_id is not null then slug end as slug,
+         role, (auth_id is not null) as linked
     from public.members where active order by unit nulls last, name;
 grant select on public.member_roster to anon, authenticated;
 
@@ -211,13 +218,49 @@ alter table public.app_config enable row level security;
 -- 古い版で関数を作ってしまっていた場合は、ここで確実に落とす。
 drop function if exists public.set_passcodes(text, text);
 
--- 共通パスコードが合っているかだけを返す。未設定のあいだは true（誰でも登録できる）。
+-- 共通パスコードが合っているかだけを返す。
+--
+-- 【重要】ここは必ず「合っていなければ false」で返すこと（fail-closed）。
+-- 以前は未設定のあいだ true を返していたが、それだと
+--   ・app_config の行が消えた
+--   ・スキーマを貼り直した直後
+--   ・移行の途中
+-- といった状況で、誰でも登録し放題の状態に黙って戻ってしまう。
+-- 認証の既定は常に「拒否」でなければならない。
+--
+-- 未設定のときは false になるので誰も登録できないが、SETUP.md は
+-- 手順5（パスコードを決める）→ 手順7（URLを配る）の順なので、
+-- 通常の手順どおりなら詰まらない。万一未設定のまま配ってしまった場合は
+-- 下の register_me / claim_member が「まだ設定されていません」と
+-- 理由の分かるエラーを出す。
 create or replace function public.check_team_passcode(p_code text)
 returns boolean language sql stable security definer set search_path = public, extensions as $$
-  select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), true)
+  select coalesce(team_passcode = crypt(coalesce(p_code,''), team_passcode), false)
     from public.app_config where id = 1
 $$;
 grant execute on function public.check_team_passcode(text) to anon, authenticated;
+
+-- 共通パスコードが「設定されているか」だけを返す（中身は返さない）。
+-- 登録画面が「違います」と「まだ設定されていません」を出し分けるために使う。
+-- どちらの状態かはエラーメッセージからどのみち分かるので、これ自体は何も漏らさない。
+create or replace function public.team_passcode_set()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.app_config where id = 1 and team_passcode is not null)
+$$;
+grant execute on function public.team_passcode_set() to anon, authenticated;
+
+-- 共通パスコードを検証して、通らなければ理由の分かるエラーで止める。
+-- 「未設定」と「間違い」を分けるのは、配る側と入れる側で直す場所が違うため。
+create or replace function public.assert_team_passcode(p_code text)
+returns void language plpgsql stable security definer set search_path = public, extensions as $$
+begin
+  if not exists (select 1 from public.app_config where id = 1 and team_passcode is not null) then
+    raise exception '共通パスコードがまだ設定されていません。ULに連絡してください（SETUP.md 手順5）';
+  end if;
+  if not public.check_team_passcode(p_code) then
+    raise exception 'パスコードが違います';
+  end if;
+end $$;
 
 -- パスコードが設定済みかどうか（管理者画面で注意を出すため）。中身は返さない。
 create or replace function public.config_status()
@@ -243,25 +286,63 @@ grant execute on function public.config_status() to authenticated;
 --   ・認証したメールのローカル部と slug が一致する行
 -- だけ。加えて共通パスコードの一致を必須にしているので、
 -- URLと名簿を見ただけの人が他人の行を掴むことはできない。
+-- ワンタイムのログインコードを入れる欄。
+-- ULが発行し、本人に口頭やDMで渡す。ハッシュで持つので読み出せない。
+alter table public.members add column if not exists claim_code_hash    text;
+alter table public.members add column if not exists claim_code_expires timestamptz;
+alter table public.members add column if not exists claim_code_fails   int not null default 0;
+
 drop function if exists public.claim_member(uuid);
 create or replace function public.claim_member(p_member_id uuid, p_code text)
-returns uuid language plpgsql security definer set search_path = public as $$
-declare v_slug text; v_id uuid;
+returns uuid language plpgsql security definer set search_path = public, extensions as $$
+declare v_slug text; v_id uuid; r record;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if not coalesce(public.check_team_passcode(p_code), true) then raise exception 'パスコードが違います'; end if;
   v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));
+  if v_slug = '' then raise exception 'ログイン情報を確認できません'; end if;
 
   -- すでに紐付いているなら、それを返す
   select id into v_id from public.members where auth_id = auth.uid();
   if v_id is not null then return v_id; end if;
 
-  update public.members
-     set auth_id = auth.uid()
-   where id = p_member_id and auth_id is null and lower(slug) = v_slug and active
-  returning id into v_id;
+  select id, claim_code_hash, claim_code_expires, claim_code_fails
+    into r
+    from public.members
+   where id = p_member_id and auth_id is null and active
+   for update;
 
-  if v_id is null then raise exception 'この名前は使用できません（すでにパスワード設定済み、または名前とログイン情報が一致しません）'; end if;
+  if r.id is null then
+    raise exception 'この名前は使用できません（すでにパスワードが設定されています）';
+  end if;
+  if r.claim_code_hash is null then
+    raise exception 'ログイン用コードが発行されていません。UL・育成に「STEPのログインコードを発行してほしい」と伝えてください';
+  end if;
+  if r.claim_code_expires is not null and r.claim_code_expires < now() then
+    raise exception 'ログイン用コードの有効期限が切れています。UL・育成に発行し直してもらってください';
+  end if;
+  if r.claim_code_fails >= 5 then
+    raise exception 'ログイン用コードを続けて間違えたため、このコードは使えなくなりました。発行し直してもらってください';
+  end if;
+  if r.claim_code_hash <> crypt(coalesce(p_code,''), r.claim_code_hash) then
+    update public.members set claim_code_fails = claim_code_fails + 1 where id = r.id;
+    /* 【重要】ここで raise してはいけない。
+       例外を投げるとトランザクションが巻き戻り、いま足した失敗回数ごと
+       無かったことになる（＝何回間違えてもロックがかからない）。
+       間違いのときだけ NULL を返し、エラー文は呼び出し側（shared/store.js）が出す。 */
+    return null;
+  end if;
+
+  /* ここまで来たら本人。いま作ったログインに slug を合わせる。
+     以前は「認証メールのローカル部と slug が一致すること」を条件にしていたが、
+     その slug は名前で検索すれば未ログインでも取れてしまうため、
+     共通パスコード（全員が知っている）さえあれば他人の行を掴めた。
+     コードで本人確認し、slug のほうを後から合わせる形にしている。 */
+  update public.members
+     set auth_id = auth.uid(),
+         slug    = v_slug,
+         claim_code_hash = null, claim_code_expires = null, claim_code_fails = 0
+   where id = r.id
+  returning id into v_id;
 
   insert into public.member_state(member_id) values (v_id) on conflict do nothing;
   return v_id;
@@ -276,18 +357,38 @@ end $$;
 -- slug を振り直すのは、外したあとに古いログイン（元のパスワードを知っている人）が
 -- そのまま繋ぎ直せてしまうのを防ぐため。
 create or replace function public.admin_reset_login(p_member_id uuid)
-returns text language plpgsql security definer set search_path = public as $$
-declare v_slug text;
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare v_slug text; v_code text;
 begin
   if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
   if p_member_id = public.current_member_id() then
     raise exception '自分のログインはリセットできません（他の管理者に依頼してください）';
   end if;
 
+  /* 読み上げ・書き写しで間違えない文字だけを使う。
+     0/O、1/I/l のような紛らわしい組み合わせは外してある。 */
+  select string_agg(substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+                           1 + floor(random()*32)::int, 1), '')
+    into v_code from generate_series(1,8);
+
   v_slug := 'm-' || replace(gen_random_uuid()::text, '-', '');
-  update public.members set auth_id = null, slug = v_slug where id = p_member_id;
+  update public.members
+     set auth_id = null,
+         slug    = v_slug,
+         claim_code_hash    = crypt(v_code, gen_salt('bf')),
+         claim_code_expires = now() + interval '7 days',
+         claim_code_fails   = 0
+   where id = p_member_id;
   if not found then raise exception '対象が見つかりません'; end if;
-  return v_slug;
+  /* 本人からの依頼が出ていたら、ここで片付ける。
+     （login_requests はこのファイルの後ろで作るので、まだ無くても落ちないようにする） */
+  begin
+    delete from public.login_requests where member_id = p_member_id;
+  exception when undefined_table then null; end;
+
+  /* 平文のコードを返すのはここ1回だけ。DBにはハッシュしか残らないので、
+     控え忘れたら発行し直す（それでいい。使い回さないほうが安全）。 */
+  return v_code;
 end $$;
 
 -- 自分で名簿に登録する。
@@ -301,7 +402,7 @@ create or replace function public.register_me(
 declare v_id uuid; v_slug text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if not coalesce(public.check_team_passcode(p_code), true) then raise exception 'パスコードが違います'; end if;
+  perform public.assert_team_passcode(p_code);
   if nullif(trim(p_name),'') is null then raise exception '氏名を入力してください'; end if;
 
   v_slug := lower(split_part(coalesce(auth.jwt() ->> 'email',''), '@', 1));
@@ -559,7 +660,11 @@ create policy progress_delete on public.progress for delete to authenticated
 create or replace function public.roster_search(p_q text, p_managers boolean default false)
 returns table(id uuid, name text, unit text, ul text, slug text, role text, linked boolean)
 language sql stable security definer set search_path = public as $$
-  select m.id, m.name, m.unit, m.ul, m.slug, m.role, (m.auth_id is not null)
+  /* slug を出すのはパスワード設定済みの人だけ（member_roster と同じ理由）。
+     未設定の人の行は「パスワードを決める ›」に進むだけなので id で足りる。 */
+  select m.id, m.name, m.unit, m.ul,
+         case when m.auth_id is not null then m.slug end,
+         m.role, (m.auth_id is not null)
     from public.members m
    where m.active
      and length(coalesce(trim(p_q), '')) >= 2
@@ -651,7 +756,11 @@ begin
        set admin_key_fails = admin_key_fails + 1,
            admin_key_locked_until = case when admin_key_fails + 1 >= 5 then now() + interval '15 minutes' end
      where id = v_id;
-    raise exception '管理者キーが違います';
+    /* 【重要】ここで raise してはいけない（claim_member と同じ理由）。
+       例外でトランザクションが巻き戻ると、失敗回数が戻ってしまい、
+       「5回でロック」が一度も効かない。実際そうなっていた。
+       間違いのときは 'bad-key' を返し、エラー文は呼び出し側が出す。 */
+    return 'bad-key';
   end if;
   update public.members set admin_key_fails = 0, admin_key_locked_until = null where id = v_id;
 
@@ -835,3 +944,61 @@ begin
 end $$;
 revoke all on function public.apply_term(uuid) from public;
 grant execute on function public.apply_term(uuid) to authenticated;
+
+-- ============================================================
+-- 8. ログインリセットの依頼
+--    ------------------------------------------------------------
+--    パスワードを忘れた人は、これまで「UL・育成を捕まえる」以外に
+--    手段がなかった。夜や休日に詰まると翌営業日まで止まる。
+--
+--    ログイン画面から自分で依頼を出せるようにして、管理者画面の
+--    「今日のアクション」に出す。ULは気づいた時点で1クリックで
+--    リセットし、出てきたログイン用コードを本人に渡す。
+--
+--    未ログインの人が呼ぶので、書けるのは「誰が困っているか」だけ。
+--    自由入力は受け取らない（連絡手段として悪用されないように）。
+--    1人1行（主キー）＋10分に1回までなので、量も増えない。
+-- ============================================================
+create table if not exists public.login_requests (
+  member_id    uuid primary key references public.members(id) on delete cascade,
+  requested_at timestamptz not null default now(),
+  times        int not null default 1        -- 何回頼んだか（急ぎ具合の目安）
+);
+alter table public.login_requests enable row level security;
+
+-- 管理者だけが読める／消せる。書き込みは下の関数からだけ。
+drop policy if exists loginreq_read   on public.login_requests;
+drop policy if exists loginreq_delete on public.login_requests;
+create policy loginreq_read on public.login_requests for select to authenticated
+  using (public.is_manager());
+create policy loginreq_delete on public.login_requests for delete to authenticated
+  using (public.is_manager());
+
+create or replace function public.request_login_reset(p_member_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_last timestamptz;
+begin
+  if not exists (select 1 from public.members where id = p_member_id and active) then
+    raise exception '対象が見つかりません';
+  end if;
+
+  select requested_at into v_last from public.login_requests where member_id = p_member_id;
+  if v_last is not null and v_last > now() - interval '10 minutes' then
+    /* 連打しても増やさない。すでに届いているので、これは成功扱いでいい */
+    return;
+  end if;
+
+  insert into public.login_requests(member_id) values (p_member_id)
+  on conflict (member_id) do update
+    set requested_at = now(), times = public.login_requests.times + 1;
+end $$;
+grant execute on function public.request_login_reset(uuid) to anon, authenticated;
+
+-- リセットしたら依頼は片付ける（admin_reset_login の中から呼ばれる）。
+create or replace function public.clear_login_request(p_member_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  delete from public.login_requests where member_id = p_member_id;
+end $$;
+grant execute on function public.clear_login_request(uuid) to authenticated;

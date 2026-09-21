@@ -77,6 +77,36 @@ const Store = (() => {
     }
     return res ? res.data : null;
   }
+  /* ------------------------------------------------------------
+     全件を取り切る。
+     ------------------------------------------------------------
+     Supabase（PostgREST）は1回の取得で返す行数に上限があり、
+     既定では1000行で打ち切られる。しかもエラーにはならず、
+     「そこまでしか無かった」かのように返ってくる。
+
+     progress は 1人あたり最大196行（全項目）あるので、
+     20人も使えば簡単に1000行を超える。そのまま使うと
+     管理者画面の達成数・遅れ・停滞が、実際より少ない数字で
+     黙って表示される（一番まずい壊れ方）。
+
+     そこで range() で端から順に取り切る。
+     引数は「クエリを作る関数」であることに注意。Supabaseの
+     クエリビルダは一度 await すると使い回せないため、
+     ページごとに作り直す必要がある。
+     ------------------------------------------------------------ */
+  const PAGE = 1000;
+  async function pageAll(build){
+    const out=[];
+    for(let from=0; ; from+=PAGE){
+      const rows = chk(await build().range(from, from+PAGE-1)) || [];
+      out.push(...rows);
+      /* 1ページ未満しか返らなければ、そこで終わり */
+      if(rows.length < PAGE) return out;
+      /* 念のための歯止め。ここに達する規模なら集計をサーバーへ移すべき */
+      if(out.length >= PAGE*50) return out;
+    }
+  }
+
   const emailFor = slug => String(slug).toLowerCase()+'@'+(CFG.AUTH_EMAIL_DOMAIN||'intern-career-path.vercel.app');
   const newSlug  = () => 'm-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
   const todayISO = () => new Date().toISOString().slice(0,10);
@@ -288,12 +318,38 @@ const Store = (() => {
       }catch(e){ return []; }
     },
 
-    /* 共通パスコードが合っているか。未設定のあいだは true が返る */
+    /* 共通パスコードが合っているか。
+       画面を早めに止めるための前チェックで、本当の判定はサーバー側
+       （register_me / claim_member の assert_team_passcode）がする。
+
+       合っているとき以外はすべて false を返す（fail-closed）。
+       以前は判定できないとき true を返していたが、それだと
+       「通信が失敗した」「関数が無い」だけで登録画面を通してしまう。
+       認証まわりの既定は必ず拒否にしておく。 */
     async checkPasscode(code){
       need();
       const r=await sb.rpc('check_team_passcode',{p_code:code});
       const v=chk(r);
-      return v===null||v===undefined? true : !!v;
+      return v===true;
+    },
+
+    /* 共通パスコードがそもそも設定されているか。
+       「違います」と「まだ配られていません」は、直す人も直す場所も違うので
+       画面では分けて出す。古いサーバー（関数が無い）では null を返し、
+       呼び出し側は従来どおり「違います」にフォールバックする。 */
+    async passcodeConfigured(){
+      try{
+        const v=chk(await sb.rpc('team_passcode_set'));
+        return v===true ? true : (v===false ? false : null);
+      }catch(e){ return null; }
+    },
+
+    /* 前チェックで弾くときのメッセージを決める */
+    async passcodeError(){
+      const set=await api.passcodeConfigured();
+      return set===false
+        ? '共通パスコードがまだ設定されていません。ULに連絡してください（SETUP.md 手順5）'
+        : 'パスコードが違います';
     },
 
     /* ---------- 新規登録 ----------
@@ -303,7 +359,7 @@ const Store = (() => {
          password … 本人だけが知るログインパスワード */
     async registerMember(p, passcode, password){
       need();
-      if(!(await api.checkPasscode(passcode))) throw new Error('パスコードが違います');
+      if(!(await api.checkPasscode(passcode))) throw new Error(await api.passcodeError());
 
       const email=emailFor(newSlug());
       let res=await sb.auth.signUp({email,password});
@@ -325,6 +381,10 @@ const Store = (() => {
        名前を選び、自分のパスワードを入れる。 */
     async signInMember(member, password){
       need();
+      /* slug（ログインID）は、パスワード設定済みの人のぶんしか名簿から返らない。
+         未設定の人がここに来るのは画面の分岐ミスなので、
+         undefined@... で意味不明なエラーになる前に止める。 */
+      if(!member || !member.slug) throw new Error('この名前はまだパスワードが設定されていません。「パスワードを決める ›」から進んでください');
       chk(await sb.auth.signInWithPassword({email:emailFor(member.slug),password}));
       const r=await resolveMe();
       if(!r) throw new Error('この名前はまだパスワードが設定されていません。「はじめて使う」から進んでください');
@@ -334,16 +394,36 @@ const Store = (() => {
     },
 
     /* ---------- 初回パスワード設定 ----------
-       名簿に行はあるがパスワード未設定の人（ULがログインをリセットした直後など）が、
-       共通パスコードと新しいパスワードを入れて繋ぎ直す。 */
-    async setPassword(member, passcode, password){
+       名簿に行はあるがパスワード未設定の人（ULがログインをリセットした直後、
+       先に名簿だけ作ってある人）が、ULから渡されたログイン用コードと
+       新しいパスワードを入れて繋ぎ直す。
+
+       共通パスコードではなくワンタイムのコードを使うのが要点。
+       共通パスコードは全員が知っているので、それだけで他人の行を
+       掴めてしまっていた。
+
+       ログインIDは、その人の古い slug を使い回さず新しく作る。
+       サーバー側（claim_member）が、コードを確認したうえで
+       名簿の slug をこの新しいIDに合わせる。 */
+    async setPassword(member, code, password){
       need();
-      if(!(await api.checkPasscode(passcode))) throw new Error('パスコードが違います');
-      const email=emailFor(member.slug);
+      const email=emailFor(newSlug());
       let res=await sb.auth.signUp({email,password});
       chk(res);
       if(!res.data.session) chk(res=await sb.auth.signInWithPassword({email,password}));
-      chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:passcode}));
+      try{
+        /* コードが違うときは、例外ではなく null が返る。
+           サーバー側で例外を投げるとトランザクションが巻き戻り、
+           間違えた回数を数えられないため（supabase/schema.sql 参照）。
+           エラー文はここで出す。 */
+        const got=chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:code}));
+        if(!got) throw new Error('ログイン用コードが違います');
+      }catch(e){
+        /* コードが違うまま中途半端なログインが残ると、次のやり直しで
+           「このログインはすでに使われています」になって詰まる。 */
+        try{ await sb.auth.signOut(); }catch(_){}
+        throw e;
+      }
       const r=await resolveMe();
       api.migratedCount = r ? await migrateLegacy(r.member.id) : 0;
       return r;
@@ -353,6 +433,10 @@ const Store = (() => {
        名前とパスワードでログインし、まだ管理者でなければ管理者キーで昇格する。 */
     async signInManager(member, password, adminKey, wantRole){
       need();
+      /* slug（ログインID）は、パスワード設定済みの人のぶんしか名簿から返らない。
+         未設定の人がここに来るのは画面の分岐ミスなので、
+         undefined@... で意味不明なエラーになる前に止める。 */
+      if(!member || !member.slug) throw new Error('この名前はまだパスワードが設定されていません。「パスワードを決める ›」から進んでください');
       chk(await sb.auth.signInWithPassword({email:emailFor(member.slug),password}));
       let r=await resolveMe();
       if(!r){ await api.signOut(); throw new Error('このログインは名簿と紐付いていません。本人画面から登録し直してください'); }
@@ -381,7 +465,9 @@ const Store = (() => {
         await resolveMe();
         return 'approved';
       }
-      chk(r);
+      /* 'bad-key' はキー違い。例外にしないのは claim_member と同じ理由
+         （投げると失敗回数が巻き戻り、5回でのロックが効かない）。 */
+      if(chk(r)==='bad-key') throw new Error('管理者キーが違います');
       await resolveMe();
       /* 承認制をやめる前のサーバーだと 'pending' が返ることがある。
          その場合は権限が付いていないので、そのまま知らせる。 */
@@ -403,6 +489,22 @@ const Store = (() => {
       if(!CLOUD) return {team:null,admin:null};
       try{ return chk(await sb.rpc('config_status'))||{team:null,admin:null}; }
       catch(e){ return {team:null,admin:null}; }
+    },
+
+    /* ---------- 自分でパスワードを変える ----------
+       これが無いと、パスワードを変えたい人・漏れたかもしれない人が
+       全員ULに頼むしかなく、実際には「気持ち悪いけど放置」になる。
+
+       いまのパスワードをもう一度確かめてから変える。
+       端末を置きっぱなしにして席を外したすきに変えられるのを防ぐため。 */
+    async changeMyPassword(current, next){
+      need();
+      if(!me) throw new Error('ログインし直してください');
+      const email=emailFor(me.member.slug);
+      /* 確認のサインイン。失敗すれば「パスワードが違います」で止まる */
+      chk(await sb.auth.signInWithPassword({email,password:current}));
+      chk(await sb.auth.updateUser({password:next}));
+      return true;
     },
 
     async signOut(){
@@ -498,37 +600,66 @@ const Store = (() => {
     },
 
     /* ---------- 管理者用：まとめて読む ---------- */
-    async adminLoad(){
+    /* 管理者画面のデータをまとめて取る。
+
+       only に ['notes'] のようにテーブル名を渡すと、そこだけ取り直す。
+       申し送りを1件足すたびに members・progress・notes・scores・
+       states・terms・assignments を全部引き直していたので、
+       30人規模だと1回の保存で数MB動いていた。触った表だけでいい。
+
+       only を省いたときは従来どおり全部取る。 */
+    async adminLoad(only){
       need();
       await detectManagerCaps();
+      const want = k => !only || only.indexOf(k)>=0;
       const pcols='member_id,item_id,checked_at';
-      const [m,p,s,n,q]=await Promise.all([
-        sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name'),
-        sb.from('progress').select(pcols),
-        sb.from('member_state').select('*'),
-        sb.from('notes').select('*').order('occurred_on',{ascending:false}),
-        sb.from('quiz_scores').select('*').order('taken_on',{ascending:false})
-      ]);
-      const progress={};
-      (chk(p)||[]).forEach(r=>{
-        (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
-      });
-      const states={};   (chk(s)||[]).forEach(r=>states[r.member_id]=r);
+      /* すべて range() で取り切る。1000行で黙って切られると
+         達成数・遅れ・停滞が実際より少なく出るため（pageAll のコメント参照）。
+         range() は並び順が決まっていないと結果が安定しないので、
+         ページングするクエリには必ず order を付ける。 */
+      const jobs = {
+        members: ()=>pageAll(()=>sb.from('members').select('*').order('unit',{nullsFirst:false}).order('name').order('id')),
+        progress:()=>pageAll(()=>sb.from('progress').select(pcols).order('member_id').order('item_id')),
+        states:  ()=>pageAll(()=>sb.from('member_state').select('*').order('member_id')),
+        notes:   ()=>pageAll(()=>sb.from('notes').select('*').order('occurred_on',{ascending:false}).order('id')),
+        scores:  ()=>pageAll(()=>sb.from('quiz_scores').select('*').order('taken_on',{ascending:false}).order('id'))
+      };
+      const keys = Object.keys(jobs).filter(want);
+      const got  = await Promise.all(keys.map(k=>jobs[k]()));
+      const raw  = {};
+      keys.forEach((k,i)=>raw[k]=got[i]);
+
+      const out = { fetchedAt:Date.now() };
+      if(raw.members) out.members = raw.members;
+      if(raw.notes)   out.notes   = raw.notes;
+      if(raw.scores)  out.scores  = raw.scores;
+      if(raw.progress){
+        const progress={};
+        raw.progress.forEach(r=>{
+          (progress[r.member_id]=progress[r.member_id]||{})[r.item_id] = r.checked_at;
+        });
+        out.progress = progress;
+      }
+      if(raw.states){
+        const states={}; raw.states.forEach(r=>states[r.member_id]=r);
+        out.states = states;
+      }
       /* 期と割当。supabase/schema.sql をまだ貼り直していない環境では
          caps.terms が false なので、空のまま返して画面側で案内を出す。 */
-      let terms=[], assignments=[];
-      if(caps.terms){
-        try{
-          const [t,a]=await Promise.all([
-            sb.from('terms').select('*').order('starts_on',{ascending:false}),
-            sb.from('assignments').select('*')
-          ]);
-          terms=chk(t)||[]; assignments=chk(a)||[];
-        }catch(e){ caps.terms=false; }
+      if(want('terms')){
+        out.terms=[]; out.assignments=[];
+        if(caps.terms){
+          try{
+            /* assignments は「人数 × 期」で増えるので、ここもページングする */
+            const [t,a]=await Promise.all([
+              pageAll(()=>sb.from('terms').select('*').order('starts_on',{ascending:false}).order('id')),
+              pageAll(()=>sb.from('assignments').select('*').order('term_id').order('member_id'))
+            ]);
+            out.terms=t; out.assignments=a;
+          }catch(e){ caps.terms=false; }
+        }
       }
-      return { members:chk(m)||[], progress, states, notes:chk(n)||[], scores:chk(q)||[],
-               terms:terms, assignments:assignments,
-               fetchedAt:Date.now() };
+      return out;
     },
 
     /* ---------- 管理者用：書き込み ---------- */
@@ -656,6 +787,28 @@ const Store = (() => {
 
     /* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す。
        本人は次に名前を選んだとき「初回パスワード設定」に進む。 */
+    /* ---------- ログインのリセットを自分で頼む ----------
+       未ログインの人が呼ぶ。送れるのは「誰が困っているか」だけで、
+       自由入力は受け取らない（連絡手段として使われないように）。
+       サーバーが古くて関数が無い環境では、静かに false を返して
+       画面は従来どおり「文をコピーしてULに送る」案内だけを出す。 */
+    async requestLoginReset(memberId){
+      need();
+      try{
+        chk(await sb.rpc('request_login_reset',{p_member_id:memberId}));
+        return true;
+      }catch(e){
+        if(/does not exist|Could not find the function/i.test(String(e.message||''))) return false;
+        throw e;
+      }
+    },
+
+    /* 管理者画面の「今日のアクション」に出す、リセット待ちの人 */
+    async loginRequests(){
+      try{ return chk(await sb.from('login_requests').select('*').order('requested_at'))||[]; }
+      catch(e){ return []; }
+    },
+
     async resetLogin(memberId){
       need();
       return chk(await sb.rpc('admin_reset_login',{p_member_id:memberId}));

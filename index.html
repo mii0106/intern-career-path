@@ -15,9 +15,23 @@
 <meta name="apple-mobile-web-app-title" content="STEP">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- 本文の日本語は端末標準のフォントを使う。
+     Noto Sans JP を読ませていたが、日本語のWebフォントはサブセットでも
+     数百KB〜あり、モバイル回線だと開いた直後が一番重かった。
+     見出し用の Bricolage Grotesque は英数字だけなので軽く、これは残す。
+
+     その1本も描画を止めないように、いったん media="print" で読み込み、
+     読み終わってから all に戻す（JSが無い環境のために noscript も置く）。 -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap"></noscript>
 <style>
 :root{
+  /* 本文は端末標準の日本語フォント（ダウンロードなし）。
+     見出しだけ英数字用の Bricolage Grotesque を重ねる。 */
+  --jp:-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP','Yu Gothic UI','Yu Gothic','Meiryo',sans-serif;
+  --disp:'Bricolage Grotesque',var(--jp);
+
   --ink:#181240;
   --ink2:#615C88;
   --ink3:#9A95B8;
@@ -44,7 +58,7 @@ html,body{margin:0;padding:0}
    ページごとにスクロールバーが出たり消えたりして横に動くのを防ぐ */
 html{scrollbar-gutter:stable}
 body{
-  font-family:'Noto Sans JP',-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+  font-family:var(--jp);
   color:var(--ink);
   background:
     radial-gradient(900px 500px at 8% -8%, #DCD8FB 0%, transparent 60%),
@@ -65,7 +79,7 @@ body{
   display:flex;flex-direction:column}
 @supports (min-height:100svh){ #app{min-height:100svh} }
 main{flex:1 1 auto}
-.disp{font-family:'Bricolage Grotesque','Noto Sans JP',sans-serif;font-weight:800;letter-spacing:-.02em}
+.disp{font-family:var(--disp);font-weight:800;letter-spacing:-.02em}
 button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
 input,textarea,select{font-family:inherit;font-size:15px;color:var(--ink)}
 :focus-visible{outline:3px solid var(--violet);outline-offset:2px;border-radius:8px}
@@ -73,7 +87,7 @@ input,textarea,select{font-family:inherit;font-size:15px;color:var(--ink)}
 /* ---------- header ---------- */
 .top{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 6px}
 .brand{display:flex;align-items:baseline;gap:8px}
-.brand .mark{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:.06em}
+.brand .mark{font-family:var(--disp);font-weight:800;font-size:19px;letter-spacing:.06em}
 .brand .sub{font-size:10.5px;color:var(--ink2);letter-spacing:.16em}
 .saved{font-size:10.5px;color:var(--ink2);opacity:0;transition:opacity .3s;letter-spacing:.04em}
 .saved.on{opacity:1}
@@ -94,14 +108,14 @@ main{padding:0 16px}
 .hero-title{font-size:26px;line-height:1.15;margin:2px 0 6px}
 .hero-name{font-size:12.5px;color:var(--ink2)}
 .capsule-wrap{display:flex;justify-content:center;margin:6px 0 2px}
-.pct{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:40px;line-height:1}
+.pct{font-family:var(--disp);font-weight:800;font-size:40px;line-height:1}
 .pct small{font-size:15px;margin-left:2px}
 .bar{height:9px;border-radius:99px;background:#EDEBF8;overflow:hidden;margin-top:12px}
 .bar > i{display:block;height:100%;border-radius:99px;transition:width .6s cubic-bezier(.2,.9,.25,1)}
 .hero-foot{display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:12px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .stat{background:var(--surface);border-radius:16px;padding:11px 8px;text-align:center;box-shadow:var(--shadow)}
-.stat b{display:block;font-family:'Bricolage Grotesque',sans-serif;font-size:20px;font-weight:800}
+.stat b{display:block;font-family:var(--disp);font-size:20px;font-weight:800}
 .stat span{font-size:10px;color:var(--ink2);letter-spacing:.06em}
 
 /* ---------- next-up list ---------- */
@@ -119,11 +133,11 @@ main{padding:0 16px}
 .gcard{display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:18px;padding:14px;box-shadow:var(--shadow);width:100%;text-align:left;transition:transform .15s}
 .gcard:active{transform:scale(.985)}
 .gcard.done{background:linear-gradient(180deg,#fff,#F7FFFC)}
-.gnum{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:12px;letter-spacing:.08em}
+.gnum{font-family:var(--disp);font-weight:800;font-size:12px;letter-spacing:.08em}
 .gtitle{font-size:14.5px;font-weight:700;line-height:1.35}
 .gmeta{font-size:11px;color:var(--ink2);margin-top:2px}
 .ring{position:relative;width:46px;height:46px;flex:0 0 auto}
-.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:'Bricolage Grotesque',sans-serif;font-size:12px;font-weight:800}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--disp);font-size:12px;font-weight:800}
 
 /* ---------- detail ---------- */
 .dhead{padding:6px 4px 14px}
@@ -152,7 +166,7 @@ main{padding:0 16px}
 /* ---------- dex ---------- */
 .dex{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .dcard{background:var(--surface);border-radius:18px;padding:12px 10px 14px;box-shadow:var(--shadow);text-align:center;position:relative;overflow:hidden}
-.dcard .stage-no{position:absolute;top:8px;left:11px;font-family:'Bricolage Grotesque',sans-serif;font-size:11px;font-weight:800;color:var(--ink3);opacity:.7}
+.dcard .stage-no{position:absolute;top:8px;left:11px;font-family:var(--disp);font-size:11px;font-weight:800;color:var(--ink3);opacity:.7}
 .dcard .nm{font-weight:700;font-size:14px;margin-top:4px}
 .dcard .dsc{font-size:10.5px;color:var(--ink2);line-height:1.55;margin-top:3px;min-height:32px}
 .dcard.lock{background:#F6F5FC}
@@ -178,11 +192,11 @@ main{padding:0 16px}
 .creed{border-top:1px solid var(--line);padding:12px 0}
 .creed:first-of-type{border-top:0}
 .creed .row{display:flex;align-items:center;gap:9px}
-.creed .no{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:13px;color:var(--ink3);width:16px;flex:0 0 auto}
+.creed .no{font-family:var(--disp);font-weight:800;font-size:13px;color:var(--ink3);width:16px;flex:0 0 auto}
 .creed input{flex:1;border:0;border-bottom:1.5px solid var(--line);background:none;padding:6px 2px;font-size:14px}
 .creed input:focus{border-color:var(--violet);outline:none}
 .scores{display:flex;gap:6px;margin:9px 0 0 25px}
-.scores button{width:32px;height:32px;border-radius:10px;background:#F4F2FD;font-size:12.5px;font-weight:700;color:var(--ink2);font-family:'Bricolage Grotesque',sans-serif}
+.scores button{width:32px;height:32px;border-radius:10px;background:#F4F2FD;font-size:12.5px;font-weight:700;color:var(--ink2);font-family:var(--disp)}
 .scores button.on{background:var(--violet);color:#fff}
 .atari{border-top:1px solid var(--line);padding:13px 0}
 .atari:first-of-type{border-top:0}
@@ -204,7 +218,7 @@ main{padding:0 16px}
 .mapgrid{display:grid;grid-template-columns:104px repeat(10,168px);gap:6px;min-width:max-content}
 .mh{background:var(--surface);border-radius:12px;padding:9px 8px;text-align:center;box-shadow:var(--shadow);position:relative}
 .mh-cat{display:grid;place-items:center;font-size:10.5px;font-weight:700;color:var(--ink2);letter-spacing:.06em;position:sticky;left:0;z-index:3}
-.mh-g{display:block;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px}
+.mh-g{display:block;font-family:var(--disp);font-weight:800;font-size:15px}
 .mh-t{display:block;font-size:10px;color:var(--ink2);margin-top:1px}
 .mh.now{outline:2px solid var(--violet)}
 .mh-now{display:inline-block;margin-top:4px;font-size:9px;font-weight:700;color:#fff;background:var(--violet);border-radius:99px;padding:1px 7px}
@@ -241,7 +255,7 @@ main{padding:0 16px}
 .road-nodes{position:relative;display:flex}
 .rn{flex:1;min-width:0;display:flex;justify-content:center;position:relative}
 .rn-dot{width:min(30px,100%);aspect-ratio:1;height:auto;border-radius:50%;background:#fff;border:2px solid #E0DDF0;
-  font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:12px;color:var(--ink2);
+  font-family:var(--disp);font-weight:800;font-size:12px;color:var(--ink2);
   display:grid;place-items:center;position:relative;z-index:2;transition:.2s}
 .rn-you{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap;z-index:3}
 .rn-you.edgeL{left:0;transform:none}
@@ -492,7 +506,7 @@ main{padding:0 16px}
 .sc:first-of-type{border-top:0}
 .sc .nm{flex:1;min-width:0;font-size:13px;font-weight:700}
 .sc .nm small{display:block;font-weight:400;font-size:11px;color:var(--ink2)}
-.sc .pt{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+.sc .pt{font-family:var(--disp);font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
 .sc .pt small{font-size:11px;color:var(--ink2);font-weight:600}
 .pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px}
 .pill.m{background:var(--mint-soft);color:#0E8F69}
@@ -502,6 +516,26 @@ main{padding:0 16px}
 .pill.s{background:var(--sky-soft);color:#1B6FB4}
 .pill.g{background:#EDECF6;color:var(--ink2)}
 .savebtn{width:100%;padding:13px;border-radius:14px;background:var(--violet);color:#fff;font-weight:700;font-size:14px;margin-top:2px}
+.savebtn[disabled]{opacity:.55}
+/* ---------- ステップの絞り込み ----------
+   196項目あるので、グレードを開き直して探す手間をなくす */
+.stepfind{display:flex;gap:8px;align-items:center;margin:0 0 12px}
+.stepfind input[type=search]{flex:1;min-width:0;padding:11px 13px;border-radius:12px;
+  border:1px solid var(--line);background:var(--bg2,#FAFAFE);font-size:14px;color:var(--ink);
+  -webkit-appearance:none}
+.stepfind input[type=search]:focus{border-color:var(--violet);background:#fff;outline:none}
+.fchip{flex:0 0 auto;padding:10px 13px;border-radius:12px;border:1px solid var(--line);
+  font-size:12px;font-weight:700;color:var(--ink2);background:var(--bg2,#FAFAFE);white-space:nowrap}
+.fchip.on{background:var(--violet);border-color:var(--violet);color:#fff}
+.find-g{display:flex;align-items:baseline;gap:10px;padding:12px 2px 4px;
+  border-top:1px solid var(--line);margin-top:6px}
+.find-g:first-child{border-top:0;margin-top:0;padding-top:2px}
+.find-g b{font-family:var(--disp);font-size:12px;letter-spacing:.08em}
+.find-cat{margin:6px 2px 0;font-size:10.5px;letter-spacing:.02em}
+.lnk{font-size:11.5px;font-weight:700;color:var(--violet);margin-left:auto}
+/* 設定タブのパスワード変更。開くまでは1ボタンだけ置いておく */
+.pwbox{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--bg2,#FAFAFE)}
+.pwbox .field:last-of-type{margin-bottom:10px}
 .savebtn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
 .savebtn:disabled{opacity:.5}
 @media (min-width:900px){
@@ -562,6 +596,9 @@ let D=JSON.parse(JSON.stringify(DEFAULT));
 let WANT_ROLE='mentor';
 let view='home', openG=null, ready=false, profileDirty=false;
 let stepSeg='grades';       /* ステップタブの中身：grades（一覧）／map（横並び） */
+let PWFORM=false;           /* 設定タブのパスワード変更フォームを開いているか */
+/* ステップタブの絞り込み。196項目あるので、探すのに毎回スクロールさせない */
+let stepQ='', stepTodo=false;
 let sheetSeg='sheet';       /* マイシートタブの中身：sheet（記入）／settings（設定） */
 let dexOpen=false;          /* ずかんは相棒を押したときだけ開く */
 let failedSave=null;        /* 保存できなかった操作。下部のバーからやり直せる */
@@ -652,9 +689,31 @@ function clearFail(){
   const bar=document.getElementById('failbar');
   if(bar){ bar.classList.remove('on'); bar.innerHTML=''; }
 }
-/* 未保存のまま閉じようとしたら止める */
+/* ------------------------------------------------------------
+   閉じようとしたときに、未保存を取りこぼさない。
+
+   以前は pendingSave でも beforeunload で止めていたが、保存は
+   450ms のデバウンスなので「1文字打った直後にタブを閉じる」だけで
+   毎回ブラウザの警告ダイアログが出ていた。止めるより先に保存する。
+
+   ・画面が隠れたら、待たずにその場で保存する（タブの切り替え・
+     ホームに戻る・アプリを閉じる、のどれでもここを通る。モバイルでは
+     beforeunload が発火しないことがあるので、こちらが本命）
+   ・それでも保存できていない（通信に失敗した）ときだけ、
+     beforeunload で引き止める
+   ------------------------------------------------------------ */
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden' && pendingSave){
+    clearTimeout(saveT);
+    runSave();
+  }
+});
+window.addEventListener('pagehide',()=>{
+  if(pendingSave){ clearTimeout(saveT); runSave(); }
+});
 window.addEventListener('beforeunload',e=>{
-  if(pendingSave||failedSave){ e.preventDefault(); e.returnValue=''; }
+  /* 本当に失敗が残っているときだけ。デバウンス待ちでは止めない */
+  if(failedSave){ e.preventDefault(); e.returnValue=''; }
 });
 /* オフラインで押したチェックが残っているあいだは、そのことを出しておく */
 function offlineNote(){
@@ -853,8 +912,14 @@ function nextItemHTML(i){
 }
 
 function vGrades(){
-  let h=stepHead()+
-   '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
+  /* 探しているときは、グレードのカードではなく結果を出す */
+  if(stepQ.trim() || stepTodo) return stepHead()+stepFilterHTML()+stepResultsHTML();
+  return stepHead()+stepFilterHTML()+vGradeCardsHTML();
+}
+/* グレードのカード一覧。絞り込みを解除したときにもここだけ差し替えるので、
+   vGrades から切り出してある。 */
+function vGradeCardsHTML(){
+  let h='<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
    'チェックを入れた時点で達成として数えます。チェックボックスがすべて埋まったら昇格を検討します。'+
    '基準を満たしているか迷ったときは、ひとまず入れて大丈夫です。違っていたら定例でメンター・ULと一緒に確認して直せます。'+
    '</div>'+
@@ -883,6 +948,52 @@ function stepHead(){
       [['grades','グレード一覧'],['map','ステップ一覧']].map(x=>
         '<button data-act="stepSeg" data-s="'+x[0]+'" class="'+(stepSeg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+
     '</div>';
+}
+/* 項目IDの頭（g3.4-1 の 3）からグレード番号を取る */
+function gradeOfId(id){ return +String(id).slice(1).split('.')[0] || 1; }
+
+/* 全196項目から探す。「あの項目どこだっけ」で毎回グレードを
+   開き直してスクロールする手間をなくすためのもの。 */
+function stepFilterHTML(){
+  return '<div class="stepfind">'+
+    '<input type="search" id="stepQ" value="'+esc(stepQ)+'" autocomplete="off" '+
+      'placeholder="項目をさがす（例：レポート、定例、フォロワー）">'+
+    '<button class="fchip'+(stepTodo?' on':'')+'" data-act="stepTodo" '+
+      'aria-pressed="'+(stepTodo?'true':'false')+'">未達成だけ</button>'+
+  '</div>';
+}
+function stepResultsHTML(){
+  const q=stepQ.trim().toLowerCase();
+  let list=ALL_ITEMS;
+  if(q) list=list.filter(i=>
+    String(i.t).toLowerCase().indexOf(q)>=0 || String(i.cat||'').toLowerCase().indexOf(q)>=0);
+  if(stepTodo) list=list.filter(i=>!D.checks[i.id]);
+
+  if(!list.length){
+    return '<div class="card"><p class="tiny muted" style="margin:0;text-align:center;padding:12px 0">'+
+      (stepTodo&&!q? 'すべて達成しています。'
+                   : '見つかりませんでした。別のことばでも試してみてください。')+'</p></div>';
+  }
+  /* 多すぎると結局スクロールになるので、上限を切って件数を出す */
+  const MAX=60, shown=list.slice(0,MAX);
+  let h='<p class="tiny muted" style="margin:0 0 8px 2px">'+list.length+' 件'+
+    (list.length>MAX? '（上から '+MAX+' 件）':'')+'</p>';
+
+  /* グレードごとにまとめる。どこの項目かが分からないと直しに行けない */
+  let cur=null;
+  h+='<div class="card">';
+  shown.forEach(i=>{
+    const g=gradeOfId(i.id);
+    if(g!==cur){
+      cur=g;
+      const t=tierOf(g);
+      h+='<div class="find-g"><b style="color:'+t.hex+'">GRADE '+g+'</b>'+
+         '<button class="lnk" data-act="openGrade" data-g="'+g+'">このグレードを開く →</button></div>';
+    }
+    h+='<div class="find-cat tiny muted">'+esc(i.cat||'')+'</div>'+
+       itemHTML(i.id, i.t, i.link, false, isLocked(g));
+  });
+  return h+'</div>';
 }
 
 function vDetail(n){
@@ -1082,6 +1193,22 @@ function vSettings(){
   h+='<div class="sec-label">ログイン</div><div class="card">'+
    '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
    'チェックを消したいときや、記録の控えが必要なときはULに相談してください。</p>'+
+   /* パスワードは自分で変えられるようにしておく。ULに頼むしかない形だと、
+      変えたい人も「漏れたかも」という人も、結局そのまま使い続けてしまう。 */
+   '<div class="pwbox">'+
+     (PWFORM
+       ? '<div class="field"><label>いまのパスワード</label>'+
+           '<input type="password" id="pwCur" autocomplete="current-password" placeholder="いま使っているもの"></div>'+
+         '<div class="field"><label>新しいパスワード</label>'+
+           '<input type="password" id="pwNew" autocomplete="new-password" placeholder="6文字以上"></div>'+
+         '<div class="field"><label>新しいパスワード（確認）</label>'+
+           '<input type="password" id="pwNew2" autocomplete="new-password" placeholder="もう一度入力"></div>'+
+         '<button class="savebtn" data-act="savePw">パスワードを変える</button>'+
+         '<button class="danger" style="margin-top:8px;border-color:var(--line);color:var(--ink2)" '+
+           'data-act="cancelPw">やめる</button>'
+       : '<button class="danger" data-act="openPw" style="border-color:var(--line);color:var(--ink2)">パスワードを変える</button>')+
+   '</div>'+
+   '<div style="height:8px"></div>'+
    '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
   h+='<div style="height:8px"></div>';
   return h;
@@ -1316,6 +1443,7 @@ document.addEventListener('click',async e=>{
     }
   }
   else if(a==='stepSeg'){ stepSeg=el.dataset.s; render(); }
+  else if(a==='stepTodo'){ stepTodo=!stepTodo; render(true); }
   else if(a==='sheetSeg'){ sheetSeg=el.dataset.s; render(); }
   else if(a==='openDex'){ dexOpen=true; renderDex(); }
   else if(a==='closeDex'){ dexOpen=false; renderDex(); }
@@ -1339,6 +1467,27 @@ document.addEventListener('click',async e=>{
   else if(a==='seg'){ LOG.seg=el.dataset.s; render(); }
   else if(a==='retrySave'){ el.disabled=true; el.textContent='送信中…'; await runSave(); }
   else if(a==='closeFail'){ clearFail(); }
+  else if(a==='openPw'){ PWFORM=true; render(true); return; }
+  else if(a==='cancelPw'){ PWFORM=false; render(true); return; }
+  else if(a==='savePw'){
+    const g=x=>(document.getElementById(x)||{}).value||'';
+    const cur=g('pwCur'), a1=g('pwNew'), a2=g('pwNew2');
+    if(!cur){ toast('いまのパスワードを入力してください','bad'); return; }
+    const bad=checkPw(a1,a2);
+    if(bad){ toast(bad,'bad'); return; }
+    if(cur===a1){ toast('いまと同じパスワードです','bad'); return; }
+    const btn=document.querySelector('[data-act="savePw"]');
+    if(btn){ btn.disabled=true; btn.textContent='変更しています…'; }
+    try{
+      await Store.changeMyPassword(cur,a1);
+      PWFORM=false; render(true);
+      toast('パスワードを変えました','xp');
+    }catch(e){
+      if(btn){ btn.disabled=false; btn.textContent='パスワードを変える'; }
+      toast(e.message||'変更できませんでした','bad',6000);
+    }
+    return;
+  }
   else if(a==='logout'){
     if(!confirm('ログアウトします。よろしいですか？')) return;
     await Store.signOut(); location.reload();
@@ -1372,7 +1521,24 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
 });
+/* 項目の絞り込み。打つたびに全体を描き替えると重いので、
+   結果の部分だけ差し替える（カーソルも飛ばない）。 */
+let stepFindT=null;
 document.addEventListener('input',e=>{
+  if(e.target.id==='stepQ'){
+    stepQ=e.target.value;
+    clearTimeout(stepFindT);
+    stepFindT=setTimeout(()=>{
+      const v=document.getElementById('view');
+      if(!v || view!=='step' || stepSeg!=='grades' || openG) return;
+      /* 入力欄を作り直さないよう、ヘッダと絞り込み欄より後ろだけ入れ替える */
+      v.innerHTML=stepHead()+stepFilterHTML()+
+        ((stepQ.trim()||stepTodo)? stepResultsHTML() : vGradeCardsHTML());
+      const box=document.getElementById('stepQ');
+      if(box){ box.focus(); box.setSelectionRange(box.value.length,box.value.length); }
+    },180);
+    return;
+  }
   const t=e.target;
   if(t.dataset.field){
     const k=t.dataset.field.split('.');
@@ -1516,6 +1682,7 @@ function evolve(gradeN,oldSt,newSt){
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
 let GATE={ hits:[], mentors:[], units:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
+           asked:false,   /* リセット依頼をこの画面から出したか */
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 /* shared/config.js の KNOWN_ULS が、ULとして選べる「正」の名簿。
    ここで名簿のUL欄の値そのものは引いてこない。自己申告の自由入力なので、
@@ -1680,14 +1847,26 @@ function showGate(err){
         'パスワードだけを決め直します。</div>'+
       '<div class="steps">'+
         '<div class="stp"><i>1</i><div><b>ULか育成の人に頼む</b>'+
-          '<span>「STEPのログインをリセットしてほしい」と伝えてください。'+
+          '<span>「STEPのログインをリセットして、ログイン用コードを教えてほしい」と伝えてください。'+
           '管理者ツールから1クリックでできます。</span></div></div>'+
         '<div class="stp"><i>2</i><div><b>この画面で自分の名前を選ぶ</b>'+
           '<span>リセットが済むと、名前の右が「パスワードを決める ›」に変わります。</span></div></div>'+
-        '<div class="stp"><i>3</i><div><b>共通パスコードと新しいパスワードを入れる</b>'+
-          '<span>共通パスコードは全員おなじものです（自分のパスワードではありません）。</span></div></div>'+
+        '<div class="stp"><i>3</i><div><b>ログイン用コードと新しいパスワードを入れる</b>'+
+          '<span>ログイン用コードは、リセットしたときにUL・育成の画面に出る8文字です。'+
+          'あなた専用の使い捨てで、共通パスコードとは別のものです。</span></div></div>'+
       '</div>'+
-      '<button class="gbtn" data-act="copyReset">頼む文をコピーする</button>'+
+      /* 名前が選ばれているときだけ、その場で依頼を出せる。
+         ULを捕まえるまで何もできない状態が、夜や休日に一番つらい。 */
+      (GATE.picked
+        ? '<button class="gbtn" data-act="askReset">'+
+            (GATE.asked? '✓ 依頼を出しました' : 'UL・育成にリセットを依頼する')+'</button>'+
+          (GATE.asked
+            ? '<p class="tiny muted" style="margin:8px 0 0">'+
+              '管理者ツールの「今日のアクション」に出ています。'+
+              '急ぐときは、下の文をコピーして直接送ってください。</p>'
+            : '')
+        : '')+
+      '<button class="gbtn alt" data-act="copyReset">頼む文をコピーする</button>'+
       '<button class="gbtn alt" data-act="toPick">名前を選ぶ画面に戻る</button>'+
       '<p class="tiny muted" style="margin:12px 0 0">'+
         (nm? '選んでいた名前：'+esc(nm)+'<br>' : '')+
@@ -1720,13 +1899,18 @@ function showGate(err){
     body.innerHTML=who+
       '<div class="note" style="background:var(--violet-soft);margin-bottom:12px">'+
         'この名前にはいまパスワードがありません。'+
-        '<b>登録した直後の人</b>と、<b>ログインをリセットしてもらった人</b>がここに来ます。'+
+        '<b>ログインをリセットしてもらった人</b>と、<b>先に名簿に入れてもらった人</b>がここに来ます。'+
         'ここで決めたパスワードで、次回からログインします。'+
         '<b>これまでの記録はそのまま残ります。</b></div>'+
-      '<div class="field"><label>部署共通のパスコード</label>'+
-        '<input type="password" id="sCode" autocomplete="off" placeholder="全員おなじパスコード">'+
-        '<p class="tiny muted" style="margin:4px 0 0">自分のパスワードではありません。'+
-        'ULから共有されている、全員で同じものです。</p></div>'+
+      '<div class="field"><label>ログイン用コード（8文字）</label>'+
+        '<input type="text" id="sCode" autocomplete="one-time-code" inputmode="latin" '+
+          'autocapitalize="characters" spellcheck="false" maxlength="8" '+
+          'style="text-transform:uppercase;letter-spacing:.18em;font-weight:700" '+
+          'placeholder="ULから渡されたコード">'+
+        '<p class="tiny muted" style="margin:4px 0 0">'+
+        '<b>共通パスコードではありません。</b>あなた一人のための使い捨てのコードで、'+
+        'UL・育成がリセットしたときに発行されます。'+
+        '受け取っていなければ、UL・育成に「STEPのログイン用コードを発行してほしい」と伝えてください。</p></div>'+
       '<div class="field"><label>新しいパスワード</label>'+
         '<input type="password" id="sPw" autocomplete="new-password" placeholder="自分で決めてください">'+PW_HINT+'</div>'+
       '<div class="field"><label>パスワード（確認）</label>'+
@@ -1789,8 +1973,9 @@ async function doSignIn(){
 }
 async function doSetPw(){
   const g=id=>(document.getElementById(id)||{}).value||'';
-  const code=g('sCode'), pw=g('sPw'), pw2=g('sPw2');
-  if(!code){ showGate('パスコードを入力してください'); return; }
+  /* 読み上げ・書き写しで小文字や前後の空白が混ざりやすいので、ここで寄せる */
+  const code=g('sCode').trim().toUpperCase().replace(/\s+/g,''), pw=g('sPw'), pw2=g('sPw2');
+  if(!code){ showGate('ログイン用コードを入力してください'); return; }
   const bad=checkPw(pw,pw2);
   if(bad){ showGate(bad); return; }
   gateBusy('[data-act="setpw"]','設定しています…');
@@ -1843,7 +2028,7 @@ document.addEventListener('click',async e=>{
     showGate();
   }
   else if(a==='retry'){ location.reload(); }
-  else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
+  else if(a==='toPick'){ GATE.mode='pick'; GATE.asked=false; showGate(); }
   else if(a==='toReg'){ GATE.mode='reg'; showGate(); }
   else if(a==='toForgot'){ GATE.mode='forgot'; showGate(); }
   else if(a==='copyReset'){
@@ -1851,9 +2036,25 @@ document.addEventListener('click',async e=>{
     const t='STEP（キャリアステップシート）のパスワードを忘れてしまいました。\n'+
       '管理者ツールの「キャリア現状一覧」から '+nm+' を開いて、'+
       '設定タブの「ログインをリセットする」を押してもらえますか。\n'+
-      'リセットしてもらったら、自分でパスワードを決め直します。記録は消えません。\n'+
+      'リセットすると画面に「ログイン用コード」（8文字）が出るので、それも教えてください。\n'+
+      'コードをもらったら、自分でパスワードを決め直します。記録は消えません。\n'+
       location.origin+location.pathname;
     copyText(t,'コピーしました。ULか育成の人に送ってください');
+  }
+  else if(a==='askReset'){
+    if(!GATE.picked) return;
+    el.disabled=true; el.textContent='送っています…';
+    try{
+      const ok=await Store.requestLoginReset(GATE.picked.id);
+      GATE.asked=true;
+      showGate('');
+      toast(ok? 'UL・育成に依頼を出しました' : '依頼の受付がまだ使えません。下の文をコピーして送ってください',
+            ok?'xp':'bad', 6000);
+    }catch(e){
+      el.disabled=false; el.textContent='UL・育成にリセットを依頼する';
+      toast(e.message||'送れませんでした','bad');
+    }
+    return;
   }
   else if(a==='signin'){ await doSignIn(); }
   else if(a==='setpw'){ await doSetPw(); }
