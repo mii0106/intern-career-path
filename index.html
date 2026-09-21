@@ -162,11 +162,19 @@ main{padding:0 16px}
 /* ---------- sheet form ---------- */
 .field{margin-bottom:14px}
 .field label{display:block;font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:5px;letter-spacing:.04em}
-.field input[type=text],.field input[type=date],.field input[type=password],.field textarea,.field select{
+.field input[type=text],.field input[type=date],.field input[type=number],.field input[type=password],.field textarea,.field select{
   width:100%;border:1.5px solid var(--line);background:#FBFAFF;border-radius:12px;padding:11px 12px;font-size:14.5px;transition:.15s
 }
 .field textarea{min-height:78px;resize:vertical;line-height:1.7}
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--violet);background:#fff;outline:none}
+/* 横に2つ並べる入力（稼働時間・担当アカウント数など） */
+.frow{display:flex;gap:10px}
+.frow .field{flex:1;min-width:0}
+/* 得意領域のタグ選択 */
+.tags{display:flex;flex-wrap:wrap;gap:7px}
+.tags button{border:1.5px solid var(--line);background:#FBFAFF;border-radius:99px;
+  padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--ink2);transition:.14s}
+.tags button.on{background:var(--violet);border-color:var(--violet);color:#fff}
 .creed{border-top:1px solid var(--line);padding:12px 0}
 .creed:first-of-type{border-top:0}
 .creed .row{display:flex;align-items:center;gap:9px}
@@ -942,6 +950,38 @@ function customHTML(id,label,lk){
    '</div></div>';
 }
 
+/* ------------------------------------------------------------
+   いまの稼働。半期ごとのユニット編成のときに、ULが実際に見ている
+   「この人は週どれくらい入れて、いま何社持っていて、いつまでいるのか」を
+   持たせるための欄。グレードだけでは編成の判断ができないため。
+   保存先は member_state.custom.__work（shared/ui.js の workOf）。
+   ------------------------------------------------------------ */
+function vWorkCard(){
+  const w=workOf(D.custom), tags=skillTags();
+  const v=x=>x==null?'':String(x);
+  let h='<div class="sec-label">いまの稼働</div><div class="card">'+
+    '<p class="tiny muted" style="margin:0 0 12px;line-height:1.85">'+
+    '半期ごとのユニット編成で使います。正確でなくて構わないので、いまの感覚で入れてください。'+
+    'あとから変えられます。</p>'+
+    '<div class="field"><label>週の稼働時間（目安）</label>'+
+      '<input type="number" min="0" max="80" step="1" data-work="hours" value="'+esc(v(w.hours))+'" placeholder="例：15"></div>'+
+    '<div class="frow">'+
+      '<div class="field"><label>スタンダード運用（社）</label>'+
+        '<input type="number" min="0" max="20" step="1" data-work="accStd" value="'+esc(v(w.accStd))+'" placeholder="0"></div>'+
+      '<div class="field"><label>アドバンス運用（社）</label>'+
+        '<input type="number" min="0" max="20" step="1" data-work="accAdv" value="'+esc(v(w.accAdv))+'" placeholder="0"></div>'+
+    '</div>'+
+    '<div class="field"><label>卒業・稼働終了の予定<span class="muted" style="font-weight:400">（わかる範囲で・未定なら空でOK）</span></label>'+
+      '<input type="date" data-work="until" value="'+esc(w.until)+'"></div>';
+  if(tags.length){
+    h+='<div class="field" style="margin-bottom:0"><label>得意・のばしたい領域<span class="muted" style="font-weight:400">（いくつでも）</span></label>'+
+      '<div class="tags">'+tags.map(t=>
+        '<button type="button" data-act="skill" data-t="'+esc(t)+'" class="'+(w.skills.indexOf(t)>=0?'on':'')+'"'+
+        ' aria-pressed="'+(w.skills.indexOf(t)>=0?'true':'false')+'">'+esc(t)+'</button>').join('')+'</div></div>';
+  }
+  return h+'</div>';
+}
+
 /* マイシートは「面談で見せる記入欄」と「アプリの設定」を分ける。
    毎回スクロールして目的の欄を探さなくていいように。 */
 function vSheet(){
@@ -967,6 +1007,8 @@ function vMySheet(){
    '<select data-field="profile.grade"><option value="">未設定</option>'+
     GRADES.map(g=>'<option value="'+g.n+'"'+(String(D.profile.grade)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
    '</select></div></div>';
+
+  h+=vWorkCard();
 
   h+='<div class="sec-label">インターンを卒業した時にどうなっていたいか？</div><div class="card">'+
    '<div class="field"><label>社会人基礎</label><textarea data-field="goals.basic" placeholder="例：どんな相手にも自分から状況を共有しにいける状態になる">'+esc(D.goals.basic)+'</textarea></div>'+
@@ -1321,6 +1363,13 @@ document.addEventListener('click',async e=>{
       }
     }catch(err){ el.disabled=false; el.textContent='この権限にする'; toast(err.message||'管理者キーが違います',null,5000); }
   }
+  else if(a==='skill'){
+    const w=Object.assign({},D.custom[WORK_KEY]||{});
+    const list=Array.isArray(w.skills)?w.skills.slice():[];
+    const i=list.indexOf(el.dataset.t);
+    if(i>=0) list.splice(i,1); else list.push(el.dataset.t);
+    w.skills=list; D.custom[WORK_KEY]=w; save(); render(true);
+  }
   else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
 });
 document.addEventListener('input',e=>{
@@ -1331,6 +1380,11 @@ document.addEventListener('input',e=>{
     if(k[0]==='profile') profileDirty=true;
     save();
     if(k[0]==='buddy'){ const ht=document.querySelector('.hero-title'); if(ht) ht.textContent=t.value||'なまえ未設定'; }
+  }else if(t.dataset.work){
+    /* いまの稼働は custom.__work にまとめて入れる */
+    const w=Object.assign({},D.custom[WORK_KEY]||{});
+    w[t.dataset.work]=t.value;
+    D.custom[WORK_KEY]=w; save();
   }else if(t.dataset.creed!=null){ D.creed[+t.dataset.creed].t=t.value; save(); }
   else if(t.dataset.custom){ D.custom[t.dataset.custom]=t.value; save(); }
 });
