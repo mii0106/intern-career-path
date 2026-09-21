@@ -517,6 +517,22 @@ main{padding:0 16px}
 .pill.g{background:#EDECF6;color:var(--ink2)}
 .savebtn{width:100%;padding:13px;border-radius:14px;background:var(--violet);color:#fff;font-weight:700;font-size:14px;margin-top:2px}
 .savebtn[disabled]{opacity:.55}
+/* ---------- ステップの絞り込み ----------
+   196項目あるので、グレードを開き直して探す手間をなくす */
+.stepfind{display:flex;gap:8px;align-items:center;margin:0 0 12px}
+.stepfind input[type=search]{flex:1;min-width:0;padding:11px 13px;border-radius:12px;
+  border:1px solid var(--line);background:var(--bg2,#FAFAFE);font-size:14px;color:var(--ink);
+  -webkit-appearance:none}
+.stepfind input[type=search]:focus{border-color:var(--violet);background:#fff;outline:none}
+.fchip{flex:0 0 auto;padding:10px 13px;border-radius:12px;border:1px solid var(--line);
+  font-size:12px;font-weight:700;color:var(--ink2);background:var(--bg2,#FAFAFE);white-space:nowrap}
+.fchip.on{background:var(--violet);border-color:var(--violet);color:#fff}
+.find-g{display:flex;align-items:baseline;gap:10px;padding:12px 2px 4px;
+  border-top:1px solid var(--line);margin-top:6px}
+.find-g:first-child{border-top:0;margin-top:0;padding-top:2px}
+.find-g b{font-family:var(--disp);font-size:12px;letter-spacing:.08em}
+.find-cat{margin:6px 2px 0;font-size:10.5px;letter-spacing:.02em}
+.lnk{font-size:11.5px;font-weight:700;color:var(--violet);margin-left:auto}
 /* 設定タブのパスワード変更。開くまでは1ボタンだけ置いておく */
 .pwbox{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--bg2,#FAFAFE)}
 .pwbox .field:last-of-type{margin-bottom:10px}
@@ -581,6 +597,8 @@ let WANT_ROLE='mentor';
 let view='home', openG=null, ready=false, profileDirty=false;
 let stepSeg='grades';       /* ステップタブの中身：grades（一覧）／map（横並び） */
 let PWFORM=false;           /* 設定タブのパスワード変更フォームを開いているか */
+/* ステップタブの絞り込み。196項目あるので、探すのに毎回スクロールさせない */
+let stepQ='', stepTodo=false;
 let sheetSeg='sheet';       /* マイシートタブの中身：sheet（記入）／settings（設定） */
 let dexOpen=false;          /* ずかんは相棒を押したときだけ開く */
 let failedSave=null;        /* 保存できなかった操作。下部のバーからやり直せる */
@@ -894,8 +912,14 @@ function nextItemHTML(i){
 }
 
 function vGrades(){
-  let h=stepHead()+
-   '<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
+  /* 探しているときは、グレードのカードではなく結果を出す */
+  if(stepQ.trim() || stepTodo) return stepHead()+stepFilterHTML()+stepResultsHTML();
+  return stepHead()+stepFilterHTML()+vGradeCardsHTML();
+}
+/* グレードのカード一覧。絞り込みを解除したときにもここだけ差し替えるので、
+   vGrades から切り出してある。 */
+function vGradeCardsHTML(){
+  let h='<div class="note" style="background:var(--violet-soft)">メンターとの隔週定例、ULとの月次定例で随時チェックボックスを確認。'+
    'チェックを入れた時点で達成として数えます。チェックボックスがすべて埋まったら昇格を検討します。'+
    '基準を満たしているか迷ったときは、ひとまず入れて大丈夫です。違っていたら定例でメンター・ULと一緒に確認して直せます。'+
    '</div>'+
@@ -924,6 +948,52 @@ function stepHead(){
       [['grades','グレード一覧'],['map','ステップ一覧']].map(x=>
         '<button data-act="stepSeg" data-s="'+x[0]+'" class="'+(stepSeg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+
     '</div>';
+}
+/* 項目IDの頭（g3.4-1 の 3）からグレード番号を取る */
+function gradeOfId(id){ return +String(id).slice(1).split('.')[0] || 1; }
+
+/* 全196項目から探す。「あの項目どこだっけ」で毎回グレードを
+   開き直してスクロールする手間をなくすためのもの。 */
+function stepFilterHTML(){
+  return '<div class="stepfind">'+
+    '<input type="search" id="stepQ" value="'+esc(stepQ)+'" autocomplete="off" '+
+      'placeholder="項目をさがす（例：レポート、定例、フォロワー）">'+
+    '<button class="fchip'+(stepTodo?' on':'')+'" data-act="stepTodo" '+
+      'aria-pressed="'+(stepTodo?'true':'false')+'">未達成だけ</button>'+
+  '</div>';
+}
+function stepResultsHTML(){
+  const q=stepQ.trim().toLowerCase();
+  let list=ALL_ITEMS;
+  if(q) list=list.filter(i=>
+    String(i.t).toLowerCase().indexOf(q)>=0 || String(i.cat||'').toLowerCase().indexOf(q)>=0);
+  if(stepTodo) list=list.filter(i=>!D.checks[i.id]);
+
+  if(!list.length){
+    return '<div class="card"><p class="tiny muted" style="margin:0;text-align:center;padding:12px 0">'+
+      (stepTodo&&!q? 'すべて達成しています。'
+                   : '見つかりませんでした。別のことばでも試してみてください。')+'</p></div>';
+  }
+  /* 多すぎると結局スクロールになるので、上限を切って件数を出す */
+  const MAX=60, shown=list.slice(0,MAX);
+  let h='<p class="tiny muted" style="margin:0 0 8px 2px">'+list.length+' 件'+
+    (list.length>MAX? '（上から '+MAX+' 件）':'')+'</p>';
+
+  /* グレードごとにまとめる。どこの項目かが分からないと直しに行けない */
+  let cur=null;
+  h+='<div class="card">';
+  shown.forEach(i=>{
+    const g=gradeOfId(i.id);
+    if(g!==cur){
+      cur=g;
+      const t=tierOf(g);
+      h+='<div class="find-g"><b style="color:'+t.hex+'">GRADE '+g+'</b>'+
+         '<button class="lnk" data-act="openGrade" data-g="'+g+'">このグレードを開く →</button></div>';
+    }
+    h+='<div class="find-cat tiny muted">'+esc(i.cat||'')+'</div>'+
+       itemHTML(i.id, i.t, i.link, false, isLocked(g));
+  });
+  return h+'</div>';
 }
 
 function vDetail(n){
@@ -1373,6 +1443,7 @@ document.addEventListener('click',async e=>{
     }
   }
   else if(a==='stepSeg'){ stepSeg=el.dataset.s; render(); }
+  else if(a==='stepTodo'){ stepTodo=!stepTodo; render(true); }
   else if(a==='sheetSeg'){ sheetSeg=el.dataset.s; render(); }
   else if(a==='openDex'){ dexOpen=true; renderDex(); }
   else if(a==='closeDex'){ dexOpen=false; renderDex(); }
@@ -1450,7 +1521,24 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='closeEvo'){ document.getElementById('evo').classList.remove('on'); render(); }
 });
+/* 項目の絞り込み。打つたびに全体を描き替えると重いので、
+   結果の部分だけ差し替える（カーソルも飛ばない）。 */
+let stepFindT=null;
 document.addEventListener('input',e=>{
+  if(e.target.id==='stepQ'){
+    stepQ=e.target.value;
+    clearTimeout(stepFindT);
+    stepFindT=setTimeout(()=>{
+      const v=document.getElementById('view');
+      if(!v || view!=='step' || stepSeg!=='grades' || openG) return;
+      /* 入力欄を作り直さないよう、ヘッダと絞り込み欄より後ろだけ入れ替える */
+      v.innerHTML=stepHead()+stepFilterHTML()+
+        ((stepQ.trim()||stepTodo)? stepResultsHTML() : vGradeCardsHTML());
+      const box=document.getElementById('stepQ');
+      if(box){ box.focus(); box.setSelectionRange(box.value.length,box.value.length); }
+    },180);
+    return;
+  }
   const t=e.target;
   if(t.dataset.field){
     const k=t.dataset.field.split('.');
