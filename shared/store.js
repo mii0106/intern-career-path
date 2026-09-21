@@ -151,7 +151,7 @@ const Store = (() => {
   /* ============================================================
      サーバー側の機能検出
      ------------------------------------------------------------
-     supabase/schema.sql の追加分（チェックの関数・名前検索・設定など）を
+     supabase/parts/ の追加分（チェックの関数・名前検索・設定など）を
      まだ流していない環境でも、画面がそのまま動くようにする。
      使える機能だけをオンにして、無い機能は従来のやり方に落とす。
      ============================================================ */
@@ -262,7 +262,7 @@ const Store = (() => {
 
     /* ---------- 名簿（ログイン画面用） ----------
        出るのは表示名・Unit・UL・メンター・内部ID・権限・パスワード設定済みかどうかだけ。
-       列名を明示せず select('*') にしているのは、schema.sql を貼り直す前の
+       列名を明示せず select('*') にしているのは、SQLを貼り直す前の
        古いビュー（mentor列が無い）でも列不足エラーにならないようにするため。 */
     async roster(){
       if(!CLOUD) return [];
@@ -414,7 +414,7 @@ const Store = (() => {
       try{
         /* コードが違うときは、例外ではなく null が返る。
            サーバー側で例外を投げるとトランザクションが巻き戻り、
-           間違えた回数を数えられないため（supabase/schema.sql 参照）。
+           間違えた回数を数えられないため（supabase/parts/ 参照）。
            エラー文はここで出す。 */
         const got=chk(await sb.rpc('claim_member',{p_member_id:member.id,p_code:code}));
         if(!got) throw new Error('ログイン用コードが違います');
@@ -480,7 +480,7 @@ const Store = (() => {
       try{ return chk(await sb.rpc('get_app_settings'))||{}; }catch(e){ return null; }
     },
     async saveSettings(s){
-      if(!caps.settings) throw new Error('この設定を保存するには supabase/schema.sql を貼り直してください');
+      if(!caps.settings) throw new Error('この設定を保存するには supabase/parts/ のSQLを貼り直してください');
       return chk(await sb.rpc('set_app_settings',{p_settings:s}));
     },
 
@@ -644,7 +644,7 @@ const Store = (() => {
         const states={}; raw.states.forEach(r=>states[r.member_id]=r);
         out.states = states;
       }
-      /* 期と割当。supabase/schema.sql をまだ貼り直していない環境では
+      /* 期と割当。supabase/parts/ をまだ貼り直していない環境では
          caps.terms が false なので、空のまま返して画面側で案内を出す。 */
       if(want('terms')){
         out.terms=[]; out.assignments=[];
@@ -817,7 +817,7 @@ const Store = (() => {
 
   /* 期の表がまだ無い環境で押されたときに、何をすればいいかを返す */
   function needTerms(){
-    if(!caps.terms) throw new Error('この機能を使うには supabase/schema.sql を貼り直してください（SETUP.md 手順2）');
+    if(!caps.terms) throw new Error('この機能を使うには supabase/parts/ のSQLを貼り直してください（SETUP.md 手順2）');
   }
 
   /* ログイン中の人が誰で、管理者かどうかを確定させる */

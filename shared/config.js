@@ -16,7 +16,7 @@
    /rest/v1/rest/v1/... になって全部404になります。
 
    publishable キーはブラウザから見える前提の公開キーです。
-   実際のアクセス制御は Supabase 側の RLS（supabase/schema.sql）で
+   実際のアクセス制御は Supabase 側の RLS（supabase/parts/）で
    かけているので、ここに貼って問題ありません。
    secret（旧 service_role）のキーは絶対に貼らないでください。
    ============================================================ */

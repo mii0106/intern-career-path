@@ -1823,7 +1823,7 @@ function vTerms(){
     return h+'<div class="card"><div class="empty" style="text-align:left;padding:20px 16px;line-height:2">'+
       '<b style="font-size:14px;color:var(--ink)">この機能はまだ使えません</b><br>'+
       '期（terms）と割当（assignments）の表がサーバーにありません。'+
-      '<b>supabase/schema.sql を貼り直す</b>と使えるようになります（SETUP.md 手順2）。<br>'+
+      '<b>supabase/parts/ のSQLを貼り直す</b>と使えるようになります（SETUP.md 手順2）。<br>'+
       '貼り直しても、いまのチェック・申し送り・テスト結果は消えません。</div></div>';
   }
 
@@ -2319,7 +2319,7 @@ function hoCardHTML(term){
 /* ---------- カルテの「引き継ぎ」タブ ---------- */
 function dwHandover(r){
   if(!Store.caps.terms) return '<div class="card"><div class="empty">'+
-    'この機能を使うには supabase/schema.sql を貼り直してください（SETUP.md 手順2）。</div></div>';
+    'この機能を使うには supabase/parts/ のSQLを貼り直してください（SETUP.md 手順2）。</div></div>';
   if(!TERMS.length) return '<div class="card"><div class="empty">'+
     'まだ期がありません。<br>「期・ユニット編成」タブで期をつくると、ここに引き継ぎシートが出ます。</div></div>';
   const term = termById(V.hoTerm) || currentTerm();
@@ -3222,7 +3222,7 @@ function vSettings(){
     '<button class="btn vio" data-act="saveSettings">保存する</button>'+
     '<p class="tiny muted" style="margin:8px 0 0">'+
       (Store.caps.settings? 'この設定は'+MANAGER_LABEL+'全員で共有されます。'
-                          : 'いまはこのブラウザだけの設定です。全員で共有するには supabase/schema.sql を貼り直してください。')+
+                          : 'いまはこのブラウザだけの設定です。全員で共有するには supabase/parts/ のSQLを貼り直してください。')+
     '</p></div>';
 
   /* パスコードの状態 */
@@ -3238,7 +3238,7 @@ function vSettings(){
      ['ログイン画面の名前検索',caps.rosterSearch],
      ['しきい値の共有',caps.settings],
      ['期・ユニット編成（履歴を残す）',caps.terms]]
-    .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/schema.sql の貼り直しで有効になります）')+'</div>').join('')+
+    .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/parts/ の貼り直しで有効になります）')+'</div>').join('')+
     '</div></div>';
   return h;
 }

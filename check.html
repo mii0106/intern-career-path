@@ -180,13 +180,13 @@ async function api(path, opts){
   /* ---------- 4. スキーマ ---------- */
   const roster = await api('/rest/v1/member_roster?select=id,name,role,linked');
   if(roster.status === 200 && Array.isArray(roster.body)){
-    add('ok','データベースの準備（schema.sql）',
+    add('ok','データベースの準備',
       '名簿ビューを読めました。登録済み ' + roster.body.length + ' 人');
   }else if(roster.status === 404){
-    add('ng','データベースの準備（schema.sql）','member_roster が見つかりません',
-      'SETUP.md 手順2 の <code>supabase/schema.sql</code> を SQL Editor で実行してください。');
+    add('ng','データベースの準備','member_roster が見つかりません',
+      'SETUP.md 手順2 の <code>supabase/parts/</code> のSQLを、1から順に SQL Editor で実行してください。');
   }else{
-    add('ng','データベースの準備（schema.sql）',
+    add('ng','データベースの準備',
       'HTTP ' + roster.status + ' ' + JSON.stringify(roster.body||''), '');
   }
 
@@ -195,7 +195,7 @@ async function api(path, opts){
     { method:'POST', body: JSON.stringify({ p_code: '__diagnostic_probe__' }) });
   if(pc.status === 404){
     add('ng','共通パスコードの確認機能','check_team_passcode が見つかりません',
-      'SETUP.md 手順2 の schema.sql を実行してください。');
+      'SETUP.md 手順2 のSQLを、1から順に実行してください。');
   }else if(pc.status === 200 && pc.body === false){
     add('ok','共通パスコード','設定済みです（誤ったコードは弾かれました）');
   }else if(pc.status === 200 && pc.body === true){

@@ -23,7 +23,7 @@
 ## 全体の流れ
 
 1. Supabase のプロジェクトを作る（5分）
-2. `supabase/schema.sql` を実行する（1分）
+2. `supabase/parts/` のSQLを1から順に実行する（2分）
 3. メール確認をオフにする（1分）
 4. 接続情報を `shared/config.js` に貼る（1分）
 5. パスコードと管理者キーを決める（SQL 1行・2分）
@@ -49,12 +49,43 @@
 
 ## 2. スキーマを作る
 
-1. Supabase の左メニュー **SQL Editor** を開く
-2. このリポジトリの `supabase/schema.sql` の中身を全部コピーして貼り付ける
-3. **Run** を押す
+SQLは `supabase/parts/` に**4つに分けて**置いてあります。
+**1 から順に、1ファイルずつ**実行してください。
 
-`Success. No rows returned` と出れば完了です。
+| 順番 | ファイル | 中身 |
+|---|---|---|
+| 1 | `01_tables_and_roster.sql` | テーブル・補助関数・名簿・パスコードの保管 |
+| 2 | `02_member_writes_and_rls.sql` | 本人側からの書き込みと RLS |
+| 3 | `03_checks_search_manager.sql` | チェック・名前検索・管理者への昇格 |
+| 4 | `04_terms_and_login_requests.sql` | しきい値・期とユニット編成・ログインリセットの依頼 |
+
+手順は4回とも同じです。
+
+1. Supabase の左メニュー **SQL Editor** を開く
+2. ファイルの中身を**全部**コピーして貼り付ける
+3. **Run** を押す
+4. `Success. No rows returned` と出たら、次のファイルへ
+
+> **なぜ4つに分かれているのか**
+>
+> 以前は1つのファイルでしたが、長くなりすぎて **SQL Editor が貼り付けを途中で切る**ようになり、
+> `syntax error at or near "..."` で止まっていました（切れる場所はそのときの中身によって変わります）。
+> 1ファイルあたり1万数千文字に収めてあるので、いまは切れません。
+
+順番を入れ替えないでください（あとのファイルが前のテーブルを使います）。
 何度実行しても壊れないように書いてあるので、あとで貼り直しても大丈夫です。
+
+<details>
+<summary>psql やCLIから流す場合</summary>
+
+1つにまとめて流せます。
+
+```bash
+cat supabase/parts/*.sql | psql "$DATABASE_URL"
+```
+
+ファイル名の先頭に番号が付いているので、`*` で並べれば正しい順になります。
+</details>
 
 > **すでに運用中の場合も、権限を「メンバー／育成／UL」の3つにした版では貼り直しが必要です。**
 > 貼り直すと、旧「管理者（admin）」の人は自動的に **育成** になります。
@@ -237,7 +268,7 @@ shared/config.js      Supabaseの接続情報（ここだけ編集する）
 shared/steps.js       キャリアステップの定義と進捗の計算
 shared/ui.js          共通の見た目パーツ・日付やCSVの整形
 shared/store.js       データの読み書き（Supabase）
-supabase/schema.sql   Supabaseに貼るSQL
+supabase/parts/       Supabaseに貼るSQL（1から順に4つ）
 ```
 
 キャリアステップシートの項目を変えたいときは `shared/steps.js` の `GRADES` を編集します。
@@ -380,7 +411,7 @@ Supabase の画面を触る必要はありません。
   Supabase 側（RLS）で遮断されるので、本人のブラウザからは取得すらできません
 
 さらに厳しくしたい場合は、メールでのログイン（マジックリンク）や Google 連携に
-差し替えられます。`supabase/schema.sql` はそのままで動きます。
+差し替えられます。`supabase/parts/` のSQLはそのままで動きます。
 
 ### 名簿も隠したい場合
 
@@ -625,7 +656,7 @@ on conflict (slug) do nothing;
 | `Email address "m-xxxx@..." is invalid` と出て誰も登録できない | `shared/config.js` の `AUTH_EMAIL_DOMAIN` が架空のTLDになっています。`.local` `.test` `.internal` などは Supabase Auth が実在しないTLDとして弾きます。**実在するドメイン**（自社ドメインなど）に変えてください |
 | 何をしても404になる／名前が1件も出ない | `SUPABASE_URL` の末尾に `/rest/v1/` が付いていないか確認（手順4） |
 | 「通信できませんでした」と出る | 回線か、`shared/config.js` のURL・キーの写し間違いです。データは消えていません |
-| `syntax error at or near "check"` と出る | SQLエディタが貼り付けたSQLを途中で切ってしまっています。**ファイル全体をもう一度、最初から最後まで選択して**貼り直してください（一部だけ選択して実行すると、文の途中で切れて同じエラーになります）。それでも出る場合は、`supabase/schema.sql` が最新か確認してください（古い版には `do $$ ... $$` のブロックがあり、エディタによってはここで切れます） |
+| `syntax error at or near "..."` と出る | SQL Editor が貼り付けを途中で切っています。`supabase/parts/` の**4つに分かれたSQLを、1から順に1ファイルずつ**実行してください（手順2）。1つの大きなファイルを貼ると、この症状が出ます。1ファイルだけ貼っていてこのエラーが出る場合は、全部を選択できているか確認してください |
 | 手順5のSQLで `function crypt(...) does not exist` | 1行目の `set search_path = public, extensions;` ごとコピーして実行してください |
 | `Allow new users to sign up` 系のエラーで登録できない | 手順3でサインアップをオンにしてください |
 | 同じ人が2行できてしまった | 2回目の登録で別のログインを作った場合に起こります。使わない行を開き、名前を変えたうえで設定タブの「卒業・退職」から外してください（SQL Editor で `update public.members set active=false where id='...';` でも同じことができます） |
