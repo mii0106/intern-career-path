@@ -780,6 +780,28 @@ const Store = (() => {
 
     /* パスワードを忘れた人の救済。記録は残したまま、ログインの紐付けだけ外す。
        本人は次に名前を選んだとき「初回パスワード設定」に進む。 */
+    /* ---------- ログインのリセットを自分で頼む ----------
+       未ログインの人が呼ぶ。送れるのは「誰が困っているか」だけで、
+       自由入力は受け取らない（連絡手段として使われないように）。
+       サーバーが古くて関数が無い環境では、静かに false を返して
+       画面は従来どおり「文をコピーしてULに送る」案内だけを出す。 */
+    async requestLoginReset(memberId){
+      need();
+      try{
+        chk(await sb.rpc('request_login_reset',{p_member_id:memberId}));
+        return true;
+      }catch(e){
+        if(/does not exist|Could not find the function/i.test(String(e.message||''))) return false;
+        throw e;
+      }
+    },
+
+    /* 管理者画面の「今日のアクション」に出す、リセット待ちの人 */
+    async loginRequests(){
+      try{ return chk(await sb.from('login_requests').select('*').order('requested_at'))||[]; }
+      catch(e){ return []; }
+    },
+
     async resetLogin(memberId){
       need();
       return chk(await sb.rpc('admin_reset_login',{p_member_id:memberId}));

@@ -1594,6 +1594,7 @@ function evolve(gradeN,oldSt,newSt){
    ログインのパスワードは1人1つ別に決める。
    ------------------------------------------------------------ */
 let GATE={ hits:[], mentors:[], units:[], picked:null, q:'', searching:false, mode:'pick', offline:false,
+           asked:false,   /* リセット依頼をこの画面から出したか */
            reg:{name:'',unit:'',ul:'',mentor:'',join:'',grade:''} };
 /* shared/config.js の KNOWN_ULS が、ULとして選べる「正」の名簿。
    ここで名簿のUL欄の値そのものは引いてこない。自己申告の自由入力なので、
@@ -1766,7 +1767,18 @@ function showGate(err){
           '<span>ログイン用コードは、リセットしたときにUL・育成の画面に出る8文字です。'+
           'あなた専用の使い捨てで、共通パスコードとは別のものです。</span></div></div>'+
       '</div>'+
-      '<button class="gbtn" data-act="copyReset">頼む文をコピーする</button>'+
+      /* 名前が選ばれているときだけ、その場で依頼を出せる。
+         ULを捕まえるまで何もできない状態が、夜や休日に一番つらい。 */
+      (GATE.picked
+        ? '<button class="gbtn" data-act="askReset">'+
+            (GATE.asked? '✓ 依頼を出しました' : 'UL・育成にリセットを依頼する')+'</button>'+
+          (GATE.asked
+            ? '<p class="tiny muted" style="margin:8px 0 0">'+
+              '管理者ツールの「今日のアクション」に出ています。'+
+              '急ぐときは、下の文をコピーして直接送ってください。</p>'
+            : '')
+        : '')+
+      '<button class="gbtn alt" data-act="copyReset">頼む文をコピーする</button>'+
       '<button class="gbtn alt" data-act="toPick">名前を選ぶ画面に戻る</button>'+
       '<p class="tiny muted" style="margin:12px 0 0">'+
         (nm? '選んでいた名前：'+esc(nm)+'<br>' : '')+
@@ -1928,7 +1940,7 @@ document.addEventListener('click',async e=>{
     showGate();
   }
   else if(a==='retry'){ location.reload(); }
-  else if(a==='toPick'){ GATE.mode='pick'; showGate(); }
+  else if(a==='toPick'){ GATE.mode='pick'; GATE.asked=false; showGate(); }
   else if(a==='toReg'){ GATE.mode='reg'; showGate(); }
   else if(a==='toForgot'){ GATE.mode='forgot'; showGate(); }
   else if(a==='copyReset'){
@@ -1940,6 +1952,21 @@ document.addEventListener('click',async e=>{
       'コードをもらったら、自分でパスワードを決め直します。記録は消えません。\n'+
       location.origin+location.pathname;
     copyText(t,'コピーしました。ULか育成の人に送ってください');
+  }
+  else if(a==='askReset'){
+    if(!GATE.picked) return;
+    el.disabled=true; el.textContent='送っています…';
+    try{
+      const ok=await Store.requestLoginReset(GATE.picked.id);
+      GATE.asked=true;
+      showGate('');
+      toast(ok? 'UL・育成に依頼を出しました' : '依頼の受付がまだ使えません。下の文をコピーして送ってください',
+            ok?'xp':'bad', 6000);
+    }catch(e){
+      el.disabled=false; el.textContent='UL・育成にリセットを依頼する';
+      toast(e.message||'送れませんでした','bad');
+    }
+    return;
   }
   else if(a==='signin'){ await doSignIn(); }
   else if(a==='setpw'){ await doSetPw(); }

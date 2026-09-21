@@ -251,6 +251,10 @@ tbody tr:hover td.st{background:#FBFAFF}
 @media (max-width:420px){ .codecard .cc-code{font-size:27px;letter-spacing:.14em} }
 
 /* ---------- 今日のアクション ---------- */
+/* ログインで詰まっている人は、待たせるほど何もできない時間が延びるので
+   他の用事と見分けがつくようにしておく。 */
+.act.urgent{background:var(--coral-soft,#FFF1F0);border-color:var(--coral)}
+.act.urgent .act-n{color:var(--coral)}
 .actions .act{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
 .actions .act:first-of-type{border-top:0}
 /* 手順の3ステップ（設定タブ） */
@@ -444,6 +448,9 @@ let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済み�
 let APP_SETTINGS = {};
 /* メンバーごとに計算済みの行 */
 let ROWS = [], BY_ID = {};
+/* 本人から出ている「ログインを直してほしい」の依頼。
+   今日のアクションの一番上に出す。 */
+let LOGIN_REQS = [];
 /* 画面の状態 */
 let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'',
           asgView:'board' };
@@ -601,6 +608,9 @@ async function loadAll(only){
   const fresh = await Store.adminLoad(only);
   A = Object.assign({}, A, fresh);
   compute();
+  /* 依頼は1人1行しかないので、取り直しても軽い。
+     見落とすと本人が1画面も進めないままなので、毎回見る。 */
+  try{ LOGIN_REQS = await Store.loginRequests(); }catch(e){ LOGIN_REQS = []; }
   if(CONFIG_STATUS===null) CONFIG_STATUS = await Store.configStatus();
   /* しきい値をサーバーに置いてあるなら、そちらを優先する（UL全員で同じ基準になる）。
      一部だけ取り直すときは、すでに読んである値をそのまま使う。 */
@@ -980,6 +990,19 @@ function vDash(){
      全員ぶん見えることは変えず、自分の担当だけ数えて横に添える。 */
   const mineOf=l=>l.filter(r=>r.mine).length;
   const acts=[];
+  /* ログインで詰まっている人を一番上に出す。
+     本人はリセットしてもらうまで1画面も進めないので、
+     昇格面談より先に片づけるべき用事になる。 */
+  const waiting = LOGIN_REQS.map(q=>BY_ID[q.member_id]).filter(Boolean);
+  /* 1人ずつ出す。「タブを開いて探して押す」まで持っていかず、
+     ここで押せばリセットとコード発行まで終わるようにする。 */
+  waiting.slice(0,5).forEach(r=>acts.push({
+    t:r.name+' さんが入れなくなっています',
+    n:'!',
+    s:'パスワードを忘れた本人から依頼が出ています。押すとリセットして、本人に渡すコードを出します',
+    m:r.mine?1:0,mu:'人',b:'リセットしてコードを出す',act:'fixLogin',v:r.id,urgent:true}));
+  if(waiting.length>5) acts.push({t:'ログイン待ちがほかにもいます',n:(waiting.length-5)+'人',
+    s:'上の5人を片づけると次が出ます',m:0,mu:'人',b:'一覧を開く',act:'tab',v:'list',urgent:true});
   if(promo.length) acts.push({t:'昇格面談を組む',n:promo.length+'人',
     s:'認定グレードの項目を完了しています',
     m:mineOf(promo),mu:'人',b:'昇格タブを開く',act:'tab',v:'promo'});
@@ -988,19 +1011,22 @@ function vDash(){
     m:mineOf(stale),mu:'人',b:'リマインド文をコピー',act:'remind',v:'stale'});
 
   /* 自分の担当ぶんを先に出す。誰の宿題かをはっきりさせるため */
-  acts.sort((a,b)=>((b.m||0)>0?1:0)-((a.m||0)>0?1:0));
+  acts.sort((a,b)=>(b.urgent?1:0)-(a.urgent?1:0) || ((b.m||0)>0?1:0)-((a.m||0)>0?1:0));
   const myTotal=acts.reduce((a,x)=>a+(x.m||0),0);
   h+='<div class="card actions"><h2>今日のアクション '+
     '<span class="cnt">'+(myTotal? '<b style="color:var(--violet)">'+myTotal+'</b> 件があなたの担当ぶん'
                                  : '上から順に片づければ足ります')+'</span></h2>';
   if(!acts.length) h+='<div class="empty">いま対応が必要なものはありません。</div>';
   else acts.forEach(a=>{
-    h+='<div class="act'+(a.m?' mine':'')+'"><b class="act-n mono">'+a.n+'</b>'+
+    h+='<div class="act'+(a.m?' mine':'')+(a.urgent?' urgent':'')+'"><b class="act-n mono">'+a.n+'</b>'+
       '<div class="act-b"><b>'+esc(a.t)+
         (a.m?' <span class="chip v">自分の担当 '+a.m+a.mu+'</span>':'')+'</b>'+
         '<span class="tiny muted">'+esc(a.s)+'</span></div>'+
       '<button class="btn '+(a.act==='remind'?'ghost':'vio')+' sm" data-act="'+a.act+'" '+
-        (a.act==='tab'?'data-tab="'+a.v+'"':a.act==='alert'?'data-a="'+a.v+'"':'data-kind="'+a.v+'"')+'>'+a.b+'</button></div>';
+        (a.act==='tab'?'data-tab="'+a.v+'"'
+         :a.act==='alert'?'data-a="'+a.v+'"'
+         :a.act==='fixLogin'?'data-id="'+a.v+'"'
+         :'data-kind="'+a.v+'"')+'>'+a.b+'</button></div>';
   });
   if(!F.mine&&ROWS.some(r=>r.mine)) h+='<p class="tiny muted" style="margin:8px 2px 0">'+
     '見えているのは'+MANAGER_LABEL+'全員ぶんです。'+
@@ -3491,6 +3517,7 @@ document.addEventListener('click',async e=>{
 
   else if(a==='saveProfile'){ await saveProfileFor(el.dataset.id); }
   else if(a==='resetLogin'){ await resetLoginFor(el.dataset.id); }
+  else if(a==='fixLogin'){ await resetLoginFor(el.dataset.id); }
 
   else if(a==='csvRoster'){ csvRoster(); }
   else if(a==='csvStuck'){ csvStuck(); }

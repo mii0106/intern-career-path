@@ -376,6 +376,12 @@ begin
          claim_code_fails   = 0
    where id = p_member_id;
   if not found then raise exception '対象が見つかりません'; end if;
+  /* 本人からの依頼が出ていたら、ここで片付ける。
+     （login_requests はこのファイルの後ろで作るので、まだ無くても落ちないようにする） */
+  begin
+    delete from public.login_requests where member_id = p_member_id;
+  exception when undefined_table then null; end;
+
   /* 平文のコードを返すのはここ1回だけ。DBにはハッシュしか残らないので、
      控え忘れたら発行し直す（それでいい。使い回さないほうが安全）。 */
   return v_code;
@@ -930,3 +936,61 @@ begin
 end $$;
 revoke all on function public.apply_term(uuid) from public;
 grant execute on function public.apply_term(uuid) to authenticated;
+
+-- ============================================================
+-- 8. ログインリセットの依頼
+--    ------------------------------------------------------------
+--    パスワードを忘れた人は、これまで「UL・育成を捕まえる」以外に
+--    手段がなかった。夜や休日に詰まると翌営業日まで止まる。
+--
+--    ログイン画面から自分で依頼を出せるようにして、管理者画面の
+--    「今日のアクション」に出す。ULは気づいた時点で1クリックで
+--    リセットし、出てきたログイン用コードを本人に渡す。
+--
+--    未ログインの人が呼ぶので、書けるのは「誰が困っているか」だけ。
+--    自由入力は受け取らない（連絡手段として悪用されないように）。
+--    1人1行（主キー）＋10分に1回までなので、量も増えない。
+-- ============================================================
+create table if not exists public.login_requests (
+  member_id    uuid primary key references public.members(id) on delete cascade,
+  requested_at timestamptz not null default now(),
+  times        int not null default 1        -- 何回頼んだか（急ぎ具合の目安）
+);
+alter table public.login_requests enable row level security;
+
+-- 管理者だけが読める／消せる。書き込みは下の関数からだけ。
+drop policy if exists loginreq_read   on public.login_requests;
+drop policy if exists loginreq_delete on public.login_requests;
+create policy loginreq_read on public.login_requests for select to authenticated
+  using (public.is_manager());
+create policy loginreq_delete on public.login_requests for delete to authenticated
+  using (public.is_manager());
+
+create or replace function public.request_login_reset(p_member_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_last timestamptz;
+begin
+  if not exists (select 1 from public.members where id = p_member_id and active) then
+    raise exception '対象が見つかりません';
+  end if;
+
+  select requested_at into v_last from public.login_requests where member_id = p_member_id;
+  if v_last is not null and v_last > now() - interval '10 minutes' then
+    /* 連打しても増やさない。すでに届いているので、これは成功扱いでいい */
+    return;
+  end if;
+
+  insert into public.login_requests(member_id) values (p_member_id)
+  on conflict (member_id) do update
+    set requested_at = now(), times = public.login_requests.times + 1;
+end $$;
+grant execute on function public.request_login_reset(uuid) to anon, authenticated;
+
+-- リセットしたら依頼は片付ける（admin_reset_login の中から呼ばれる）。
+create or replace function public.clear_login_request(p_member_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_manager() then raise exception 'この操作をする権限がありません'; end if;
+  delete from public.login_requests where member_id = p_member_id;
+end $$;
+grant execute on function public.clear_login_request(uuid) to authenticated;
