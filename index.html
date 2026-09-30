@@ -1812,7 +1812,11 @@ function showGate(err){
         GRADES.map(g=>'<option value="'+g.n+'"'+(String(GATE.reg.grade)===String(g.n)?' selected':'')+'>Grade '+g.n+'｜'+tierOf(g.n).name+'</option>').join('')+
         '</select></div>'+
       '<div class="field"><label>部署共通のパスコード<span style="color:var(--coral)"> ※必須</span></label>'+
-        '<input type="password" id="rCode" autocomplete="off" placeholder="ULから共有されたパスコード">'+
+        /* 見えるようにしておく。●で隠すと、全角やコピペで紛れた空白に本人が
+           気づけないまま「違います」で弾かれる。全員共通のコードなので隠す意味も薄く、
+           パスワード欄でなくすことで、保存済みパスワードの自動入力も入らなくなる。 */
+        '<input type="text" id="rCode" autocomplete="off" inputmode="latin" '+
+          'autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="ULから共有されたパスコード">'+
         '<p class="tiny muted" style="margin:4px 0 0">全員で同じものを使います。登録のときだけ必要です。</p></div>'+
       '<div class="field"><label>自分のパスワード<span style="color:var(--coral)"> ※必須</span></label>'+
         '<input type="password" id="rPw" autocomplete="new-password" placeholder="自分で決めてください">'+PW_HINT+'</div>'+
@@ -1986,11 +1990,20 @@ async function doSetPw(){
     migrateToast();
   }catch(e){ showGate(e.message||String(e)); }
 }
+/* 共通パスコードの入力ゆれをならす。
+   コピペで付いた空白・タブ、日本語入力のままの全角英数、
+   ハイフンのつもりの「ー」「−」などで弾かれることが実際にあったため。
+   配っているパスコードは半角英数とハイフンだけなので、これで別物になることはない。 */
+function normPasscode(v){
+  return String(v||'').normalize('NFKC')
+    .replace(/[\u2010-\u2015\u2212\u30FC\uFF70]/g,'-')
+    .replace(/\s+/g,'');
+}
 async function doRegister(){
   const g=id=>(document.getElementById(id)||{}).value||'';
   const r={ name:g('rName').trim(), unit:g('rUnit').trim(), ul:g('rUl').trim(),
             mentor:g('rMentor').trim(), join_date:g('rJoin')||null, certified_grade:g('rGrade')||null };
-  const code=g('rCode'), pw=g('rPw'), pw2=g('rPw2');
+  const code=normPasscode(g('rCode')), pw=g('rPw'), pw2=g('rPw2');
   Object.assign(GATE.reg,{name:r.name,unit:r.unit,ul:r.ul,mentor:r.mentor,join:r.join_date||'',grade:r.certified_grade||''});
   if(!r.name){ showGate('氏名を入力してください'); return; }
   if(!code){ showGate('部署共通のパスコードを入力してください'); return; }
