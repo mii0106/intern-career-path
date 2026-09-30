@@ -1993,11 +1993,16 @@ async function doSetPw(){
 /* 共通パスコードの入力ゆれをならす。
    コピペで付いた空白・タブ、日本語入力のままの全角英数、
    ハイフンのつもりの「ー」「−」などで弾かれることが実際にあったため。
+   Slackのスマホアプリで太字をコピーすると「*step-…*」のように装飾の記号まで
+   付いてくるので、前後の * _ ~ ` と、見えない幅ゼロの文字も落とす。
+   （太字を文字そのものの𝐬𝐭𝐞𝐩で貼られた場合は NFKC で半角に戻る）
    配っているパスコードは半角英数とハイフンだけなので、これで別物になることはない。 */
 function normPasscode(v){
   return String(v||'').normalize('NFKC')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g,'')
     .replace(/[\u2010-\u2015\u2212\u30FC\uFF70]/g,'-')
-    .replace(/\s+/g,'');
+    .replace(/\s+/g,'')
+    .replace(/^[*_~`]+|[*_~`]+$/g,'');
 }
 async function doRegister(){
   const g=id=>(document.getElementById(id)||{}).value||'';
