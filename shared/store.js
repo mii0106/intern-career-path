@@ -709,7 +709,9 @@ const Store = (() => {
        fromNames は1件でも複数件でもよい。複数渡すと、各自の自己申告で
        ばらついた表記（スペースの有無・別表記など）をまとめて1つに統一できる。
        付け替えた人ごとに申し送り（handover）を1件残す。 */
-    async reassignCharge(field,fromNames,toName){
+    /* opts.quiet … 表記ゆれを揃えるだけのとき。担当は変わっていないので
+       「引き継ぎました」の申し送りは残さない（本人の画面が埋まるため）。 */
+    async reassignCharge(field,fromNames,toName,opts){
       need();
       const col = field==='mentor' ? 'mentor' : 'ul';
       const froms=[].concat(fromNames).map(s=>String(s||'').trim()).filter(Boolean);
@@ -720,7 +722,7 @@ const Store = (() => {
       /* 卒業・退職した人の過去の記録は書き換えない。対象は現役だけ */
       const r=await sb.from('members').update(patch).in(col,froms).eq('active',true).select('id');
       const rows=chk(r)||[];
-      if(rows.length){
+      if(rows.length && !(opts&&opts.quiet)){
         const label = col==='ul' ? 'UL' : 'メンター';
         const fromLabel = froms.map(f=>'「'+f+'」').join('・');
         const body = label+'を'+fromLabel+'から「'+to+'」に引き継ぎました。';
