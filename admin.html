@@ -452,7 +452,7 @@ let ROWS = [], BY_ID = {};
    今日のアクションの一番上に出す。 */
 let LOGIN_REQS = [];
 /* 画面の状態 */
-let V = { tab:'dash', sort:'name', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'',
+let V = { tab:'dash', sort:'unit', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'',
           asgView:'board' };
 /* 期（半期）まわり。compute() で組み立てる */
 let TERMS=[], ASG_BY_TERM={}, ASG_BY_MEMBER={};
@@ -746,7 +746,8 @@ function termChip(t){
 
 /* ---------- 担当（誰が対応するか） ---------- */
 function meName(){ return (Store.me&&Store.me.member&&Store.me.member.name)||''; }
-function normName(s){ return String(s||'').replace(/[\s\u3000]/g,'').toLowerCase(); }
+/* 表記ゆれ（空白・全角半角・旧字・別名）は shared/ui.js の personKey／canonPerson で吸収する */
+function normName(s){ return personKey(canonPerson(s)); }
 /* 担当の2人をチップで出す。自分の担当ぶんは色を変えて先に出す */
 function chargeChips(r,opts){
   opts=opts||{};
@@ -766,8 +767,7 @@ function rosterUnitValues(){ return ROWS.map(r=>r.m.unit).filter(Boolean); }
 /* 実際にメンバーが居るUnitだけ（リーダーMTGのサマリはここから選ぶ。
    誰も居ないUnitを開いても空の資料にしかならないため）。 */
 function unitsInUse(){
-  return Array.from(new Set(ROWS.filter(r=>r.role==='member').map(r=>r.unit)))
-    .sort((a,b)=>String(a).localeCompare(String(b),'ja'));
+  return Array.from(new Set(ROWS.filter(r=>r.role==='member').map(r=>r.unit))).sort(unitCmp);
 }
 /* Unitの絞り込みに出す一覧。
    名簿に居るUnitだけだと、まだ誰も登録していないUnit（unitHなど）が
@@ -776,7 +776,7 @@ function unitsInUse(){
 function units(){
   const inUse=Array.from(new Set(ROWS.map(r=>r.unit)));
   const all=unitOptions(rosterUnitValues()).concat(inUse);
-  return Array.from(new Set(all)).sort((a,b)=>String(a).localeCompare(String(b),'ja'));
+  return Array.from(new Set(all)).sort(unitCmp);
 }
 /* リーダー等級（G7）以上は在籍月数の標準期間という考え方がそぐわないため、
    「遅れ」の対象から外す。 */
@@ -829,9 +829,17 @@ function sorted(list){
   })[k];
   return list.slice().sort((a,b)=>{
     const x=val(a), y=val(b);
-    if(typeof x==='string') return d*String(x).localeCompare(String(y),'ja');
-    return d*((x||0)-(y||0));
+    /* Unitは unitA → unitH の順。同じ値どうしは Grade の高い人から並べる */
+    if(k==='unit') return d*unitCmp(x,y) || gradeDesc(a,b);
+    if(typeof x==='string') return d*String(x).localeCompare(String(y),'ja') || gradeDesc(a,b);
+    return d*((x||0)-(y||0)) || gradeDesc(a,b);
   });
+}
+/* 人の並べ順の基本。Grade（挑戦中）の高い人が上、同じなら認定グレード・
+   全体の進捗が高い人が上、最後は名前順。 */
+function gradeDesc(a,b){
+  return (b.cg-a.cg) || ((b.certified||0)-(a.certified||0)) || (b.overall-a.overall)
+    || String(a.name).localeCompare(String(b.name),'ja');
 }
 
 /* ============================================================
@@ -960,6 +968,49 @@ function th(key,label,cls,tip){
 /* ============================================================
    1. ダッシュボード
    ============================================================ */
+/* 同じ人が2回以上登録しているかもしれない組。
+   パスワードを忘れて新しく登録し直した・スマホを替えて登録し直した、
+   などで members に同じ名前の行が増えると、メンバー数が実際より多くなる。
+   名前は personKey() で比べる（空白・全角半角・旧字の違いは同じ人とみなす）。
+   「残す候補」は、パスワード設定済み → チェックが多い → 最近動いた の順で選ぶ。 */
+function duplicateGroups(){
+  const by={};
+  ROWS.forEach(r=>{ const k=personKey(r.name); if(k) (by[k]=by[k]||[]).push(r); });
+  return Object.values(by).filter(l=>l.length>1).map(l=>{
+    const keep=l.slice().sort((a,b)=>((b.m.auth_id?1:0)-(a.m.auth_id?1:0)) || (b.checked-a.checked)
+      || String(b.lastActivity||'').localeCompare(String(a.lastActivity||''))
+      || String(b.registeredAt||'').localeCompare(String(a.registeredAt||'')))[0];
+    return {rows:l, keep:keep};
+  });
+}
+function duplicateCardHTML(groups){
+  if(!groups.length) return '';
+  const extra=groups.reduce((a,g)=>a+g.rows.length-1,0);
+  let h='<div class="card" style="border-color:#F5CBD3"><h2>重複して登録しているかもしれない人 '+
+    '<span class="cnt">'+groups.length+'組・余分に数えている可能性 '+extra+'人</span></h2>'+
+    '<p class="tiny muted" style="margin:-4px 0 10px;line-height:1.9">'+
+    '同じ名前（空白・全角半角・旧字の違いは同じとみなします）の登録が複数あります。'+
+    '本人に確認して、使っていないほうを「重複として外す」と、メンバー数から外れます。'+
+    'チェック・申し送りの記録は消えず、設定タブの「卒業・退職した人」から戻せます。<br>'+
+    '同姓同名の別人の場合は、そのままにしてください。</p>'+
+    '<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">名前</th><th class="nos">Unit</th><th class="nos">権限</th><th class="nos">パスワード</th>'+
+    '<th class="nos num">チェック数</th><th class="nos">最後の動き</th><th class="nos">登録日</th><th class="nos"></th>'+
+    '</tr></thead><tbody>';
+  groups.forEach((g,gi)=>{
+    g.rows.slice().sort((a,b)=>(a===g.keep?-1:0)-(b===g.keep?-1:0)).forEach((r,i)=>{
+      h+='<tr'+(gi%2?' style="background:var(--bg2,transparent)"':'')+'><td class="nm">'+memberLink(r)+
+          (r===g.keep?' <span class="chip v">残す候補</span>':'')+'</td>'+
+        '<td>'+esc(r.unit)+'</td><td>'+esc(roleName(r.role))+'</td>'+
+        '<td>'+(r.m.auth_id?'設定済み':'<span class="chip a">未設定</span>')+'</td>'+
+        '<td class="num mono">'+r.checked+'</td>'+
+        '<td>'+(r.lastActivity?fmtDateFull(r.lastActivity):'<span class="muted">—</span>')+'</td>'+
+        '<td>'+(r.registeredAt?fmtDateFull(r.registeredAt):'—')+'</td>'+
+        '<td>'+(r===g.keep?'':'<button class="btn ghost sm" data-act="dupRetire" data-id="'+r.id+'">重複として外す</button>')+'</td></tr>';
+    });
+  });
+  return h+'</tbody></table></div></div>';
+}
 function vDash(){
   const all=filtered().filter(r=>r.role==='member');
   const n=all.length||1;
@@ -1033,8 +1084,13 @@ function vDash(){
     '<button class="lnk" data-act="mine" style="color:var(--violet);font-weight:700">自分の担当だけに絞る</button></p>';
   h+='</div>';
 
+  const dups=duplicateGroups();
+  const dupExtra=dups.reduce((a,g)=>a+g.rows.length-1,0);
+  const managersN=filtered().filter(r=>r.role!=='member').length;
   h+='<div class="grid g3" style="margin-bottom:14px">'+
-    kpi('メンバー数',all.length,'人',filterNote(),'')+
+    kpi('メンバー数',all.length,'人',
+      filterNote(true)+(managersN?'（'+MANAGER_LABEL+'の'+managersN+'人は除く）':'')+
+      (dupExtra?'・重複の疑い'+dupExtra+'人':''),'')+
     kpi('平均進捗',avg,'%','チェック済みの項目で計算','')+
     kpi('昇格面談の対象',promo.length,'人','認定グレードの項目を完了','promo')+
   '</div>';
@@ -1068,7 +1124,7 @@ function vDash(){
     '<th class="nos num">遅れ</th><th class="nos num">動きなし</th><th class="nos num">昇格対象</th></tr></thead><tbody>';
   const byUnit={};
   ROWS.filter(r=>r.role==='member').forEach(r=>(byUnit[r.unit]=byUnit[r.unit]||[]).push(r));
-  Object.keys(byUnit).sort().forEach(u=>{
+  Object.keys(byUnit).sort(unitCmp).forEach(u=>{
     const l=byUnit[u];
     const ulName=(l[0]&&l[0].m.ul)||'';
     h+='<tr><td class="nm">'+esc(u)+(ulName?'<span class="tiny muted" style="font-weight:400"> / '+esc(ulName)+'</span>':'')+'</td>'+
@@ -1115,6 +1171,8 @@ function vDash(){
       '<td>'+fmtDateFull(r.registeredAt)+'<span class="tiny muted"> ・'+relDays(r.registeredAt)+'</span></td></tr>').join('')+
     '</tbody></table></div></div>';
 
+  h+=duplicateCardHTML(dups);
+
   /* いま見るべき人 */
   const focus=all.map(r=>({r:r,a:alertsOf(r)}))
     .filter(x=>x.a.indexOf('delay')>=0||x.a.indexOf('stale')>=0||x.a.indexOf('promo')>=0)
@@ -1158,9 +1216,14 @@ function cnt(n,c){ return n? '<span class="chip '+c+'">'+n+'</span>' : '<span cl
    （以前は Unit しか出していなかったため、検索が残っていても
      「全Unit」と表示されて数字だけ減って見えていた）
    ------------------------------------------------------------ */
-function filterNote(){
+/* membersOnly … 数字のほうが最初からメンバーだけを数えているKPI用。
+   以前は「メンバー数」も役割の絞り込みどおり「育成・ULを含む」と書いていたが、
+   実際の数字は育成・ULを除いていて、下の「登録済み」（こちらは含む）と
+   数が合わないように見えていた。 */
+function filterNote(membersOnly){
   const p=[F.unit||'全Unit'];
-  p.push(F.role==='member' ? 'メンバーのみ'
+  if(membersOnly) p.push('メンバーのみ');
+  else p.push(F.role==='member' ? 'メンバーのみ'
        : F.role==='manager'? MANAGER_LABEL+'のみ'
        :                     MANAGER_LABEL+'を含む');
   if(F.mine) p.push('自分の担当だけ');
@@ -1514,7 +1577,7 @@ function noteHTML(n,withActs){
   '</div></div>';
 }
 function noteFormHTML(){
-  const opts=ROWS.slice().sort((a,b)=>String(a.unit).localeCompare(String(b.unit),'ja')||String(a.name).localeCompare(String(b.name),'ja'))
+  const opts=ROWS.slice().sort((a,b)=>unitCmp(a.unit,b.unit)||gradeDesc(a,b))
     .map(r=>'<option value="'+r.id+'"'+(NF.member_id===r.id?' selected':'')+'>'+esc(r.unit)+' / '+esc(r.name)+'</option>').join('');
   return '<div class="card" style="border:1.5px solid var(--violet)">'+
     '<h2>'+(NF.editing?'記録を編集':'記録を追加')+'<span class="spacer"></span>'+
@@ -1795,7 +1858,7 @@ function unitStats(list,getUnit){
     o.catList=Object.keys(o.cats).map(k=>({k:k,n:o.cats[k].n,
       pct:o.cats[k].t? Math.round(o.cats[k].d/o.cats[k].t*100):0}));
     return o;
-  }).sort((a,b)=>String(a.unit).localeCompare(String(b.unit),'ja'));
+  }).sort((a,b)=>unitCmp(a.unit,b.unit));
 }
 /* そのUnitに出す警告。編成の穴を、数字を読まなくても気づけるようにする */
 function unitWarnings(o){
@@ -1883,7 +1946,9 @@ function vTerms(){
       '<th class="nos">UL</th><th class="nos">メンター</th>'+
       '<th class="nos num">週の稼働</th><th class="nos num">ｽﾀﾝﾀﾞｰﾄﾞ</th><th class="nos num">ｱﾄﾞﾊﾞﾝｽ</th>'+
       '</tr></thead><tbody>';
-    sorted(list).forEach(r=>{
+    /* この期のUnit（unitA → unitH、未配属は最後）→ Grade の高い人から */
+    list.slice().sort((x,y)=>unitCmp(normalizeUnit(asgOf(cur.id,x).unit),normalizeUnit(asgOf(cur.id,y).unit))
+      || gradeDesc(x,y)).forEach(r=>{
       const a=asgOf(cur.id,r);
       const moved=normalizeUnit(a.unit)!==r.unit;
       h+='<tr'+(moved?' class="mine"':'')+'><td class="nm">'+memberLink(r)+
@@ -2105,7 +2170,7 @@ const NOUNIT='（未配属）';
 function boardColumns(list,getUnit){
   const inUse=Array.from(new Set(list.map(getUnit)));
   const all=unitOptions(rosterUnitValues()).concat(inUse).filter(u=>u&&u!==NOUNIT);
-  const cols=Array.from(new Set(all)).sort((a,b)=>String(a).localeCompare(String(b),'ja'));
+  const cols=Array.from(new Set(all)).sort(unitCmp);
   /* 未配属は左端。編成はここから配っていくので、いちばん先に目に入る場所に置く */
   return [NOUNIT].concat(cols);
 }
@@ -2151,7 +2216,7 @@ function vBoard(term){
       (o.n? '<div style="padding:0 8px 6px">'+tierBarHTML(o.members)+'</div>':'')+
       (warns.length? '<div class="bwarn">'+warns.map(esc).join('<br>')+'</div>':'')+
       '<div class="bbody">'+
-        (o.members.length? sorted(o.members).map(r=>memberCardHTML(r,getUnit)).join('')
+        (o.members.length? o.members.slice().sort(gradeDesc).map(r=>memberCardHTML(r,getUnit)).join('')
           : '<div class="bempty">ここにカードを置けます</div>')+
       '</div></div>';
   });
@@ -2207,7 +2272,7 @@ function autoAssign(term){
     const ok=cols.filter(u=>allowed(g,u));
     const pool=ok.length?ok:cols;   /* どこにも置けないときは決めごとより配置を優先する */
     return pool.slice().sort((a,b)=>(bucket[a].hours-bucket[b].hours)||(bucket[a].n-bucket[b].n)
-      ||String(a).localeCompare(String(b),'ja'))[0];
+      ||unitCmp(a,b))[0];
   };
 
   /* 2. 面倒を見られる人を先に配る */
@@ -2528,8 +2593,7 @@ async function applyTermFlow(id){
 function vMtg(){
   const us=unitsInUse();
   const unit=V.mtgUnit||us[0]||'';
-  const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit)
-    .sort((a,b)=>b.overall-a.overall);
+  const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort(gradeDesc);
   let h='<h1 class="h1 disp">リーダーMTG用サマリ</h1>'+
     '<p class="lead">Unitごとに、確認したい情報だけを1枚に。そのまま読み上げるか、コピーしてSlackに貼れます。</p>';
   h+='<div class="bar"><select id="mtgUnit">'+us.map(u=>'<option value="'+esc(u)+'"'+(u===unit?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>'+
@@ -2587,7 +2651,7 @@ function vMtg(){
 }
 function mtgText(){
   const unit=V.mtgUnit||unitsInUse()[0]||'';
-  const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort((a,b)=>b.overall-a.overall);
+  const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort(gradeDesc);
   const L=['【'+unit+'｜キャリアステップ確認 '+fmtDateFull(todayStr())+'】',''];
   list.forEach(r=>{
     L.push('■ '+r.name+'（G'+r.cg+' '+tierOf(r.cg).name+'／在籍'+(r.months==null?'—':r.months.toFixed(1))+'ヶ月）');
@@ -3127,6 +3191,77 @@ function ulNameOptions(){
   return Array.from(new Set(managers.concat(CFG.KNOWN_ULS||[]).filter(Boolean)))
     .sort((a,b)=>a.localeCompare(b,'ja'));
 }
+/* 表記ゆれの候補。UL欄・メンター欄の値を personKey() で束ねて、
+   同じ人なのに表記が違うもの・正の表記（config.js）と違うものを拾う。
+   束ねた先は、KNOWN_ULS／NAME_ALIASES にあればその表記、
+   なければいちばん多く使われている表記にする。 */
+function nameVariantGroups(){
+  const out=[];
+  ['ul','mentor'].forEach(field=>{
+    const cnt={};
+    ROWS.forEach(r=>{ const v=String(r.m[field]||'').trim(); if(v) cnt[v]=(cnt[v]||0)+1; });
+    const byKey={}, canon=canonPersonMap();
+    Object.keys(cnt).forEach(v=>{
+      const known=canon[personKey(v)];
+      const k=known? 'k:'+personKey(known) : 'v:'+personKey(v);
+      (byKey[k]=byKey[k]||{known:known||'',vals:[]}).vals.push(v);
+    });
+    Object.keys(byKey).forEach(k=>{
+      const g=byKey[k];
+      const to=g.known || g.vals.slice().sort((a,b)=>cnt[b]-cnt[a]||a.length-b.length)[0];
+      const froms=g.vals.filter(v=>v!==to);
+      if(froms.length) out.push({field:field,to:to,froms:froms,
+        n:froms.reduce((a,v)=>a+cnt[v],0), fromCnt:froms.map(v=>cnt[v])});
+    });
+  });
+  return out;
+}
+/* 1つの欄に2人ぶん入っている値（「小林直樹・直井理子」など）。自動では直せない */
+function multiNameValues(){
+  const out=[];
+  ['ul','mentor'].forEach(field=>{
+    const seen={};
+    ROWS.forEach(r=>{
+      const v=String(r.m[field]||'').trim();
+      if(v && /[・、,，\/／&＆+＋]/.test(v) && !canonPersonMap()[personKey(v)])
+        (seen[v]=seen[v]||[]).push(r.name);
+    });
+    Object.keys(seen).forEach(v=>out.push({field:field,v:v,who:seen[v]}));
+  });
+  return out;
+}
+let NAME_FIX=[];
+function nameVariantCardHTML(){
+  NAME_FIX=nameVariantGroups();
+  const multi=multiNameValues();
+  const lbl=f=>f==='mentor'?'メンター':'UL';
+  let h='<div class="card"><h2>UL・メンターの表記ゆれ'+
+    (NAME_FIX.length?' <span class="cnt">'+NAME_FIX.length+'件の候補</span>':'')+'</h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">空白・全角半角・「さん」付け・旧字（邉／辺、髙／高 など）の違いで'+
+    '別々に数えられている名前を、自動で見つけています。正の表記は <code>shared/config.js</code> の'+
+    ' KNOWN_ULS（と別名の NAME_ALIASES）です。</p>';
+  if(!NAME_FIX.length) h+='<div class="empty">表記ゆれは見つかりませんでした。</div>';
+  else{
+    h+='<div class="tw" style="max-height:none;box-shadow:none;margin-bottom:10px"><table><thead><tr>'+
+      '<th class="nos">欄</th><th class="nos">いまの表記</th><th class="nos">揃える先</th><th class="nos num">人数</th><th class="nos"></th>'+
+      '</tr></thead><tbody>';
+    NAME_FIX.forEach((g,i)=>{
+      h+='<tr><td>'+lbl(g.field)+'</td>'+
+        '<td>'+g.froms.map((f,j)=>'<span class="chip a">'+esc(f)+'（'+g.fromCnt[j]+'人）</span>').join(' ')+'</td>'+
+        '<td><b>'+esc(g.to)+'</b></td><td class="num mono">'+g.n+'</td>'+
+        '<td><button class="btn ghost sm" data-act="fixName" data-i="'+i+'">揃える</button></td></tr>';
+    });
+    h+='</tbody></table></div>'+
+      '<button class="btn vio" data-act="fixNameAll">'+NAME_FIX.length+'件をまとめて揃える</button>';
+  }
+  if(multi.length){
+    h+='<p class="tiny muted" style="margin:12px 0 6px"><b>1つの欄に2人ぶん入っている人</b>（自動では直しません。'+
+      'カルテの「設定」か、下の「引き継ぎ・表記ゆれの統一」でどちらか1人に付け替えてください）</p>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+multi.map(x=>
+        '<span class="chip g" title="'+esc(x.who.join('、'))+'">'+lbl(x.field)+'：'+esc(x.v)+'（'+x.who.length+'人）</span>').join('')+'</div>';
+  }
+  return h+'</div>';
+}
 function handoverCardHTML(){
   const list=currentCharges(HANDOVER.field);
   const affected=HANDOVER.froms.length
@@ -3188,6 +3323,7 @@ function vSettings(){
       '誰にでもなりすませてしまうため）。</p>'+
     '</div>';
 
+  h+=nameVariantCardHTML();
   h+=handoverCardHTML();
 
   /* 卒業・退職した人。一覧やダッシュボードからは外れるが、記録は消えていない。
@@ -3392,6 +3528,32 @@ document.addEventListener('click',async e=>{
       await loadAll(['members']); render();
       toast(cnt+'人分を引き継ぎました','xp');
     }catch(err){ toast(err.message||'引き継ぎに失敗しました','bad'); }
+  }
+  else if(a==='fixName'||a==='fixNameAll'){
+    const list=a==='fixName'? [NAME_FIX[+el.dataset.i]].filter(Boolean) : NAME_FIX.slice();
+    if(!list.length) return;
+    const n=list.reduce((s,g)=>s+g.n,0);
+    if(!confirm(list.map(g=>(g.field==='mentor'?'メンター':'UL')+'：'+g.froms.map(f=>'「'+f+'」').join('・')+' → 「'+g.to+'」').join('\n')+
+      '\n\n'+n+'人ぶんを付け替えます。よろしいですか？')) return;
+    try{
+      let cnt=0;
+      for(const g of list) cnt+=(await Store.reassignCharge(g.field,g.froms,g.to,{quiet:true}))||0;
+      await loadAll(['members']); render();
+      toast(cnt+'人ぶんの表記を揃えました','xp');
+    }catch(err){ toast(err.message||'表記の統一に失敗しました','bad'); }
+  }
+  else if(a==='dupRetire'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    if(!confirm(r.name+' さん（'+r.unit+'・チェック'+r.checked+'件・登録'+(r.registeredAt?fmtDateFull(r.registeredAt):'—')+'）の登録を、'+
+      '重複として一覧から外します。\n\nチェック・申し送りは消えません。この登録ではログインできなくなります。\n'+
+      '設定タブの「卒業・退職した人」からいつでも戻せます。\n\nよろしいですか？')) return;
+    try{
+      await Store.upsertMember({id:r.id, active:false});
+      await Store.addNote({member_id:r.id, kind:'memo', occurred_on:todayStr(),
+        body:'重複登録として一覧から外しました。', visibility:'admin'});
+      await loadAll(['members','notes']); render();
+      toast(r.name+' さんの重複登録を外しました','xp');
+    }catch(err){ toast(err.message||'更新に失敗しました','bad'); }
   }
   else if(a==='retireMember'){
     const r=BY_ID[el.dataset.id]; if(!r) return;

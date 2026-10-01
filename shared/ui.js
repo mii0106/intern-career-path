@@ -91,6 +91,58 @@ function selectOptionsHTML(value,list){
    extra には名簿にある値を渡す（config.js に書き忘れたUnitを拾うため）。 */
 function unitOptionsHTML(value,extra){ return selectOptionsHTML(normalizeUnit(value),unitOptions(extra)); }
 
+/* Unitの並べ順。どの画面でも unitA → unitH の順にそろえる。
+   文字列のまま並べると「（未設定）」や「営業部」が先頭に割り込んだり、
+   表記ゆれの残った値が別の位置に並んだりするため、unitKey() の
+   アルファベットで比べる。アルファベットとして読めない値はその後ろ、
+   「（未設定）」「（未配属）」はいちばん最後。 */
+function unitCmp(a,b){
+  const rank=v=>{
+    const s=String(v==null?'':v).trim();
+    if(!s || /^（.*）$/.test(s)) return [2,''];
+    const k=unitKey(s);
+    return UNIT_LETTER.test(k)? [0,k] : [1,s];
+  };
+  const x=rank(a), y=rank(b);
+  return (x[0]-y[0]) || String(x[1]).localeCompare(String(y[1]),'ja');
+}
+
+/* ------------------------------------------------------------
+   UL・メンターの名前の表記ゆれ
+   ------------------------------------------------------------
+   UL欄・メンター欄は本人の自己申告なので、同じ人が
+   「渡邉 珠羅」「渡邉珠羅」「渡辺珠羅」「渡邉　珠羅さん」のように
+   ばらばらに入る。personKey() はそれらを同じ文字列にする
+   （空白・全角/半角・敬称・よくある旧字/異体字の違いを取り払う）。
+   canonPerson() は config.js の KNOWN_ULS（正の表記）と
+   NAME_ALIASES（あだ名・旧姓などの別名）から、正の表記を返す。
+   ------------------------------------------------------------ */
+const NAME_VARIANTS={ '邉':'辺','邊':'辺','髙':'高','﨑':'崎','嵜':'崎','濵':'浜','濱':'浜',
+  '齋':'斎','齊':'斎','斉':'斎','澤':'沢','櫻':'桜','國':'国','廣':'広','藏':'蔵','惠':'恵',
+  '眞':'真','冨':'富','德':'徳','瀨':'瀬','籐':'藤','槇':'槙','曽':'曾' };
+function personKey(v){
+  return String(v==null?'':v)
+    .normalize('NFKC')
+    .replace(/[\s　]/g,'')
+    .replace(/(さん|様|さま|くん|君|ちゃん)$/,'')
+    .replace(/./g,c=>NAME_VARIANTS[c]||c)
+    .toLowerCase();
+}
+/* 正の表記の一覧（KNOWN_ULS ＋ 別名の行き先）。personKey → 正の表記 */
+function canonPersonMap(){
+  const cfg=window.STEP_CONFIG||{}, map={};
+  (cfg.KNOWN_ULS||[]).concat(cfg.KNOWN_MENTORS||[]).forEach(n=>{ if(n) map[personKey(n)]=n; });
+  const al=cfg.NAME_ALIASES||{};
+  Object.keys(al).forEach(k=>{ if(al[k]) map[personKey(k)]=al[k]; });
+  return map;
+}
+/* 正の表記が分かればそれを、分からなければ前後の空白だけ取って返す */
+function canonPerson(v){
+  const s=String(v==null?'':v).trim();
+  if(!s) return '';
+  return canonPersonMap()[personKey(s)] || s;
+}
+
 /* ============================================================
    いまの稼働 — 週の稼働時間・担当アカウント数・卒業予定・得意領域
    ------------------------------------------------------------
