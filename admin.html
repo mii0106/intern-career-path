@@ -503,7 +503,7 @@ function gateHTML(){
         '<div class="seg2" id="cRole" style="display:flex;width:100%">'+ROLES.filter(r=>r.k!=='member').map(r=>
           '<button type="button" data-act="wantRole" data-r="'+r.k+'" style="flex:1;padding:9px 6px;font-size:13px" '+
           'class="'+(GATE.want===r.k?'on':'')+'">'+r.n+'</button>').join('')+'</div>'+
-        '<p class="tiny muted" style="margin:6px 0 0">できることは同じです。どちらもグレードは持ちません。</p></div>'+
+        '<p class="tiny muted" style="margin:6px 0 0">管理者ツールでできることは同じです。メンターはインターンなので、本人画面とグレードもそのまま使えます。社員はグレードを持ちません。</p></div>'+
       '<div class="f"><label>自分の名前</label>'+
         '<input type="text" id="cQuery" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'">'+
         '<div id="cHits" class="tiny muted" style="margin-top:6px">'+
@@ -658,7 +658,7 @@ function compute(){
     const checks=checksOf(raw);
     const certified=m.certified_grade||null;
     const cg=gCurrentGrade(checks,certified), cleared=gClearedCount(checks,certified);
-    /* グレードを持つのはインターンだけ。社員・メンターには出さない。
+    /* グレードを持つのはインターンだけ（メンター・UL・エグゼもインターンなら持つ）。社員には出さない。
        インターンでも、認定グレードもチェックも空なら「未入力」として G1 と分ける
        （本人がまだ入れていないだけなのか、本当に G1 なのかを見分けるため）。 */
     const isIntern=isInternRole(m.role);
@@ -823,7 +823,7 @@ function rosterUnitValues(){ return ROWS.map(r=>r.m.unit).filter(Boolean); }
 /* 実際にメンバーが居るUnitだけ（リーダーMTGのサマリはここから選ぶ。
    誰も居ないUnitを開いても空の資料にしかならないため）。 */
 function unitsInUse(){
-  return Array.from(new Set(ROWS.filter(r=>r.role==='member').map(r=>r.unit))).sort(unitCmp);
+  return Array.from(new Set(ROWS.filter(r=>r.isIntern).map(r=>r.unit))).sort(unitCmp);
 }
 /* Unitの絞り込みに出す一覧。
    名簿に居るUnitだけだと、まだ誰も登録していないUnit（unitHなど）が
@@ -864,8 +864,8 @@ function filtered(){
   const q=F.q.trim().toLowerCase();
   return ROWS.filter(r=>{
     if(F.unit && r.unit!==F.unit) return false;
-    if(F.role==='member' && r.role!=='member') return false;
-    if(F.role==='manager' && r.role==='member') return false;
+    if(F.role==='member' && !r.isIntern) return false;
+    if(F.role==='manager' && r.isIntern) return false;
     if(F.mine && !r.mine) return false;
     if(F.alert && alertsOf(r).indexOf(F.alert)<0) return false;
     if(q && (r.name+' '+r.unit+' '+(r.m.ul||'')+' '+(r.m.mentor||'')).toLowerCase().indexOf(q)<0) return false;
@@ -916,8 +916,8 @@ const TABS=[
   {k:'settings',n:'設定',          i:'<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'}
 ];
 function renderNav(){
-  const n=ROWS.filter(r=>r.role==='member').length;
-  const alerts=ROWS.filter(r=>r.role==='member'&&(alertsOf(r).indexOf('delay')>=0||alertsOf(r).indexOf('stale')>=0)).length;
+  const n=ROWS.filter(r=>r.isIntern).length;
+  const alerts=ROWS.filter(r=>r.isIntern&&(alertsOf(r).indexOf('delay')>=0||alertsOf(r).indexOf('stale')>=0)).length;
   document.getElementById('nav').innerHTML=TABS.map(t=>
     '<button data-act="tab" data-tab="'+t.k+'" class="'+(V.tab===t.k?'on':'')+'"'+(V.tab===t.k?' aria-current="page"':'')+'>'+
     '<svg viewBox="0 0 24 24">'+t.i+'</svg><span>'+t.n+'</span>'+
@@ -952,11 +952,11 @@ function gradeChip(gn){
   return '<span class="chip" style="background:'+t.hex+'1A;color:'+t.hex+'">G'+gn+' '+t.name+'</span>';
 }
 /* 人の行に出すグレード。
-     社員・メンター … グレードの対象外（G1 と出さない）
+     社員 … グレードの対象外（G1 と出さない）
      未入力         … 本人が認定グレードもチェックもまだ入れていない（G1 とは別に出す） */
 const UNSET_TIP='本人がまだグレードを入れていません（認定グレードもチェックも空）。1on1で入れてもらってください';
 function gradeChipR(r){
-  if(!r.isIntern) return '<span class="muted" title="社員・メンターはグレードの対象外です">対象外</span>';
+  if(!r.isIntern) return '<span class="muted" title="社員はグレードの対象外です">対象外</span>';
   if(r.gradeUnset) return '<span class="chip c" title="'+UNSET_TIP+'">未入力</span>';
   return gradeChip(r.cg);
 }
@@ -1002,7 +1002,7 @@ function barFilters(opts){
   h+='<select id="funit"><option value="">全Unit</option>'+
      units().map(u=>'<option value="'+esc(u)+'"'+(F.unit===u?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>';
   h+='<select id="frole">'+
-     [['all','全員'],['member','インターンのみ'],['manager','社員・メンターのみ']].map(o=>
+     [['all','全員'],['member','インターンのみ'],['manager','社員のみ']].map(o=>
        '<option value="'+o[0]+'"'+(F.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   if(opts.alert!==false){
     h+='<select id="falert"><option value="">アラートで絞らない</option>'+
@@ -1090,7 +1090,7 @@ function duplicateCardHTML(groups){
   return h+'</tbody></table></div></div>';
 }
 function vDash(){
-  const all=filtered().filter(r=>r.role==='member');
+  const all=filtered().filter(r=>r.isIntern);
   const n=all.length||1;
   const delayed=all.filter(isDelayed);
   const stale=all.filter(isStale);
@@ -1179,10 +1179,10 @@ function vDash(){
 
   const dups=duplicateGroups();
   const dupExtra=dups.reduce((a,g)=>a+g.rows.length-1,0);
-  const managersN=filtered().filter(r=>r.role!=='member').length;
+  const managersN=filtered().filter(r=>!r.isIntern).length;
   h+='<div class="grid g4" style="margin-bottom:14px">'+
     kpi('インターン数',all.length,'人',
-      filterNote(true)+(managersN?'（社員・メンターの'+managersN+'人は除く）':'')+
+      filterNote(true)+(managersN?'（社員の'+managersN+'人は除く）':'')+
       (dupExtra?'・重複の疑い'+dupExtra+'人':''),'')+
     kpi('グレード未入力',unset.length,'人','本人がまだ入れていない（G1とは別）','unset')+
     kpi('平均進捗',avg,'%','チェック済みの項目で計算','')+
@@ -1226,7 +1226,7 @@ function vDash(){
     '<table><thead><tr><th class="nos">Unit / UL</th><th class="nos num">人数</th><th class="nos num">平均G</th><th class="nos num">平均進捗</th>'+
     '<th class="nos num">未入力</th><th class="nos num">遅れ</th><th class="nos num">動きなし</th><th class="nos num">昇格対象</th></tr></thead><tbody>';
   const byUnit={};
-  ROWS.filter(r=>r.role==='member').forEach(r=>(byUnit[r.unit]=byUnit[r.unit]||[]).push(r));
+  ROWS.filter(r=>r.isIntern).forEach(r=>(byUnit[r.unit]=byUnit[r.unit]||[]).push(r));
   Object.keys(byUnit).sort(unitCmp).forEach(u=>{
     const l=byUnit[u];
     /* ULはユニットの側から引く。まだ期が無い・決めていないときは名簿のUL欄 */
@@ -1364,8 +1364,8 @@ function filterNote(membersOnly){
   const p=[F.unit||'全Unit'];
   if(membersOnly) p.push('インターンのみ');
   else p.push(F.role==='member' ? 'インターンのみ'
-       : F.role==='manager'? '社員・メンターのみ'
-       :                     '社員・メンターを含む');
+       : F.role==='manager'? '社員のみ'
+       :                     '社員を含む');
   if(F.mine) p.push('自分の担当だけ');
   if(F.alert) p.push((ALERT_LABEL[F.alert]||[F.alert])[0]+'だけ');
   if(F.q.trim()) p.push('検索「'+F.q.trim()+'」');
@@ -1386,7 +1386,7 @@ function remindText(kind){
       'まだグレードが入っていないため、ULの画面で「未入力」になっています。'+
       'アプリを開くとホームの一番上から1タップで選べます。分からなければ次の1on1で一緒に決めましょう。\n'+APP_URL;
   }
-  const list=filtered().filter(r=>r.role==='member')
+  const list=filtered().filter(r=>r.isIntern)
     .filter(isStale);
   if(!list.length) return null;
   return '【キャリアステップの更新をお願いします】\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+
@@ -1445,7 +1445,7 @@ const COLDEF={
   stuck:     {h:'いちばん詰まっているところ', tip:'挑戦中グレードの未達項目（リーダー等級以上は対象外）',
               cell:r=>{ const st=stuckDisplay(r); return '<span class="wrap tiny">'+(st[0]?esc(st[0].cat.split('｜')[0])+'：'+esc(cut(st[0].t,42)):'—')+'</span>'; }}
 };
-/* 社員・メンターの行では、グレードに関わる列を空ける（グレードを持たないため） */
+/* 社員の行では、グレードに関わる列を空ける（グレードを持たないため） */
 ['certified','cleared','heat','pct','overall','target','delay','stuck'].forEach(k=>{
   const orig=COLDEF[k].cell;
   COLDEF[k].cell=r=> r.isIntern? orig(r) : '<span class="muted">—</span>';
@@ -1471,7 +1471,7 @@ function rosterEmpty(){
     '<p class="tiny muted" style="margin:8px 0 0;line-height:1.9">'+
     'メンバーが本人用の画面から自分の情報を登録すると、ここに順に増えていきます。<br>'+
     'アプリのURLと共通パスコードを共有してください。</p>';
-  const managers=ROWS.filter(r=>r.role!=='member').length;
+  const managers=ROWS.filter(r=>!r.isIntern).length;
   const why=[];
   if(F.role==='member')  why.push('「インターンのみ」で絞っています'+
     (managers?'（'+MANAGER_LABEL+'が'+managers+'人いますが、この絞り込みでは出ません）':''));
@@ -1546,7 +1546,7 @@ function csvRoster(){
    3. 昇格と詰まり
    ============================================================ */
 function vPromo(){
-  const list=filtered().filter(r=>r.role==='member');
+  const list=filtered().filter(r=>r.isIntern);
   let h='<h1 class="h1 disp">昇格と詰まり</h1>'+
     '<p class="lead">誰がいつ昇格しそうか、どこで止まっているか。リーダーMTGの前にここだけ見れば足ります。</p>';
   h+=barFilters({right:'<button class="btn ghost" data-act="csvStuck">詰まり一覧をCSV</button>'});
@@ -1653,7 +1653,7 @@ function vPromo(){
 }
 function csvStuck(){
   const rows=[['名前','Unit','挑戦中グレード','進捗%','カテゴリ','未達の項目']];
-  filtered().filter(r=>r.role==='member').forEach(r=>r.stuck.forEach(it=>
+  filtered().filter(r=>r.isIntern).forEach(r=>r.stuck.forEach(it=>
     rows.push([r.name,r.unit,r.cg,r.pct,it.cat,it.t])));
   downloadCSV('詰まっている項目_'+todayStr()+'.csv',rows);
   toast('CSVを書き出しました');
@@ -1979,7 +1979,7 @@ function asgSet(termId,memberId,key,val){
   ASG_EDIT.rows[memberId]=cur; ASG_EDIT.dirty=true;
 }
 /* 期のメンバー（卒業・退職した人は入れない） */
-function termMembers(){ return ROWS.filter(r=>r.role==='member'); }
+function termMembers(){ return ROWS.filter(r=>r.isIntern); }
 
 /* Unitごとの集計。編成のバランスを見るための数字をまとめて出す。
    getUnit は「その人をどのUnitとして数えるか」を返す関数。 */
@@ -2273,7 +2273,7 @@ function pairViolations(getUnit){
 }
 function pairCardHTML(getUnit){
   const list=pairs(), bad=pairViolations(getUnit);
-  const names=ROWS.filter(r=>r.role==='member').slice()
+  const names=ROWS.filter(r=>r.isIntern).slice()
     .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'));
   const opts=v=>'<option value="">選んでください</option>'+names.map(r=>
     '<option value="'+r.id+'"'+(v===r.id?' selected':'')+'>'+esc(r.name)+'</option>').join('');
@@ -2723,7 +2723,7 @@ function roleConfirmCardHTML(){
     '「グレード」と「立場」を分けたときに、以前ULやメンターだった人の立場を自動で仮に決めました'+
     '（チェックか認定グレードがある人はインターン、無い人は社員）。正しいものを押してください。<br>'+
     'インターンにすると、ULに入っているユニットがある間だけ管理者ツールを使えます。'+
-    '社員・メンターにはグレードが表示されなくなります。確かめるまでは、これまでどおり管理者ツールを使えます。</p>'+
+    '社員にはグレードが表示されなくなります（メンターはインターンとしてグレードも本人画面もそのまま）。確かめるまでは、これまでどおり管理者ツールを使えます。</p>'+
     '<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
     '<th class="nos nm">名前</th><th class="nos">仮の立場</th><th class="nos">記録</th><th class="nos">ULのユニット</th><th class="nos"></th></tr></thead><tbody>'+
     list.map(r=>'<tr><td class="nm">'+memberLink(r)+'</td>'+
@@ -2956,7 +2956,7 @@ async function applyTermFlow(id){
 function vMtg(){
   const us=unitsInUse();
   const unit=V.mtgUnit||us[0]||'';
-  const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort(gradeDesc);
+  const list=ROWS.filter(r=>r.isIntern&&r.unit===unit).sort(gradeDesc);
   let h='<h1 class="h1 disp">リーダーMTG用サマリ</h1>'+
     '<p class="lead">Unitごとに、確認したい情報だけを1枚に。そのまま読み上げるか、コピーしてSlackに貼れます。</p>';
   h+='<div class="bar"><select id="mtgUnit">'+us.map(u=>'<option value="'+esc(u)+'"'+(u===unit?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>'+
@@ -3014,7 +3014,7 @@ function vMtg(){
 }
 function mtgText(){
   const unit=V.mtgUnit||unitsInUse()[0]||'';
-  const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort(gradeDesc);
+  const list=ROWS.filter(r=>r.isIntern&&r.unit===unit).sort(gradeDesc);
   const L=['【'+unit+'｜キャリアステップ確認 '+fmtDateFull(todayStr())+'】',''];
   list.forEach(r=>{
     L.push('■ '+r.name+'（'+gradeText(r)+'／在籍'+(r.months==null?'—':r.months.toFixed(1))+'ヶ月）');
@@ -3038,7 +3038,7 @@ function mtgText(){
    本人画面にまで反映されてしまうのを避けるため。 */
 const DW_TABS=[['summary','カルテ'],['step','チェック'],['handover','引き継ぎ'],
                ['notes','申し送り'],['scores','テスト'],['profile','設定']];
-/* 社員・メンターはグレードを持たないので、グレードまわりのタブは出さない */
+/* 社員はグレードを持たないので、グレードまわりのタブは出さない */
 const DW_TABS_STAFF=[['notes','申し送り'],['profile','設定']];
 function dwTabsOf(r){ return r.isIntern? DW_TABS : DW_TABS_STAFF; }
 function openDrawer(id){ V.drawer=id; V.dwTab='summary'; renderDrawer(); }

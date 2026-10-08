@@ -594,7 +594,8 @@ const DEFAULT={
 let D=JSON.parse(JSON.stringify(DEFAULT));
 /* 育成・ULの権限を付けるとき、どちらとして入るか（設定タブで選ぶ） */
 let WANT_ROLE='staff';
-/* 社員・メンターとしてログインしているか（グレードが無いので本人用シートを出さない） */
+/* 社員としてログインしているか（グレードが無いので本人用シートを出さない）。
+   メンター・UL・エグゼはインターンなので、本人用シートをそのまま使う */
 let STAFF_MODE=false;
 /* 自分がULに入っているユニット（いまの期・編成中の期） */
 let MY_UL_UNITS=[];
@@ -1196,7 +1197,8 @@ function vSettings(){
      '<b>ULになったインターンの方は、ここに何も入れなくて大丈夫です。</b>'+
      'ユニットのULに設定されると、この画面はそのままで管理者ツールも使えるようになります。</p>'+
      '<p class="tiny muted" style="margin:0 0 10px">社員・メンターの方だけ、どちらかを選んで管理者キーを入れてください。'+
-     '社員・メンターにはグレードが無いので、本人用のシートは使わなくなります。</p>'+
+     '<b>メンター</b>はインターンのままなので、このシートとグレードはそのまま使えます。'+
+     '<b>社員</b>にはグレードが無いので、このシートは使わなくなります。</p>'+
      '<div class="field" style="margin-bottom:8px"><label>どちらとして入りますか</label>'+
        '<div class="seg2" id="wantRole">'+
          ROLES.filter(r=>r.k!=='member').map(r=>
@@ -1207,17 +1209,18 @@ function vSettings(){
      '<button class="savebtn" data-act="claimManager">この立場にする</button></div>';
   }else{
     h+='<div class="sec-label">自分の権限</div><div class="card">'+
-     '<p class="tiny muted" style="margin:0 0 10px">あなたは<b>インターン</b>で、'+
+     '<p class="tiny muted" style="margin:0 0 10px">あなたは<b>インターン</b>'+
+     (roleKey(Store.me.member.role)==='mentor'? '（<b>メンター</b>）' : '')+'で、'+
      (MY_UL_UNITS.length? '<b>'+MY_UL_UNITS.map(u=>esc(u.unit)+'のUL'+(u.status==='draft'?'（'+esc(u.term_name)+'から）':'')).join('・')+'</b>です。'
-                        : 'ULとして管理者ツールを使えます。')+
-     'この画面（自分のシート）はそのまま使えて、担当ユニットのことは管理者ツールで見られます。</p>'+
+                        : '管理者ツールを使えます。')+
+     'この画面（自分のシート）はそのまま使えて、メンバーのことは管理者ツールで見られます。</p>'+
      '<a class="savebtn" href="admin.html" style="display:block;text-align:center;text-decoration:none">管理者ツールをひらく →</a></div>';
   }
   h+=loginCardHTML();
   h+='<div style="height:8px"></div>';
   return h;
 }
-/* ログイン（パスワードの変更・ログアウト）。社員・メンターの画面でも同じものを使う */
+/* ログイン（パスワードの変更・ログアウト）。社員の画面でも同じものを使う */
 function loginCardHTML(){
   return '<div class="sec-label">ログイン</div><div class="card">'+
    '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
@@ -1240,14 +1243,14 @@ function loginCardHTML(){
    '<div style="height:8px"></div>'+
    '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
 }
-/* 社員・メンターがこの画面を開いたとき。グレードを持たないので、
+/* 社員がこの画面を開いたとき。グレードを持たないので、
    本人用のシート（グレード・相棒・チェック）は出さずに管理者ツールへ案内する。
    「社員なのにG1」と出ていたのは、ここでシートをそのまま出していたため。 */
 function vStaffHome(){
   return '<div style="max-width:520px;margin:0 auto">'+
     '<div class="sec-label">'+esc(D.profile.name||'')+' さん</div><div class="card">'+
     '<p style="margin:0 0 8px;font-weight:700">あなたは'+esc(roleName(Store.me.member.role))+'です</p>'+
-    '<p class="tiny muted" style="margin:0 0 12px;line-height:1.9">社員・メンターにはグレードが無いので、本人用のシートはありません。'+
+    '<p class="tiny muted" style="margin:0 0 12px;line-height:1.9">社員にはグレードが無いので、本人用のシートはありません。'+
     'メンバーの状況・引き継ぎ・ユニットの編成は管理者ツールで見られます。</p>'+
     '<a class="savebtn" href="admin.html" style="display:block;text-align:center;text-decoration:none">管理者ツールをひらく →</a></div>'+
     loginCardHTML()+'</div>';
@@ -2136,7 +2139,7 @@ async function boot(){
   document.getElementById('app').style.display='';
   await load();
   const rk=roleKey(Store.me&&Store.me.member&&Store.me.member.role);
-  STAFF_MODE = rk==='staff' || rk==='mentor';
+  STAFF_MODE = rk==='staff';
   render();
   if(Store.isManager && !STAFF_MODE)
     Store.myUlUnits().then(u=>{ MY_UL_UNITS=u||[]; if(view==='sheet') render(true); }).catch(()=>{});
