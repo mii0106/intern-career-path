@@ -5,8 +5,8 @@
 /* ------------------------------------------------------------
    立場（ベースの身分）は3つ。member（インターン）・staff（社員）・mentor（メンター）。
      member … 本人画面を使い、グレードを持つ
-     staff  … 管理者ツールだけ。グレードを持たない
-     mentor … 管理者ツールだけ。グレードを持たない
+     mentor … インターンのメンター。本人画面とグレードはそのまま、管理者ツールも使える
+     staff  … 社員。管理者ツールだけ。グレードを持たない（本人画面が要らないのは社員だけ）
    ULは立場ではない。「その期のユニットのULに誰が入っているか」で決まる
    （supabase/parts/04 の term_units）。インターンがULになっても立場は
    member のままなので、本人画面とグレードはそのまま残り、管理者ツールが“乗る”。
@@ -18,15 +18,15 @@
    ------------------------------------------------------------ */
 const ROLES=[
   {k:'member', n:'インターン', s:'インターン', d:'本人画面を使う。グレードを持つ'},
-  {k:'staff',  n:'社員',       s:'社員',       d:'管理者ツールだけ。グレードは持たない'},
-  {k:'mentor', n:'メンター',   s:'メンター',   d:'管理者ツールだけ。グレードは持たない'}
+  {k:'mentor', n:'メンター',   s:'メンター',   d:'インターン。本人画面・グレードに加えて管理者ツールも使う'},
+  {k:'staff',  n:'社員',       s:'社員',       d:'管理者ツールだけ。グレードは持たない'}
 ];
 const LEGACY_UL_ROLE={k:'ul', n:'UL（移行前）', s:'UL', d:'以前の立場。インターンか社員に振り分けてください'};
 function roleKey(role){ return role==='admin' ? 'mentor' : (role||'member'); }
 /* 立場だけで管理者ツールを使えるか（ULかどうかはここでは分からない。サーバーの is_manager を見る） */
 function isManagerRole(role){ const k=roleKey(role); return k==='staff'||k==='mentor'||k==='ul'; }
-/* グレードを持つのはインターンだけ */
-function isInternRole(role){ return roleKey(role)==='member'; }
+/* グレードと本人画面を持つのはインターン。メンターもインターンなので含む */
+function isInternRole(role){ const k=roleKey(role); return k==='member'||k==='mentor'; }
 function roleName(role){ const k=roleKey(role);
   if(k==='ul') return LEGACY_UL_ROLE.n;
   return (ROLES.find(r=>r.k===k)||ROLES[0]).n; }
