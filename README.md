@@ -139,6 +139,7 @@ SNS部署のインターン生のキャリアステップを管理するアプ�
 ```
 index.html            インターン本人の画面
 admin.html            育成・ULの管理者ツール
+guide.html            本人用・管理側の使い方ガイド（両方の画面からリンク）
 sw.js                 画面のキャッシュ（電波が無くても開けるようにする）
 shared/config.js      Supabaseの接続情報（ここだけ編集する）
 shared/steps.js       キャリアステップの定義（GRADES）と進捗の計算

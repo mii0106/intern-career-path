@@ -9,11 +9,12 @@
    オフライン中に押したチェックは shared/store.js が端末に積み、
    電波が戻ったときに送る。
    ============================================================ */
-const CACHE = 'step-v2';
+const CACHE = 'step-v3';
 const SHELL = [
   './',
   './index.html',
   './admin.html',
+  './guide.html',
   './shared/config.js',
   './shared/steps.js',
   './shared/ui.js',
