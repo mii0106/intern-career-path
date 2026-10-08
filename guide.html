@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>STEP 使い方ガイド</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+[hidden]{display:none!important}
+/* 本人／管理側を切り替える1列の手引き。手順は番号付き、画面の名前は実際のボタン表記のまま */
+:root{
+  --bg:#F2F1F8; --card:#FFFFFF; --fg:#1C1A30; --sub:#5F5B7A; --line:#DEDAEC;
+  --accent:#5B3FD9; --accent-soft:#ECE8FD; --warn:#C2334D; --warn-soft:#FBE7EB; --ok:#12805A; --ok-soft:#E1F3EB;
+  --disp:"Zen Kaku Gothic New","Hiragino Sans",system-ui,sans-serif;
+  --body:"Noto Sans JP","Hiragino Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#13121E; --card:#1C1B2C; --fg:#ECEAF7; --sub:#A7A3C2; --line:#34314C;
+  --accent:#A592FF; --accent-soft:#2A2550; --warn:#FF8DA1; --warn-soft:#3E1F2A; --ok:#62D3A6; --ok-soft:#173A2E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#13121E; --card:#1C1B2C; --fg:#ECEAF7; --sub:#A7A3C2; --line:#34314C;
+  --accent:#A592FF; --accent-soft:#2A2550; --warn:#FF8DA1; --warn-soft:#3E1F2A; --ok:#62D3A6; --ok-soft:#173A2E; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.8;font-size:15px}
+.wrap{max-width:780px;margin:0 auto;padding-inline:16px;padding-block:32px 72px}
+header{display:flex;flex-direction:column;gap:6px;margin-bottom:22px}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--accent);font-weight:700}
+h1{font-family:var(--disp);font-weight:900;font-size:clamp(26px,5vw,34px);line-height:1.3;margin:0;text-wrap:balance}
+.lead{color:var(--sub);margin:0}
+.tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:5px;position:sticky;top:env(safe-area-inset-top,0px);z-index:2;margin-bottom:22px}
+.tabs button{flex:1;font:inherit;font-weight:700;border:0;border-radius:8px;padding:10px 8px;background:transparent;color:var(--sub);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--card)}
+.tabs button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+section.panel{display:flex;flex-direction:column;gap:18px}
+h2{font-family:var(--disp);font-weight:900;font-size:21px;margin:14px 0 0;text-wrap:balance}
+h3{font-family:var(--disp);font-weight:700;font-size:16.5px;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card p{margin:0}
+.card.key{border:2px solid var(--accent)}
+.card.warn{border:2px solid var(--warn)}
+ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:8px}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start}
+ol.steps li::before{content:counter(s);width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:13px;display:grid;place-items:center;margin-top:1px}
+ul{margin:0;padding-left:1.2em}
+li{margin:2px 0}
+.btn{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:13px;font-weight:700;background:var(--bg);white-space:nowrap}
+.chip{display:inline-block;border-radius:6px;padding:0 7px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.chip.unset{background:var(--warn-soft);color:var(--warn)}
+.chip.na{color:var(--sub);border:1px dashed var(--line)}
+.chip.ul{background:var(--accent-soft);color:var(--accent)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12.5px;color:var(--sub);font-weight:700}
+.url{font-family:ui-monospace,Menlo,monospace;font-size:13.5px;word-break:break-all}
+.note{font-size:13.5px;color:var(--sub)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header>
+  <span class="eyebrow">キャリアステップ管理ツール STEP</span>
+  <h1>使い方ガイド</h1>
+  <p class="lead">本人用の画面と、UL・メンター・社員が使う管理ツールの使い方です。下で切り替えられます。</p>
+  <p class="lead"><a href="./" style="color:var(--accent);font-weight:700">本人画面をひらく</a>　・　<a href="admin.html" style="color:var(--accent);font-weight:700">管理ツールをひらく</a></p>
+</header>
+
+<div class="tabs" role="tablist">
+  <button role="tab" id="t-intern" aria-controls="p-intern" aria-selected="true" data-p="intern">本人用（インターン）</button>
+  <button role="tab" id="t-admin" aria-controls="p-admin" aria-selected="false" data-p="admin">管理側（UL・メンター・社員）</button>
+</div>
+
+<!-- ======================= 本人用 ======================= -->
+<section class="panel" id="p-intern" role="tabpanel" aria-labelledby="t-intern">
+
+  <div class="card">
+    <h3>ひらく場所</h3>
+    <p class="url">https://intern-career-path.vercel.app/</p>
+    <p class="note">スマホのホーム画面に追加しておくと、アプリのように開けます。電波が悪いところで押したチェックも、つながったときに自動で送られます。</p>
+  </div>
+
+  <div class="card">
+    <h3>使うもの</h3>
+    <div class="tw"><table>
+      <thead><tr><th>なに</th><th>どこから</th><th>いつ使う</th></tr></thead>
+      <tbody>
+        <tr><td><b>共通パスコード</b></td><td>ULから共有されます（インターン全員共通）</td><td>はじめての登録のときだけ</td></tr>
+        <tr><td><b>自分のパスワード</b></td><td>登録のときに自分で決めます（6文字以上）</td><td>毎回のログイン</td></tr>
+        <tr><td><b>ログイン用コード</b></td><td>パスワードを忘れたときにULから渡されます（8文字）</td><td>パスワードを決め直すとき</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <h2>はじめて使うとき（3分）</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><span>URLを開いて <span class="btn">はじめて使う（新規登録）</span> を押す</span></li>
+      <li><span>氏名・所属Unit・UL・メンター・入社日・<b>いま認定されているGrade</b> を入れる。分からない項目は空でも大丈夫です（あとでマイシートから直せます）</span></li>
+      <li><span>共通パスコードと、自分で決めたパスワードを入れて <span class="btn">登録してはじめる</span></span></li>
+    </ol>
+    <p class="note">2回目からは、名前を2文字以上入れて候補から自分を選び、パスワードを入れるだけです。</p>
+  </div>
+
+  <div class="card key">
+    <h3>まず最初に：いまのグレードを入れる</h3>
+    <p>グレードを入れていないと、ULの画面ではあなたが <span class="chip unset">未入力</span> と表示されます。本当はG8でも、入れていなければ周りからは分かりません。</p>
+    <p>ホームの一番上に出る「まずは、いまのグレードを教えてください」から、1タップで選べます。分からなければ次の1on1でULと一緒に決めてください。あとからマイシートでいつでも直せます。</p>
+  </div>
+
+  <h2>画面の使い方</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>ホーム</h3>
+      <ul>
+        <li>いまのグレードと、昇格まであと何項目か</li>
+        <li><b>今週やること</b>：1on1で決めた3件を📌で固定しておく場所</li>
+        <li>ULからの共有事項</li>
+        <li>相棒を押すと <b>進化ずかん</b></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>ステップ</h3>
+      <ul>
+        <li>できた項目にチェックを入れる。<b>入れた時点で達成</b>です（承認はありません）</li>
+        <li>入れ間違えたら、そのまま外せます</li>
+        <li>検索欄と「未達成だけ」で全項目から探せます</li>
+        <li>認定グレードまでは最初から開いています</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>記録</h3>
+      <ul>
+        <li>ULやメンターが残した申し送り・面談メモ</li>
+        <li>自分のテスト点数の履歴</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>マイシート</h3>
+      <ul>
+        <li>プロフィール（認定グレード・Unit・UL・メンター）</li>
+        <li>いまの稼働（週の時間・担当社数・卒業予定・得意領域）</li>
+        <li>卒業時の目標・五箇条・気になっていること</li>
+        <li><b>設定</b>：相棒の名前・効果音・パスワードの変更</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>1on1でのおすすめの流れ</h3>
+    <ol class="steps">
+      <li><span>ステップを開いて、できたことにチェックを入れる</span></li>
+      <li><span>次にやる3件を決めて📌でピン留めする（ホームの「今週やること」に出ます）</span></li>
+      <li><span>目標や「気になっていること」が変わっていたら、マイシートで書き直す</span></li>
+    </ol>
+    <p class="note">ここに書いた目標と気になっていることは、ULが変わるときの引き継ぎ画面にもそのまま出ます。</p>
+  </div>
+
+  <div class="card">
+    <h3>パスワードを忘れたとき</h3>
+    <ol class="steps">
+      <li><span>ログイン画面の <span class="btn">パスワードを忘れた</span> から自分の名前を選び、<span class="btn">UL・育成にリセットを依頼する</span></span></li>
+      <li><span>ULから届く8文字のログイン用コードと、新しいパスワードを入れる</span></li>
+    </ol>
+    <p class="note">チェックや記録は消えません。コードは7日で期限切れ・1回限りです。</p>
+  </div>
+
+  <div class="card key">
+    <h3>メンター・UL・エグゼになったら</h3>
+    <p>インターンのままなので、<b>この本人画面とグレードはそのまま使えます</b>。そのうえで管理ツールも使えるようになります。</p>
+    <ul>
+      <li><b>ULになった人</b>：管理者キーは入れません。ユニットのULに設定してもらうと、管理ツールに自分の名前とパスワードで入れます</li>
+      <li><b>メンターになった人</b>：マイシート → 設定 → 自分の権限 で「メンター」を選び、ULから共有された管理者キーを入れます</li>
+    </ul>
+    <p class="note">「社員」は選ばないでください。社員にするとグレードと本人画面がなくなります。</p>
+  </div>
+</section>
+
+<!-- ======================= 管理側 ======================= -->
+<section class="panel" id="p-admin" role="tabpanel" aria-labelledby="t-admin" hidden>
+
+  <div class="card">
+    <h3>ひらく場所</h3>
+    <p class="url">https://intern-career-path.vercel.app/admin.html</p>
+    <p class="note">見られる範囲は、UL・メンター・社員とも全員ぶんです。PCでの利用を想定していますが、スマホでも開けます。</p>
+  </div>
+
+  <h2>立場とグレード</h2>
+  <div class="card">
+    <div class="tw"><table>
+      <thead><tr><th>立場</th><th>本人画面</th><th>管理ツール</th><th>グレード</th></tr></thead>
+      <tbody>
+        <tr><td><b>インターン</b></td><td>使う</td><td>ULのときだけ</td><td>持つ</td></tr>
+        <tr><td><b>メンター</b>（インターン）</td><td>使う</td><td>使う</td><td>持つ</td></tr>
+        <tr><td><b>社員</b></td><td>なし（案内だけ）</td><td>使う</td><td>持たない <span class="chip na">対象外</span></td></tr>
+      </tbody>
+    </table></div>
+    <p><b>ULは立場ではなく、ユニットが持つもの</b>です。期ごとに各ユニットのULを1人決めます。インターン（エグゼなど）がULになっても立場はインターンのままなので、本人画面とグレードは残ったまま、管理ツールも使えます。</p>
+  </div>
+
+  <h2>はじめて入るとき</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>社員・メンター</h3>
+      <ol class="steps">
+        <li><span>本人画面から自分を登録する（パスワードもここで決める）</span></li>
+        <li><span>管理ツールで <span class="btn">社員・メンターで、はじめて使う方はこちら</span></span></li>
+        <li><span>社員かメンターを選び、名前・パスワード・<b>管理者キー</b>を入れる</span></li>
+      </ol>
+      <p class="note">管理者キーはUL・メンター・社員だけで共有し、インターンには渡さないでください。5回続けて間違えると15分ロックされます。</p>
+    </div>
+    <div class="card">
+      <h3>インターンのUL</h3>
+      <ol class="steps">
+        <li><span>社員かメンターに、<b>期・ユニット編成 → ユニットとUL</b> で自分をULに入れてもらう</span></li>
+        <li><span>管理ツールで自分の名前を入れて、パスワードでログイン</span></li>
+      </ol>
+      <p class="note">管理者キーは入れません。入れると社員になり、グレードが消えます。</p>
+    </div>
+  </div>
+
+  <h2>ふだんの使い方</h2>
+  <div class="card key">
+    <h3>ダッシュボード：まずここを見る</h3>
+    <p>一番上に <b>よく使う</b> の4つが並んでいます。</p>
+    <ul>
+      <li><b>グレードを確認する</b>：インターン全員のいまのグレードと進捗</li>
+      <li><b>未入力をチェックする</b>：グレードを入れていない人</li>
+      <li><b>引き継ぎを見る</b>：期が変わるときの1画面ビュー</li>
+      <li><b>ユニット編成</b>：期・ユニット・ULの割り当て</li>
+    </ul>
+    <p>その下の <b>今日のアクション</b> は上から順に片づければ足ります。ログインできない人の依頼、未入力の人、昇格面談の対象、しばらく動きがない人が、実行ボタン付きで並びます。自分の担当ぶんが先頭に来ます。</p>
+  </div>
+
+  <div class="card warn">
+    <h3>「未入力」の人への対応</h3>
+    <p>認定グレードもチェックも空の人は、G1と混ぜずに <span class="chip unset">未入力</span> として別に数えています。本人が入れていないと、グレード・進捗・遅れの数字がすべて実際とずれます。</p>
+    <ol class="steps">
+      <li><span>ダッシュボードの「グレードが未入力の人」で名前を確認する</span></li>
+      <li><span><span class="btn">入力のお願いをコピー</span> でSlackに貼る</span></li>
+      <li><span>次の1on1で、本人のホームの一番上から選んでもらう（管理ツールのカルテ → 設定 からも入れられます）</span></li>
+    </ol>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>キャリア現状一覧</h3>
+      <p>列の組み合わせを「面談用／昇格判定用／編成用／棚卸し用」で切り替えられます。<span class="btn">自分の担当だけ</span> で自分が対応する人に絞れます。</p>
+    </div>
+    <div class="card">
+      <h3>1on1のとき（カルテ）</h3>
+      <p>名前を押すと右からカルテが開きます。本人の言葉・いまの稼働・強み弱み・直近の申し送りが1枚に並びます。チェックの代理入力は「チェック」タブで行います。</p>
+    </div>
+    <div class="card">
+      <h3>昇格と詰まり</h3>
+      <p>昇格面談の対象者、昇格予定の時期、多くの人が詰まっている項目が見られます。</p>
+    </div>
+    <div class="card">
+      <h3>パスワードを忘れた人</h3>
+      <p>今日のアクションの一番上の <span class="btn">リセットしてコードを出す</span> を押し、出てきた8文字を本人に渡します。コードは1回しか表示されません。</p>
+    </div>
+  </div>
+
+  <h2>半期ごとの編成替えと引き継ぎ</h2>
+  <div class="card">
+    <p>グレード・目標・チェック・申し送りはすべて本人に紐づいているので、編成を替えても消えません。前の期の所属やULも履歴として残ります。</p>
+    <ol class="steps">
+      <li><span><b>期・ユニット編成</b> で <span class="btn">＋ 新しい期をつくる</span>（例：2027上期）。いまの名簿をそのまま取り込めます</span></li>
+      <li><span>編成ボードでカードをドラッグして、メンバーをユニットに割り当てて保存する。バランスと警告がその場で変わります</span></li>
+      <li><span><b>ユニットとUL</b> で、各ユニットのULを選ぶ。<b>UL任命・交代はここを差し替えるだけ</b>です。編成中の期のULになった人は、その時点から管理ツールを使えます</span></li>
+      <li><span>前のULが、自分の元メンバーの <b>引き継ぎシート</b> を書く（引き継ぎタブの「あなたが書く分」から開けます）</span></li>
+      <li><span>引き継ぎMTGで、新しいULが <b>引き継ぎ</b> タブを開いて一緒に見る</span></li>
+      <li><span><span class="btn">確定して名簿に反映する</span> を押す。この期が「いまの期」になります</span></li>
+    </ol>
+  </div>
+
+  <div class="card key">
+    <h3>引き継ぎタブ（1画面ビュー）</h3>
+    <p>期とユニットを選ぶと、メンバーごとに次の4つが1画面に並びます。</p>
+    <ul>
+      <li>いまのグレード</li>
+      <li>直近の目標（今週やること・卒業時の目標・気にしていること）</li>
+      <li>前のULの申し送り（強み／苦手／コミュニケーションのクセ／地雷／次のULにまずやってほしいこと）</li>
+      <li>前のULの主観：<b>どんな子か</b></li>
+    </ul>
+    <p>「どんな子か」「強み」「苦手」「次にやってほしいこと」の4つが埋まると <span class="chip ok">引き継ぎ記入済み</span> になります。引き継ぎシートは本人の画面には出ません。</p>
+  </div>
+
+  <div class="card">
+    <h3>立場を直したいとき</h3>
+    <p>カルテ → 設定 の <b>立場</b> で、インターン／メンター／社員を選び直せます。移行のときに自動で仮決めした人は、<b>設定 → 立場の確認</b> にまとめて並びます。</p>
+  </div>
+</section>
+</div>
+
+<script>
+const tabs=[...document.querySelectorAll('.tabs button')];
+function show(p){
+  tabs.forEach(b=>b.setAttribute('aria-selected',String(b.dataset.p===p)));
+  document.getElementById('p-intern').hidden = p!=='intern';
+  document.getElementById('p-admin').hidden  = p!=='admin';
+}
+tabs.forEach(b=>b.addEventListener('click',()=>{ show(b.dataset.p); try{ history.replaceState(null,'','#'+b.dataset.p); }catch(e){} window.scrollTo(0,0); }));
+if(location.hash==='#admin') show('admin');
+</script>
+</body>
+</html>

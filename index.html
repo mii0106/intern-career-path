@@ -557,6 +557,7 @@ main{padding:0 16px}
     <p class="tiny muted" style="margin:0 0 16px" id="gateLead">自分の名前を選んでください。</p>
     <div id="gateErr"></div>
     <div id="gateBody"></div>
+    <p class="tiny muted" style="margin:16px 0 0;text-align:center"><a href="guide.html" style="color:var(--violet);font-weight:700">使い方ガイド</a></p>
   </div>
 </div>
 <div id="app">
@@ -1241,7 +1242,8 @@ function loginCardHTML(){
        : '<button class="danger" data-act="openPw" style="border-color:var(--line);color:var(--ink2)">パスワードを変える</button>')+
    '</div>'+
    '<div style="height:8px"></div>'+
-   '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
+   '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button>'+
+   '<p class="tiny muted" style="margin:12px 0 0;text-align:center"><a href="guide.html" style="color:var(--violet);font-weight:700">使い方ガイドを見る</a></p></div>';
 }
 /* 社員がこの画面を開いたとき。グレードを持たないので、
    本人用のシート（グレード・相棒・チェック）は出さずに管理者ツールへ案内する。

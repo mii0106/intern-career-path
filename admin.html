@@ -390,7 +390,7 @@ td .asg:focus{border-color:var(--violet);background:#fff;outline:none}
       <span class="tiny muted" style="letter-spacing:.14em">ADMIN CONSOLE</span>
     </div>
     <h1 class="disp">管理者ツール</h1>
-    <p class="tiny muted" style="margin:0 0 16px">育成・UL用の画面です。インターン本人の画面は <a href="./">こちら</a>。</p>
+    <p class="tiny muted" style="margin:0 0 16px">UL・メンター・社員用の画面です。インターン本人の画面は <a href="./">こちら</a>。使い方は <a href="guide.html#admin">ガイド</a> にあります。</p>
     <div id="gateErr"></div>
     <div id="gateBody"></div>
   </div>
@@ -931,7 +931,8 @@ function renderNav(){
       '・'+BY_ID[me.id].ulUnits.map(x=>esc(x.unit)+' UL').join('・') : '')+
     '<div class="fetched">最終取得 '+(A.fetchedAt?fmtClock(A.fetchedAt):'—')+
       ' <button data-act="reload">更新</button></div>'+
-    '<button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>';
+    '<button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>'+
+    ' ・ <a href="guide.html#admin" style="color:#C3C8D8">使い方</a>';
 }
 function fmtClock(ms){
   const d=new Date(ms);
