@@ -440,7 +440,7 @@ function loadLocalSettings(){
 loadLocalSettings();
 
 /* 生データ */
-let A = { members:[], progress:{}, states:{}, notes:[], scores:[], terms:[], assignments:[] };
+let A = { members:[], progress:{}, states:{}, notes:[], scores:[], terms:[], assignments:[], termUnits:[] };
 let CONFIG_STATUS = null;   /* パスコード・管理者キーが設定済みか */
 /* app_config.settings の中身。set_app_settings は丸ごと置き換えるので、
    しきい値だけを保存して編成の決めごとを消す、ということが起きないよう
@@ -453,9 +453,11 @@ let ROWS = [], BY_ID = {};
 let LOGIN_REQS = [];
 /* 画面の状態 */
 let V = { tab:'dash', sort:'unit', dir:1, drawer:null, dwTab:'summary', mtgUnit:'', term:'', hoTerm:'',
-          asgView:'board' };
+          asgView:'board', hoView:'', hoUnit:'' };
 /* 期（半期）まわり。compute() で組み立てる */
 let TERMS=[], ASG_BY_TERM={}, ASG_BY_MEMBER={};
+/* ユニットとUL。期ID → { 正のUnit表記: {unit, ulId, keys:[DBにある表記]} } */
+let TU_BY_TERM={};
 /* 編集中の割当。保存を押すまでサーバーには送らない。{member_id:{unit,ul,...}} */
 let ASG_EDIT={ termId:'', rows:{}, dirty:false };
 let F = { unit:'', q:'', role:'member', alert:'', mine:false };
@@ -475,7 +477,7 @@ let F = { unit:'', q:'', role:'member', alert:'', mine:false };
    共通パスコードではログインできない（それだと共通パスコードを知っている
    メンバー全員がULになりすませてしまうため）。
    ============================================================ */
-let GATE={ hits:[], picked:null, q:'', searching:false, mode:'pick', offline:false, want:'mentor' };
+let GATE={ hits:[], picked:null, q:'', searching:false, mode:'pick', offline:false, want:'staff' };
 
 function gateHTML(){
   if(Store.mode!=='cloud'){
@@ -492,14 +494,16 @@ function gateHTML(){
   }
 
   if(GATE.mode==='claim'){
-    return '<div class="gnote">まだ'+MANAGER_LABEL+'になっていない方はこちらです。'+
-        '本人画面で登録した名前とパスワードに、ULから共有されている管理者キーを添えて入ってください。'+
-        'キーが合っていれば、その場で使えるようになります（承認待ちはありません）。</div>'+
+    return '<div class="gnote">社員・メンターで、まだ管理者ツールを使えるようになっていない方はこちらです。'+
+        '本人画面で登録した名前とパスワードに、共有されている管理者キーを添えて入ってください。'+
+        'キーが合っていれば、その場で使えるようになります（承認待ちはありません）。<br>'+
+        '<b>インターンのULの方は、ここから入らないでください</b>（社員になってグレードが消えます）。'+
+        'ユニットのULに設定してもらうと、前の画面から自分の名前で入れます。</div>'+
       '<div class="f"><label>どちらとして入りますか</label>'+
         '<div class="seg2" id="cRole" style="display:flex;width:100%">'+ROLES.filter(r=>r.k!=='member').map(r=>
           '<button type="button" data-act="wantRole" data-r="'+r.k+'" style="flex:1;padding:9px 6px;font-size:13px" '+
           'class="'+(GATE.want===r.k?'on':'')+'">'+r.n+'</button>').join('')+'</div>'+
-        '<p class="tiny muted" style="margin:6px 0 0">できることは同じです。表示上の役割が変わります。</p></div>'+
+        '<p class="tiny muted" style="margin:6px 0 0">できることは同じです。どちらもグレードは持ちません。</p></div>'+
       '<div class="f"><label>自分の名前</label>'+
         '<input type="text" id="cQuery" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'">'+
         '<div id="cHits" class="tiny muted" style="margin-top:6px">'+
@@ -525,7 +529,7 @@ function gateHTML(){
       '<input type="text" id="gq" placeholder="名前（2文字以上）" autocomplete="off" value="'+esc(GATE.q)+'"></div>'+
     '<div id="gHits"></div>'+
     '<button class="btn ghost" data-act="toClaim" style="width:100%;padding:12px;margin-top:10px">'+
-      'まだ'+MANAGER_LABEL+'になっていない方はこちら</button>';
+      '社員・メンターで、はじめて使う方はこちら</button>';
 }
 /* 検索結果だけを描き替える（入力欄を作り直さないのでカーソルが飛ばない） */
 function paintHits(boxId,managersOnly){
@@ -638,16 +642,27 @@ function compute(){
   A.scores.forEach(s=>(scoresBy[s.member_id]=scoresBy[s.member_id]||[]).push(s));
 
   const myName=normName(meName());
+  /* ユニットのULは term_units から引く（ULは人の立場ではなく、ユニットが持つもの） */
+  computeTerms();
+  const myId=(Store.me&&Store.me.member&&Store.me.member.id)||null;
+  const act=activeTerm();
   ROWS = A.members.filter(m=>m.active!==false).map(m=>{
     /* 「自分が対応する人」＝その人のUL欄・メンター欄に自分の名前が入っている人。
        名前の表記ゆれ（空白・全角空白・大文字小文字）は吸収する。 */
-    const mineUl     = !!(myName && normName(m.ul)===myName);
+    /* いまの期で、その人のユニットのULが自分なら「自分の担当」 */
+    const unitUl     = act? unitUlId(act.id,normalizeUnit(m.unit)) : null;
+    const mineUl     = !!((myName && normName(m.ul)===myName) || (myId && unitUl===myId));
     const mineMentor = !!(myName && normName(m.mentor)===myName);
     const raw=A.progress[m.id]||{};
     /* 承認はないので、チェックが入っていればそのまま達成として数える。 */
     const checks=checksOf(raw);
     const certified=m.certified_grade||null;
     const cg=gCurrentGrade(checks,certified), cleared=gClearedCount(checks,certified);
+    /* グレードを持つのはインターンだけ。社員・メンターには出さない。
+       インターンでも、認定グレードもチェックも空なら「未入力」として G1 と分ける
+       （本人がまだ入れていないだけなのか、本当に G1 なのかを見分けるため）。 */
+    const isIntern=isInternRole(m.role);
+    const gradeUnset=isIntern && !certified && !Object.keys(checks).length;
     const st=A.states[m.id]||{};
     const notes=(notesBy[m.id]||[]).slice().sort((a,b)=>String(b.occurred_on).localeCompare(String(a.occurred_on)));
     const scores=(scoresBy[m.id]||[]);
@@ -664,6 +679,11 @@ function compute(){
       /* 自由入力だった頃の表記ゆれ（「Unit F」「ユニットF」など）は
          ここで正の表記に寄せる。以降の絞り込み・集計は r.unit を見ている。 */
       m:m, id:m.id, name:m.name, unit:normalizeUnit(m.unit)||'（未設定）', role:roleKey(m.role),
+      isIntern:isIntern, gradeUnset:gradeUnset,
+      /* 移行で立場を仮に決めただけの人（設定タブの「立場の確認」に出す） */
+      roleUnconfirmed: m.role_confirmed===false,
+      /* いまの期・編成中の期でULに入っているユニット */
+      ulUnits: ulUnitsOf(m.id),
       mineUl:mineUl, mineMentor:mineMentor, mine:(mineUl||mineMentor),
       noCharge: !(String(m.ul||'').trim() || String(m.mentor||'').trim()),
       checks:checks, raw:raw,
@@ -702,7 +722,6 @@ function compute(){
     };
   });
   BY_ID={}; ROWS.forEach(r=>BY_ID[r.id]=r);
-  computeTerms();
 }
 /* ------------------------------------------------------------
    期（半期）と、その期の割当を引ける形にしておく。
@@ -720,6 +739,43 @@ function computeTerms(){
   });
   Object.keys(ASG_BY_MEMBER).forEach(k=>
     ASG_BY_MEMBER[k].sort((x,y)=>(order[x.term_id]==null?99:order[x.term_id])-(order[y.term_id]==null?99:order[y.term_id])));
+  /* DBに表記ゆれ（「Unit F」と「unitF」など）で2行あっても、正の表記で1つにまとめる */
+  TU_BY_TERM={};
+  (A.termUnits||[]).forEach(u=>{
+    const k=normalizeUnit(u.unit)||u.unit;
+    const by=(TU_BY_TERM[u.term_id]=TU_BY_TERM[u.term_id]||{});
+    const cur=by[k]||(by[k]={unit:k, ulId:null, keys:[]});
+    cur.keys.push(u.unit);
+    if(!cur.ulId && u.ul_member_id) cur.ulId=u.ul_member_id;
+  });
+}
+/* その期のそのユニットのUL（メンバーID）。決まっていなければ null */
+function unitUlId(termId,unit){
+  const x=(TU_BY_TERM[termId]||{})[unit];
+  return (x&&x.ulId)||null;
+}
+function memberById(id){ return id? (A.members||[]).find(m=>m.id===id)||null : null; }
+/* その期のそのユニットのULの名前。term_units が無い（古いDB）ときは割当の写しから拾う */
+function unitUlName(termId,unit){
+  const m=memberById(unitUlId(termId,unit));
+  if(m) return m.name;
+  const asg=ASG_BY_TERM[termId]||{};
+  const hit=Object.keys(asg).map(k=>asg[k]).find(a=>normalizeUnit(a.unit)===unit && String(a.ul||'').trim());
+  return hit? String(hit.ul).trim() : '';
+}
+/* その人がULに入っているユニット（いまの期・編成中の期） */
+function ulUnitsOf(memberId){
+  const out=[];
+  TERMS.filter(t=>t.status==='active'||t.status==='draft').forEach(t=>{
+    const by=TU_BY_TERM[t.id]||{};
+    Object.keys(by).forEach(k=>{ if(by[k].ulId===memberId) out.push({term:t, unit:k}); });
+  });
+  return out;
+}
+/* ULのチップ。「unitB のUL」のように出す（編成中の期は期の名前も添える） */
+function ulChips(r){
+  return (r.ulUnits||[]).map(x=>'<span class="chip v" title="'+esc(x.term.name)+'">'+esc(x.unit)+' UL'+
+    (x.term.status==='draft'?'（'+esc(x.term.name)+'）':'')+'</span>').join(' ');
 }
 function termById(id){ return TERMS.find(t=>t.id===id)||null; }
 function activeTerm(){ return TERMS.find(t=>t.status==='active')||null; }
@@ -780,7 +836,9 @@ function units(){
 }
 /* リーダー等級（G7）以上は在籍月数の標準期間という考え方がそぐわないため、
    「遅れ」の対象から外す。 */
-function isDelayed(r){ return r.delay!=null && r.delay>=DELAY_ALERT && !isSeniorTier(r.cg); }
+/* グレードが未入力の人は、どのグレードの標準期間と比べればいいか分からないので「遅れ」に数えない
+   （かわりに「未入力」として拾う） */
+function isDelayed(r){ return r.isIntern && !r.gradeUnset && r.delay!=null && r.delay>=DELAY_ALERT && !isSeniorTier(r.cg); }
 /* 「しばらく動きなし」の判定。
    ・登録したばかりの人は、まだ何も無くて当然なので対象外にする
      （初日から赤い印が付くと、アラート全体が信用されなくなる）
@@ -792,9 +850,10 @@ function isStale(r){
 }
 /* 「詰まり」も同じ理由でリーダー等級以上は対象外にする（表示・集計のみ。
    棚卸し用CSVには実データを残したいので、そちらは r.stuck をそのまま使う）。 */
-function stuckDisplay(r){ return isSeniorTier(r.cg) ? [] : r.stuck; }
+function stuckDisplay(r){ return (isSeniorTier(r.cg) || r.gradeUnset) ? [] : r.stuck; }
 function alertsOf(r){
   const out=[];
+  if(r.gradeUnset) out.push('unset');
   if(isDelayed(r)) out.push('delay');
   if(isStale(r)) out.push('stale');
   if(r.readyPromo) out.push('promo');
@@ -817,7 +876,7 @@ function sorted(list){
   const k=V.sort, d=V.dir;
   const val=r=>({
     name:r.name, unit:r.unit, months:r.months==null?-1:r.months, certified:r.certified||0,
-    cleared:r.cleared, cg:r.cg, pct:r.pct, overall:r.overall,
+    cleared:r.cleared, cg:gradeRank(r), pct:r.pct, overall:r.overall,
     delay:r.delay==null?-99:r.delay, stale:r.quiet==null?9999:r.quiet,
     target:r.outlook.targetDate||'9999', notes:r.noteCount, quiz:r.quizAvg==null?-1:r.quizAvg,
     registered:r.registeredAt||'',
@@ -838,7 +897,7 @@ function sorted(list){
 /* 人の並べ順の基本。Grade（挑戦中）の高い人が上、同じなら認定グレード・
    全体の進捗が高い人が上、最後は名前順。 */
 function gradeDesc(a,b){
-  return (b.cg-a.cg) || ((b.certified||0)-(a.certified||0)) || (b.overall-a.overall)
+  return (gradeRank(b)-gradeRank(a)) || ((b.certified||0)-(a.certified||0)) || (b.overall-a.overall)
     || String(a.name).localeCompare(String(b.name),'ja');
 }
 
@@ -848,11 +907,12 @@ function gradeDesc(a,b){
 const TABS=[
   {k:'dash',   n:'ダッシュボード', i:'<path d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>'},
   {k:'roster', n:'キャリア現状一覧', i:'<path d="M3.5 6h17M3.5 12h17M3.5 18h17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'},
+  {k:'handover',n:'引き継ぎ',       i:'<path d="M4 8h11l-3-3M20 16H9l3 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'},
   {k:'promo',  n:'昇格と詰まり',   i:'<path d="M12 20V7m0 0L6.5 12.5M12 7l5.5 5.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'},
-  {k:'notes',  n:'申し送り・メモ',  i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
-  {k:'scores', n:'テスト点数',     i:'<path d="M4 19.5V9m5 10.5V4.5m5 15V12m5 7.5V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
   {k:'terms',  n:'期・ユニット編成', i:'<path d="M4 7.5h16M4 7.5V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7.5M4 7.5 6 4h12l2 3.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M9.5 12.5h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>'},
   {k:'mtg',    n:'リーダーMTG',    i:'<circle cx="9" cy="9" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="16.5" cy="10.5" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M3.5 19.5c.9-3 3-4.6 5.5-4.6s4.6 1.6 5.5 4.6M15 19.5c.5-2 1.7-3.1 3.4-3.1 1.2 0 2.2.5 2.9 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'},
+  {k:'notes',  n:'申し送り・メモ',  i:'<path d="M5 4h14v13l-4 3H5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M8.5 9h7M8.5 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'},
+  {k:'scores', n:'テスト点数',     i:'<path d="M4 19.5V9m5 10.5V4.5m5 15V12m5 7.5V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
   {k:'settings',n:'設定',          i:'<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'}
 ];
 function renderNav(){
@@ -867,7 +927,8 @@ function renderNav(){
   const me=Store.me&&Store.me.member;
   document.getElementById('asideFoot').innerHTML=
     '<b>'+esc(me?me.name:'—')+'</b>'+
-    roleName(me&&me.role)+
+    roleName(me&&me.role)+((me&&BY_ID[me.id]&&BY_ID[me.id].ulUnits.length)?
+      '・'+BY_ID[me.id].ulUnits.map(x=>esc(x.unit)+' UL').join('・') : '')+
     '<div class="fetched">最終取得 '+(A.fetchedAt?fmtClock(A.fetchedAt):'—')+
       ' <button data-act="reload">更新</button></div>'+
     '<button data-act="logout">ログアウト</button> ・ <a href="./" style="color:#C3C8D8">本人画面</a>';
@@ -890,6 +951,23 @@ function gradeChip(gn){
   const t=tierOf(gn);
   return '<span class="chip" style="background:'+t.hex+'1A;color:'+t.hex+'">G'+gn+' '+t.name+'</span>';
 }
+/* 人の行に出すグレード。
+     社員・メンター … グレードの対象外（G1 と出さない）
+     未入力         … 本人が認定グレードもチェックもまだ入れていない（G1 とは別に出す） */
+const UNSET_TIP='本人がまだグレードを入れていません（認定グレードもチェックも空）。1on1で入れてもらってください';
+function gradeChipR(r){
+  if(!r.isIntern) return '<span class="muted" title="社員・メンターはグレードの対象外です">対象外</span>';
+  if(r.gradeUnset) return '<span class="chip c" title="'+UNSET_TIP+'">未入力</span>';
+  return gradeChip(r.cg);
+}
+/* 文字だけで出すとき（コピー用の文・印刷） */
+function gradeText(r){
+  if(!r.isIntern) return 'グレード対象外';
+  if(r.gradeUnset) return 'グレード未入力';
+  return 'G'+r.cg+' '+tierOf(r.cg).name;
+}
+/* 並べるときの重み。対象外 < 未入力 < G1 < … < G10 */
+function gradeRank(r){ return !r.isIntern? -1 : r.gradeUnset? 0 : r.cg; }
 /* 「+1.4」ではなく「1.4ヶ月おくれ」と出す。
    符号の向きを覚えていないと読めない表示にしない。 */
 function delayChip(d){
@@ -924,11 +1002,11 @@ function barFilters(opts){
   h+='<select id="funit"><option value="">全Unit</option>'+
      units().map(u=>'<option value="'+esc(u)+'"'+(F.unit===u?' selected':'')+'>'+esc(u)+'</option>').join('')+'</select>';
   h+='<select id="frole">'+
-     [['all','全員'],['member','メンバーのみ'],['manager',MANAGER_LABEL+'のみ']].map(o=>
+     [['all','全員'],['member','インターンのみ'],['manager','社員・メンターのみ']].map(o=>
        '<option value="'+o[0]+'"'+(F.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   if(opts.alert!==false){
     h+='<select id="falert"><option value="">アラートで絞らない</option>'+
-      [['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
+      [['unset','グレード未入力'],['delay','標準期間より遅れ'],['stale','しばらく動きなし'],['promo','昇格面談の対象'],
        ['atarimae','アタリマエに✕']].map(o=>
        '<option value="'+o[0]+'"'+(F.alert===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
   }
@@ -1018,6 +1096,7 @@ function vDash(){
   const stale=all.filter(isStale);
   const promo=all.filter(r=>r.readyPromo);
   const ng=all.filter(r=>r.ngAtarimae.length);
+  const unset=all.filter(r=>r.gradeUnset);
   const avg=Math.round(all.reduce((a,r)=>a+r.overall,0)/n);
 
   let h='<h1 class="h1 disp">ダッシュボード</h1>'+
@@ -1031,6 +1110,7 @@ function vDash(){
     'メンバーがアプリを開いて自分の情報を登録すると、ここに順に増えていきます。<br>'+
     'アプリのURLと共通パスコードをメンバーに共有してください。<br>'+
     '事前に一括で入力する必要はありません。</p></div></div>';
+  h+=quickNavHTML(unset);
   h+=barFilters({alert:false});
 
   /* ------------------------------------------------------------
@@ -1054,6 +1134,19 @@ function vDash(){
     m:r.mine?1:0,mu:'人',b:'リセットしてコードを出す',act:'fixLogin',v:r.id,urgent:true}));
   if(waiting.length>5) acts.push({t:'ログイン待ちがほかにもいます',n:(waiting.length-5)+'人',
     s:'上の5人を片づけると次が出ます',m:0,mu:'人',b:'一覧を開く',act:'tab',v:'list',urgent:true});
+  /* 本人がグレードを入れていないと、ここの数字がすべて嘘になる。
+     昇格面談より先に、次の1on1で埋めてもらう */
+  if(unset.length) acts.push({t:'グレードが未入力の人に入れてもらう',n:unset.length+'人',
+    s:'認定グレードもチェックも空なので、G1とは別に「未入力」として数えています。次の1on1で入れてもらってください',
+    m:mineOf(unset),mu:'人',b:'未入力の人を見る',act:'alert',v:'unset'});
+  const unconfirmed=ROWS.filter(r=>r.roleUnconfirmed);
+  if(unconfirmed.length) acts.push({t:'立場（インターン／社員／メンター）を確かめる',n:unconfirmed.length+'人',
+    s:'移行のときに自動で仮決めした人です。設定タブで1人ずつ確かめてください',
+    m:0,mu:'人',b:'設定を開く',act:'tab',v:'settings'});
+  const noUl=unitsWithoutUl();
+  if(noUl.length) acts.push({t:'ULが決まっていないユニットがある',n:noUl.length,
+    s:noUl.map(x=>x.unit+'（'+x.term.name+'）').join('・')+'。ULはユニットに1人ずつ決めます',
+    m:0,mu:'',b:'編成を開く',act:'tab',v:'terms'});
   if(promo.length) acts.push({t:'昇格面談を組む',n:promo.length+'人',
     s:'認定グレードの項目を完了しています',
     m:mineOf(promo),mu:'人',b:'昇格タブを開く',act:'tab',v:'promo'});
@@ -1087,13 +1180,15 @@ function vDash(){
   const dups=duplicateGroups();
   const dupExtra=dups.reduce((a,g)=>a+g.rows.length-1,0);
   const managersN=filtered().filter(r=>r.role!=='member').length;
-  h+='<div class="grid g3" style="margin-bottom:14px">'+
-    kpi('メンバー数',all.length,'人',
-      filterNote(true)+(managersN?'（'+MANAGER_LABEL+'の'+managersN+'人は除く）':'')+
+  h+='<div class="grid g4" style="margin-bottom:14px">'+
+    kpi('インターン数',all.length,'人',
+      filterNote(true)+(managersN?'（社員・メンターの'+managersN+'人は除く）':'')+
       (dupExtra?'・重複の疑い'+dupExtra+'人':''),'')+
+    kpi('グレード未入力',unset.length,'人','本人がまだ入れていない（G1とは別）','unset')+
     kpi('平均進捗',avg,'%','チェック済みの項目で計算','')+
     kpi('昇格面談の対象',promo.length,'人','認定グレードの項目を完了','promo')+
   '</div>';
+  if(unset.length) h+=unsetCardHTML(unset);
   h+='<div class="grid g3" style="margin-bottom:14px">'+
     kpi('標準期間より遅れ',delayed.length,'人',DELAY_ALERT+'ヶ月以上の超過','delay')+
     kpi('しばらく動きなし',stale.length,'人',STALE_DAYS+'日以上動きなし','stale')+
@@ -1102,10 +1197,17 @@ function vDash(){
 
   /* グレードの分布 */
   h+='<div class="grid g2">';
-  h+='<div class="card"><h2>グレードの分布 <span class="cnt">いま挑戦しているグレード</span></h2>';
-  const dist={}; all.forEach(r=>dist[r.cg]=(dist[r.cg]||0)+1);
-  const mx=Math.max(1,...Object.values(dist));
+  h+='<div class="card"><h2>グレードの分布 <span class="cnt">いま挑戦しているグレード（インターンのみ）</span></h2>';
+  const dist={}; all.filter(r=>!r.gradeUnset).forEach(r=>dist[r.cg]=(dist[r.cg]||0)+1);
+  const mx=Math.max(1,unset.length,...Object.values(dist));
   h+='<div style="display:flex;align-items:flex-end;gap:6px;height:132px;padding-top:6px">';
+  /* 未入力は G1 に混ぜず、左端に別の棒で出す */
+  h+='<div data-act="alert" data-a="unset" title="押すと未入力の人に絞り込みます" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">'+
+    '<span class="tiny mono" style="color:var(--coral)">'+(unset.length||'')+'</span>'+
+    '<div title="グレード未入力：'+unset.length+'人" style="width:100%;border-radius:6px 6px 3px 3px;'+
+      'background:repeating-linear-gradient(45deg,var(--coral) 0 4px,transparent 4px 8px);border:1px solid var(--coral);'+
+      'opacity:'+(unset.length?0.9:0.2)+';height:'+Math.max(3,unset.length/mx*100)+'%"></div>'+
+    '<span class="tiny muted">未</span></div>';
   for(let g=1;g<=10;g++){
     const c=dist[g]||0, t=tierOf(g);
     h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">'+
@@ -1119,17 +1221,23 @@ function vDash(){
     '</div></div>';
 
   /* Unitごとの状況 */
-  h+='<div class="card"><h2>Unitごとの状況</h2><div class="tw" style="max-height:none;box-shadow:none">'+
-    '<table><thead><tr><th class="nos">Unit</th><th class="nos num">人数</th><th class="nos num">平均進捗</th>'+
-    '<th class="nos num">遅れ</th><th class="nos num">動きなし</th><th class="nos num">昇格対象</th></tr></thead><tbody>';
+  const actT=activeTerm();
+  h+='<div class="card"><h2>Unitごとの状況'+(actT?' <span class="cnt">'+esc(actT.name)+'</span>':'')+'</h2><div class="tw" style="max-height:none;box-shadow:none">'+
+    '<table><thead><tr><th class="nos">Unit / UL</th><th class="nos num">人数</th><th class="nos num">平均G</th><th class="nos num">平均進捗</th>'+
+    '<th class="nos num">未入力</th><th class="nos num">遅れ</th><th class="nos num">動きなし</th><th class="nos num">昇格対象</th></tr></thead><tbody>';
   const byUnit={};
   ROWS.filter(r=>r.role==='member').forEach(r=>(byUnit[r.unit]=byUnit[r.unit]||[]).push(r));
   Object.keys(byUnit).sort(unitCmp).forEach(u=>{
     const l=byUnit[u];
-    const ulName=(l[0]&&l[0].m.ul)||'';
-    h+='<tr><td class="nm">'+esc(u)+(ulName?'<span class="tiny muted" style="font-weight:400"> / '+esc(ulName)+'</span>':'')+'</td>'+
+    /* ULはユニットの側から引く。まだ期が無い・決めていないときは名簿のUL欄 */
+    const ulName=(actT&&unitUlName(actT.id,u))||(l[0]&&l[0].m.ul)||'';
+    const graded=l.filter(r=>!r.gradeUnset);
+    h+='<tr><td class="nm">'+esc(u)+(ulName?'<span class="tiny muted" style="font-weight:400"> / '+esc(ulName)+'</span>'
+          :(u!=='（未設定）'?' <span class="chip a">UL未定</span>':''))+'</td>'+
       '<td class="num">'+l.length+'</td>'+
+      '<td class="num mono">'+(graded.length? 'G'+(Math.round(graded.reduce((a,r)=>a+r.cg,0)/graded.length*10)/10) : '—')+'</td>'+
       '<td class="num">'+Math.round(l.reduce((a,r)=>a+r.overall,0)/l.length)+'%</td>'+
+      '<td class="num">'+cnt(l.filter(r=>r.gradeUnset).length,'c')+'</td>'+
       '<td class="num">'+cnt(l.filter(isDelayed).length,'c')+'</td>'+
       '<td class="num">'+cnt(l.filter(isStale).length,'a')+'</td>'+
       '<td class="num">'+cnt(l.filter(r=>r.readyPromo).length,'m')+'</td></tr>';
@@ -1186,7 +1294,7 @@ function vDash(){
     focus.forEach(x=>{
       const r=x.r;
       const st=stuckDisplay(r);
-      h+='<tr><td class="nm">'+memberLink(r)+'</td><td>'+esc(r.unit)+'</td><td>'+gradeChip(r.cg)+'</td>'+
+      h+='<tr><td class="nm">'+memberLink(r)+'</td><td>'+esc(r.unit)+'</td><td>'+gradeChipR(r)+'</td>'+
         '<td class="num">'+r.pct+'%</td><td>'+x.a.map(a=>alertChip(a)).join(' ')+'</td>'+
         '<td style="white-space:normal;max-width:340px" class="tiny">'+(st[0]?esc(st[0].cat.split('｜')[0])+'：'+esc(cut(st[0].t,46)):'—')+'</td></tr>';
     });
@@ -1201,6 +1309,38 @@ function vDash(){
   h+= recent.length? recent.map(noteHTML).join('') : '<div class="empty">まだ記録がありません。</div>';
   h+='</div>';
   return h;
+}
+/* ダッシュボードの一番上。よく使う3つ（グレード確認・未入力チェック・引き継ぎ）に
+   1クリックで届くようにする。機能は足りているので、どこから何をすればいいかを先に見せる */
+function quickNavHTML(unset){
+  const ho=handoverTargetTerm();
+  const hoSt=ho? hoStatus(ho) : null;
+  const tiles=[
+    {t:'グレードを確認する', s:'インターン全員のいまのグレードと進捗', act:'tab', v:'roster', n:''},
+    {t:'未入力をチェックする', s:'本人がグレードを入れていない人', act:'alert', v:'unset',
+     n:unset.length? unset.length+'人' : 'なし', bad:unset.length>0},
+    {t:'引き継ぎを見る', s: ho? ho.name+'の引き継ぎ（1画面で見る）' : '期をつくると使えます', act:'tab', v:'handover',
+     n: hoSt&&hoSt.total? hoSt.done+'/'+hoSt.total : ''},
+    {t:'ユニット編成', s:'期・ユニット・ULの割り当て', act:'tab', v:'terms', n:''}
+  ];
+  return '<div class="grid g4" style="margin-bottom:14px">'+tiles.map(x=>
+    '<button class="kpi click" style="text-align:left;cursor:pointer" data-act="'+x.act+'" '+
+      (x.act==='tab'?'data-tab="'+x.v+'"':'data-a="'+x.v+'"')+'>'+
+      '<div class="lab">よく使う</div>'+
+      '<div class="val" style="font-size:16px">'+esc(x.t)+
+        (x.n?' <small style="color:'+(x.bad?'var(--coral)':'var(--violet)')+';font-weight:700">'+esc(x.n)+'</small>':'')+'</div>'+
+      '<div class="sub">'+esc(x.s)+'</div></button>').join('')+'</div>';
+}
+/* 未入力の人の一覧。誰の担当かが分かるようにUL・Unitを添える */
+function unsetCardHTML(list){
+  return '<div class="card" style="border:2px solid var(--coral)"><h2>グレードが未入力の人 '+
+    '<span class="cnt">'+list.length+'人。G1とは別に数えています</span><span class="spacer"></span>'+
+    '<button class="btn ghost sm" data-act="remind" data-kind="unset">入力のお願いをコピー</button></h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px">認定グレードもチェックもまだ入っていない人です。'+
+    '本人が入力しないと、ここに出ているグレード・進捗・遅れの数字が実際とずれます。次の1on1で埋めてもらってください。</p>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+list.slice().sort((a,b)=>unitCmp(a.unit,b.unit)).map(r=>
+      '<a class="chip c" href="#" data-act="open" data-id="'+r.id+'" style="text-decoration:none">'+esc(r.name)+
+      '<span style="font-weight:400">（'+esc(r.unit)+(r.mine?'・自分の担当':'')+'）</span></a>').join('')+'</div></div>';
 }
 function kpi(lab,val,unit,sub,alert){
   return '<div class="kpi'+(alert?' click':'')+'"'+(alert?' data-act="alert" data-a="'+alert+'"':'')+'>'+
@@ -1222,10 +1362,10 @@ function cnt(n,c){ return n? '<span class="chip '+c+'">'+n+'</span>' : '<span cl
    数が合わないように見えていた。 */
 function filterNote(membersOnly){
   const p=[F.unit||'全Unit'];
-  if(membersOnly) p.push('メンバーのみ');
-  else p.push(F.role==='member' ? 'メンバーのみ'
-       : F.role==='manager'? MANAGER_LABEL+'のみ'
-       :                     MANAGER_LABEL+'を含む');
+  if(membersOnly) p.push('インターンのみ');
+  else p.push(F.role==='member' ? 'インターンのみ'
+       : F.role==='manager'? '社員・メンターのみ'
+       :                     '社員・メンターを含む');
   if(F.mine) p.push('自分の担当だけ');
   if(F.alert) p.push((ALERT_LABEL[F.alert]||[F.alert])[0]+'だけ');
   if(F.q.trim()) p.push('検索「'+F.q.trim()+'」');
@@ -1238,14 +1378,21 @@ function filterNote(membersOnly){
    URLを入れた定型文にしている。
    ------------------------------------------------------------ */
 const APP_URL=location.origin+location.pathname.replace(/admin\.html$/,'');
-function remindText(){
+function remindText(kind){
+  if(kind==='unset'){
+    const list=filtered().filter(r=>r.gradeUnset);
+    if(!list.length) return null;
+    return '【キャリアステップに、いまのグレードを入れてください】\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+
+      'まだグレードが入っていないため、ULの画面で「未入力」になっています。'+
+      'アプリを開くとホームの一番上から1タップで選べます。分からなければ次の1on1で一緒に決めましょう。\n'+APP_URL;
+  }
   const list=filtered().filter(r=>r.role==='member')
     .filter(isStale);
   if(!list.length) return null;
   return '【キャリアステップの更新をお願いします】\n'+list.map(r=>'@'+r.name).join(' ')+'\n'+
     STALE_DAYS+'日以上、チェックが動いていません。できたことがあれば入れておいてください。\n'+APP_URL;
 }
-const ALERT_LABEL={delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],atarimae:['アタリマエ✕','c']};
+const ALERT_LABEL={unset:['グレード未入力','c'],delay:['遅れ','c'],stale:['動きなし','a'],promo:['昇格対象','m'],atarimae:['アタリマエ✕','c']};
 function alertChip(a){ const x=ALERT_LABEL[a]||[a,'g']; return '<span class="chip '+x[1]+'">'+x[0]+'</span>'; }
 function cut(s,n){ s=String(s); return s.length>n? s.slice(0,n)+'…' : s; }
 
@@ -1266,7 +1413,7 @@ const COLDEF={
               cell:r=>r.cleared},
   heat:      {h:'Grade 1 → 10', cell:r=>heat(r)},
   cg:        {h:'挑戦中',  sort:'cg', tip:'いま埋めている途中のグレード。認定グレードより下は探しにいきません',
-              cell:r=>gradeChip(r.cg)},
+              cell:r=>gradeChipR(r)},
   pct:       {h:'挑戦中の進捗', sort:'pct', cls:'num', tip:'挑戦中のグレードでチェック済みの割合',
               cell:r=>'<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'+
                 '<span class="mini"><i style="width:'+r.pct+'%;background:'+tierOf(r.cg).hex+'"></i></span>'+
@@ -1298,6 +1445,11 @@ const COLDEF={
   stuck:     {h:'いちばん詰まっているところ', tip:'挑戦中グレードの未達項目（リーダー等級以上は対象外）',
               cell:r=>{ const st=stuckDisplay(r); return '<span class="wrap tiny">'+(st[0]?esc(st[0].cat.split('｜')[0])+'：'+esc(cut(st[0].t,42)):'—')+'</span>'; }}
 };
+/* 社員・メンターの行では、グレードに関わる列を空ける（グレードを持たないため） */
+['certified','cleared','heat','pct','overall','target','delay','stuck'].forEach(k=>{
+  const orig=COLDEF[k].cell;
+  COLDEF[k].cell=r=> r.isIntern? orig(r) : '<span class="muted">—</span>';
+});
 const PRESETS={
   meeting:{n:'面談用', cols:['unit','charge','cg','pct','stuck','stale']},
   promo:  {n:'昇格判定用', cols:['unit','charge','months','certified','cleared','heat','target','delay']},
@@ -1321,7 +1473,7 @@ function rosterEmpty(){
     'アプリのURLと共通パスコードを共有してください。</p>';
   const managers=ROWS.filter(r=>r.role!=='member').length;
   const why=[];
-  if(F.role==='member')  why.push('「メンバーのみ」で絞っています'+
+  if(F.role==='member')  why.push('「インターンのみ」で絞っています'+
     (managers?'（'+MANAGER_LABEL+'が'+managers+'人いますが、この絞り込みでは出ません）':''));
   if(F.role==='manager') why.push('「'+MANAGER_LABEL+'のみ」で絞っています');
   if(F.mine)             why.push('「自分の担当だけ」で絞っています');
@@ -1916,6 +2068,9 @@ function vTerms(){
 
   if(!cur) return h;
 
+  /* ---------- ユニットとUL ---------- */
+  h+=termUnitsCardHTML(cur);
+
   /* ---------- 選んでいる期の割当 ---------- */
   const list=termMembers();
   const saved=ASG_BY_TERM[cur.id]||{};
@@ -1952,12 +2107,16 @@ function vTerms(){
       const a=asgOf(cur.id,r);
       const moved=normalizeUnit(a.unit)!==r.unit;
       h+='<tr'+(moved?' class="mine"':'')+'><td class="nm">'+memberLink(r)+
-          ' '+gradeChip(r.cg)+'</td>'+
+          ' '+gradeChipR(r)+'</td>'+
         '<td class="tiny muted">'+esc(r.unit)+(r.m.ul?'／'+esc(r.m.ul):'')+'</td>'+
         '<td><select id="'+asgId(r,'unit')+'" class="asg" data-act="asg" data-k="unit" data-id="'+r.id+'">'+
           unitOptionsHTML(a.unit,rosterUnitValues())+'</select></td>'+
-        '<td><select id="'+asgId(r,'ul')+'" class="asg" data-act="asg" data-k="ul" data-id="'+r.id+'">'+
-          selectOptionsHTML(a.ul,uls)+'</select></td>'+
+        /* ユニットのULが使えるときは、ULはユニットの側で決める（ここは表示だけ） */
+        (Store.caps.termUnits
+          ? '<td class="tiny">'+(asgUlFor(cur.id,a.unit,'')? esc(asgUlFor(cur.id,a.unit,''))
+              : '<span class="muted" title="上の「ユニットとUL」で決めます">ユニットで決める</span>')+'</td>'
+          : '<td><select id="'+asgId(r,'ul')+'" class="asg" data-act="asg" data-k="ul" data-id="'+r.id+'">'+
+              selectOptionsHTML(a.ul,uls)+'</select></td>')+
         '<td><input id="'+asgId(r,'mentor')+'" class="asg" data-act="asg" data-k="mentor" data-id="'+r.id+'" type="text" '+
           'list="dlMentorT" value="'+esc(a.mentor)+'"></td>'+
         '<td class="num"><input id="'+asgId(r,'weekly_hours')+'" class="asg num" data-act="asg" data-k="weekly_hours" data-id="'+r.id+'" '+
@@ -2182,10 +2341,11 @@ function memberCardHTML(r,getUnit){
   if(r.ngAtarimae.length) flags.push('<span class="chip c" title="アタリマエに✕があります">✕</span>');
   if(d!=null&&d>=0&&d<=183) flags.push('<span class="chip s" title="半年以内に卒業・稼働終了の予定">卒</span>');
   const t=tierOf(r.cg);
+  if(r.gradeUnset) flags.unshift('<span class="chip c" title="'+UNSET_TIP+'">未入力</span>');
   return '<div class="mcard" draggable="true" data-drag="'+r.id+'" '+
       'style="border-left-color:'+t.hex+'" title="ドラッグして別のユニットに動かせます">'+
     '<div class="mc-top"><b>'+esc(r.name)+'</b>'+
-      '<span class="chip" style="background:'+t.hex+'1A;color:'+t.hex+'">G'+r.cg+'</span>'+
+      (r.gradeUnset? '' : '<span class="chip" style="background:'+t.hex+'1A;color:'+t.hex+'">G'+r.cg+'</span>')+
       flags.join('')+'</div>'+
     '<div class="mc-sub">'+
       [ (w.hours==null? '稼働 —' : w.hours+'h／週'),
@@ -2306,6 +2466,9 @@ function autoAssign(term){
    書くのは前のULなので、誰に催促すればいいかは「前の期のUL」で束ねる。
    ============================================================ */
 const HO_FIELDS=[
+  /* いちばん最初に知りたいのは「どんな子か」。前のULの主観でいい */
+  {k:'impression', n:'主観で、どんな子か',     req:true,
+   ph:'前のULから見た印象で。「素直で吸収が早いが、自分からは相談しない。こちらから声をかけると一気に話す」など'},
   {k:'strength', n:'強み',                   req:true,
    ph:'具体的なエピソードで。「数字に強い」ではなく「先月のCV改善は自分で仮説を立てて検証していた」'},
   {k:'weakness', n:'苦手・つまずきやすいところ', req:true,
@@ -2321,7 +2484,7 @@ function hoOf(termId,memberId){
   const a=(ASG_BY_TERM[termId]||{})[memberId];
   return (a&&a.handover)||{};
 }
-/* 必須3つが埋まっていれば「記入済み」とする */
+/* 必須（どんな子か・強み・苦手・次にやってほしいこと）が埋まっていれば「記入済み」とする */
 function hoDone(h){
   return HO_FIELDS.filter(f=>f.req).every(f=>String((h||{})[f.k]||'').trim());
 }
@@ -2332,9 +2495,12 @@ function hoStatus(term){
   const cur=ASG_BY_TERM[term.id]||{};
   const rows=termMembers().filter(r=>cur[r.id]).map(r=>{
     const before=from? from[r.id] : null;
-    const writer=String((before&&before.ul)||r.m.ul||'').trim()||'（前のULが未登録）';
+    /* ULはユニットの側を正とする（割当のUL欄は写し） */
+    const writer=String((before&&(unitUlName(prev.id,normalizeUnit(before.unit))||before.ul))||r.m.ul||'').trim()||'（前のULが未登録）';
+    const toUnit=normalizeUnit(cur[r.id].unit)||'';
     return { r:r, writer:writer, h:hoOf(term.id,r.id), done:hoDone(hoOf(term.id,r.id)),
-             to:String(cur[r.id].ul||'').trim()||'—' };
+             before:before, unit:toUnit,
+             to:String(unitUlName(term.id,toUnit)||cur[r.id].ul||'').trim()||'—' };
   });
   const by={};
   rows.forEach(x=>{ (by[x.writer]=by[x.writer]||[]).push(x); });
@@ -2359,7 +2525,7 @@ function hoCardHTML(term){
     '<b class="mono" style="font-size:12px">'+pct+'%</b></div>'+
     '<p class="tiny muted" style="margin:0 0 12px">'+
     (pct===100? '全員ぶんそろいました。上の「まとめて印刷」で新しいULに渡せます。'
-      : '「強み」「苦手・つまずきやすいところ」「次のULにまず最初にやってほしいこと」の3つが'+
+      : '「どんな子か」「強み」「苦手・つまずきやすいところ」「次のULにまず最初にやってほしいこと」の4つが'+
         '埋まったら記入済みとして数えます。')+'</p>';
 
   const writers=Object.keys(st.byWriter).sort((a,b)=>a.localeCompare(b,'ja'));
@@ -2379,6 +2545,195 @@ function hoCardHTML(term){
   });
   h+='</tbody></table></div>';
   return h+'</div>';
+}
+
+/* ============================================================
+   引き継ぎ（1画面ビュー）
+   ------------------------------------------------------------
+   新しいULが自分の新ユニットを開くと、メンバーごとに
+     いまのグレード／直近の目標／前のULの申し送り／前のULの主観（どんな子か）
+   が1画面に並ぶ。引き継ぎMTGはこの画面を見ながら進める。
+   書く側（前のUL）は「あなたが書く分」から1人ずつ開いて書く。
+   ============================================================ */
+/* 引き継ぎで開く期。編成中の期があればそれ（＝これから移る先）、無ければいまの期 */
+function handoverTargetTerm(){
+  if(V.hoView && termById(V.hoView)) return termById(V.hoView);
+  return TERMS.find(t=>t.status==='draft') || activeTerm() || TERMS[0] || null;
+}
+/* その期のユニット（割当とユニットUL表の両方から拾う。unitA → unitH） */
+function termUnitKeys(term){
+  const set={};
+  Object.keys(ASG_BY_TERM[term.id]||{}).forEach(k=>{
+    const u=normalizeUnit(ASG_BY_TERM[term.id][k].unit); if(u) set[u]=1; });
+  Object.keys(TU_BY_TERM[term.id]||{}).forEach(u=>set[u]=1);
+  return Object.keys(set).sort(unitCmp);
+}
+/* その期にULが決まっていないユニット（いまの期・編成中の期） */
+function unitsWithoutUl(){
+  if(!Store.caps.termUnits) return [];
+  const out=[];
+  TERMS.filter(t=>t.status==='active'||t.status==='draft').forEach(t=>{
+    termUnitKeys(t).forEach(u=>{ if(!unitUlId(t.id,u)) out.push({term:t, unit:u}); });
+  });
+  return out;
+}
+function vHandover(){
+  let h='<h1 class="h1 disp">引き継ぎ</h1>'+
+    '<p class="lead">新しいユニットのメンバーを、1人ずつ1画面で。'+
+    '引き継ぎMTGはこの画面を見ながら進められます。ここに出る申し送りは本人の画面には出ません。</p>';
+  if(!Store.caps.terms) return h+'<div class="card"><div class="empty">'+
+    'この機能を使うには supabase/parts/ のSQLを貼り直してください（SETUP.md 手順2）。</div></div>';
+  const term=handoverTargetTerm();
+  if(!term) return h+'<div class="card"><div class="empty">まだ期がありません。<br>'+
+    '「期・ユニット編成」タブで期をつくると、ここで引き継ぎができます。</div></div>';
+  const prev=prevTermOf(term);
+  const st=hoStatus(term);
+  const keys=termUnitKeys(term);
+  const myId=Store.me&&Store.me.member&&Store.me.member.id;
+  const mine=keys.filter(u=>unitUlId(term.id,u)===myId);
+  const unit=(V.hoUnit&&keys.indexOf(V.hoUnit)>=0)? V.hoUnit : (mine[0]||keys[0]||'');
+
+  h+='<div class="bar">'+
+    '<select id="hoViewTerm">'+TERMS.map(t=>'<option value="'+t.id+'"'+(t.id===term.id?' selected':'')+'>'+
+      esc(t.name)+'（'+(TERM_STATUS[t.status]||TERM_STATUS.draft)[0]+'）</option>').join('')+'</select>'+
+    '<select id="hoViewUnit">'+keys.map(u=>'<option value="'+esc(u)+'"'+(u===unit?' selected':'')+'>'+esc(u)+
+      (unitUlId(term.id,u)===myId?'（自分がUL）':'')+'</option>').join('')+'</select>'+
+    '<span class="tiny muted">'+(prev? esc(prev.name)+' → '+esc(term.name) : esc(term.name)+'（前の期はありません）')+'</span>'+
+    '<span class="spacer"></span>'+
+    '<span class="tiny muted">記入 <b class="mono">'+st.done+' / '+st.total+'</b></span>'+
+    (st.done? '<button class="btn ghost sm" data-act="printSheets" data-id="'+term.id+'">記入済みを印刷</button>':'')+
+  '</div>';
+
+  /* 書く側：前の期で自分がULだった人のうち、まだ書けていない人 */
+  const me=normName(meName());
+  const toWrite=st.rows.filter(x=>!x.done && me && normName(x.writer)===me);
+  if(toWrite.length) h+='<div class="card" style="border:2px solid var(--violet)"><h2>あなたが書く分 '+
+    '<span class="cnt">前の期にあなたがULだった人で、まだ書けていない'+toWrite.length+'人</span></h2>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+toWrite.map(x=>
+      '<button class="chip a" style="cursor:pointer" data-act="openHo" data-id="'+x.r.id+'" data-term="'+term.id+'">'+
+      esc(x.r.name)+' を書く</button>').join('')+'</div></div>';
+
+  if(!keys.length) return h+'<div class="card"><div class="empty">'+esc(term.name)+' の割当がまだありません。<br>'+
+    '「期・ユニット編成」タブでメンバーを割り当ててください。</div></div>';
+
+  const ulName=unitUlName(term.id,unit);
+  const rows=st.rows.filter(x=>x.unit===unit).sort((a,b)=>gradeDesc(a.r,b.r));
+  h+='<div class="card"><h2>'+esc(unit)+' <span class="cnt">'+esc(term.name)+'・'+rows.length+'人'+
+    '・UL '+(ulName? esc(ulName) : '<span class="chip a">未定</span>')+'</span></h2>';
+  if(!rows.length) h+='<div class="empty">このユニットにはまだ誰も割り当てられていません。</div>';
+  h+='</div>';
+  rows.forEach(x=>{ h+=hoMemberCardHTML(x,term,prev); });
+  return h;
+}
+/* 1人ぶん。左に本人の今（グレード・目標）、右に前のULからの申し送り */
+function hoMemberCardHTML(x,term,prev){
+  const r=x.r, ho=x.h||{};
+  const b=x.before;
+  const from= b? (normalizeUnit(b.unit)||'—')+' ／ UL '+(unitUlName(prev.id,normalizeUnit(b.unit))||b.ul||'—') : '';
+  const pins=((r.state.custom||{}).__pins||[]).filter(id=>ITEM_BY_ID[id]&&!r.checks[id]).map(id=>ITEM_BY_ID[id].t);
+  const goal=(k,lab)=> String(r.goals[k]||'').trim()
+    ? '<div class="quote" style="margin-bottom:6px"><b>'+lab+'</b>'+esc(r.goals[k])+'</div>' : '';
+  const f=k=>String(ho[k]||'').trim();
+  let h='<div class="card" style="padding:14px 16px">'+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">'+
+      '<b style="font-size:15px">'+memberLink(r)+'</b>'+gradeChipR(r)+
+      (r.certified?'<span class="chip g">認定 G'+r.certified+'</span>':'')+
+      (r.isIntern&&!r.gradeUnset?'<span class="tiny muted">挑戦中 '+r.done+'/'+r.total+'（'+r.pct+'%）</span>':'')+
+      (from?'<span class="tiny muted">前：'+esc(from)+'</span>':'')+
+      '<span class="spacer"></span>'+
+      (x.done?'<span class="chip m">引き継ぎ記入済み</span>':'<span class="chip a">引き継ぎ未記入</span>')+
+      '<button class="btn ghost sm" data-act="openHo" data-id="'+r.id+'" data-term="'+term.id+'">'+(x.done?'直す':'書く')+'</button>'+
+    '</div>'+
+    '<div class="grid g2" style="gap:14px">'+
+      '<div>'+
+        '<div class="tiny muted" style="font-weight:700;margin-bottom:4px">直近の目標</div>'+
+        (pins.length? '<div class="quote" style="margin-bottom:6px"><b>今週やること（本人がピン留め）</b>'+pins.map(esc).join('<br>')+'</div>':'')+
+        goal('basic','卒業時の目標：社会人基礎')+goal('skill','卒業時の目標：業務スキル')+
+        (!pins.length&&!String(r.goals.basic||'').trim()&&!String(r.goals.skill||'').trim()
+          ? '<div class="tiny muted" style="margin-bottom:6px">本人がまだ目標を書いていません。</div>':'')+
+        (r.concern?'<div class="quote warn"><b>本人が気にしていること</b>'+esc(r.concern)+'</div>':'')+
+      '</div>'+
+      '<div>'+
+        '<div class="tiny muted" style="font-weight:700;margin-bottom:4px">前のULから'+
+          (ho.filled_by?'（'+esc(ho.filled_by)+'・'+fmtDateFull(ho.filled_at)+'）':'')+'</div>'+
+        (f('impression')? '<div class="quote" style="margin-bottom:6px;border-left-color:var(--violet)"><b>主観で、どんな子か</b>'+esc(ho.impression)+'</div>'
+                         : '<div class="tiny" style="margin-bottom:6px;color:var(--coral)">「どんな子か」がまだ書かれていません。</div>')+
+        HO_FIELDS.filter(q=>q.k!=='impression'&&f(q.k)).map(q=>
+          '<div class="quote" style="margin-bottom:6px"><b>'+esc(q.n)+'</b>'+esc(ho[q.k])+'</div>').join('')+
+      '</div>'+
+    '</div></div>';
+  return h;
+}
+
+/* ---------- 期・ユニット編成タブの「ユニットとUL」 ----------
+   ULはユニットが持つ。ここで差し替えると、そのユニットの人のUL欄にも写す */
+function ulCandidates(){
+  /* ULになれるのは、社員・メンター・インターン（エグゼなど）だれでも。立場ごとに並べる */
+  return ROWS.slice().sort((a,b)=>
+    (a.isIntern?1:0)-(b.isIntern?1:0) || gradeRank(b)-gradeRank(a) || String(a.name).localeCompare(String(b.name),'ja'));
+}
+function termUnitsCardHTML(term){
+  let h='<div class="card"><h2>ユニットとUL <span class="cnt">ULはユニットに1人。ここを差し替えるだけで任命・交代が済みます</span></h2>';
+  if(!Store.caps.termUnits) return h+'<div class="empty" style="text-align:left;line-height:2">'+
+    'ユニットのULを持つ表（term_units）がまだサーバーにありません。'+
+    '<b>supabase/parts/ のSQLを1から5まで貼り直す</b>と使えるようになります（SETUP.md 手順2）。<br>'+
+    'それまでは、下の割当の「UL」欄がこれまでどおり使われます。</div></div>';
+  const getUnit=r=>normalizeUnit(asgOf(term.id,r).unit)||'';
+  const keys=Array.from(new Set(termUnitKeys(term).concat(termMembers().map(getUnit).filter(Boolean))
+    .concat(unitOptions(rosterUnitValues())))).sort(unitCmp);
+  const cands=ulCandidates();
+  h+='<p class="tiny muted" style="margin:-4px 0 10px;line-height:1.9">'+
+    'インターンをULにしても、立場はインターンのまま（本人画面とグレードはそのまま）で、管理者ツールも使えるようになります。'+
+    (term.status==='closed'?'' : 'この期が「'+(term.status==='active'?'いまの期':'編成中')+'」のあいだ、ここでULに入れた人は管理者ツールを使えます。')+'</p>';
+  h+='<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">Unit</th><th class="nos num">人数</th><th class="nos">UL</th></tr></thead><tbody>';
+  keys.forEach(u=>{
+    const n=termMembers().filter(r=>getUnit(r)===u).length;
+    const cur=unitUlId(term.id,u)||'';
+    h+='<tr><td class="nm">'+esc(u)+'</td><td class="num mono">'+(n||'<span class="muted">0</span>')+'</td>'+
+      '<td><select data-tuunit="'+esc(u)+'" data-term="'+term.id+'" class="tuSel" style="min-width:220px">'+
+        '<option value="">（未定）</option>'+
+        cands.map(r=>'<option value="'+r.id+'"'+(r.id===cur?' selected':'')+'>'+esc(r.name)+'（'+
+          esc(r.isIntern? (r.gradeUnset?'インターン・G未入力':'インターン G'+r.cg) : roleName(r.role))+'）</option>').join('')+
+      '</select>'+(cur?'':' <span class="chip a">未定</span>')+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+async function saveTermUnitFlow(termId,unit,ulId){
+  const term=termById(termId); if(!term) return;
+  const ul=memberById(ulId);
+  const ids=termMembers().filter(r=>(normalizeUnit(asgOf(termId,r).unit)||'')===unit && (ASG_BY_TERM[termId]||{})[r.id]).map(r=>r.id);
+  const stale=((TU_BY_TERM[termId]||{})[unit]||{}).keys||[];
+  try{
+    await Store.saveTermUnit(termId,{unit:unit, ulId:ulId||null, ulName:ul?ul.name:'', memberIds:ids,
+      staleKeys:stale, isActive:term.status==='active'});
+    await loadAll(); render();
+    toast(ul? unit+' のULを '+ul.name+' さんにしました' : unit+' のULを外しました');
+  }catch(e){ toast(e.message||'保存に失敗しました','bad',6000); render(); }
+}
+
+/* ---------- 設定タブの「立場の確認」 ----------
+   移行のときに自動で仮決めした人を、1人ずつ確かめる */
+function roleConfirmCardHTML(){
+  const list=ROWS.filter(r=>r.roleUnconfirmed);
+  if(!list.length) return '';
+  return '<div class="card" style="border:2px solid var(--violet)"><h2>立場の確認 <span class="cnt">'+list.length+'人</span></h2>'+
+    '<p class="tiny muted" style="margin:0 0 10px;line-height:1.9">'+
+    '「グレード」と「立場」を分けたときに、以前ULやメンターだった人の立場を自動で仮に決めました'+
+    '（チェックか認定グレードがある人はインターン、無い人は社員）。正しいものを押してください。<br>'+
+    'インターンにすると、ULに入っているユニットがある間だけ管理者ツールを使えます。'+
+    '社員・メンターにはグレードが表示されなくなります。確かめるまでは、これまでどおり管理者ツールを使えます。</p>'+
+    '<div class="tw" style="max-height:none;box-shadow:none"><table><thead><tr>'+
+    '<th class="nos nm">名前</th><th class="nos">仮の立場</th><th class="nos">記録</th><th class="nos">ULのユニット</th><th class="nos"></th></tr></thead><tbody>'+
+    list.map(r=>'<tr><td class="nm">'+memberLink(r)+'</td>'+
+      '<td>'+esc(roleName(r.role))+'</td>'+
+      '<td class="tiny">'+(r.certified?'認定G'+r.certified+'・':'')+'チェック'+Object.keys(r.checks).length+'件</td>'+
+      '<td>'+(ulChips(r)||'<span class="muted">—</span>')+'</td>'+
+      '<td><span class="seg2">'+ROLES.map(o=>
+        '<button data-act="setRole" data-id="'+r.id+'" data-r="'+o.k+'" class="'+(r.role===o.k?'on':'')+'">'+esc(o.n)+'</button>').join('')+
+      '</span></td></tr>').join('')+
+    '</tbody></table></div></div>';
 }
 
 /* ---------- カルテの「引き継ぎ」タブ ---------- */
@@ -2401,8 +2756,8 @@ function dwHandover(r){
 
   const h0=a.handover||{};
   h+='<p class="tiny muted" style="margin:-4px 0 12px;line-height:1.9">'+
-    '<b>'+esc(prev?prev.name:'いま')+'</b> の担当（'+esc((before&&before.ul)||r.m.ul||'未登録')+'）が書いて、'+
-    '<b>'+esc(term.name)+'</b> の担当（'+esc(a.ul||'未定')+'）が読みます。'+
+    '<b>'+esc(prev?prev.name:'いま')+'</b> の担当（'+esc((before&&(unitUlName(prev.id,normalizeUnit(before.unit))||before.ul))||r.m.ul||'未登録')+'）が書いて、'+
+    '<b>'+esc(term.name)+'</b> の担当（'+esc(unitUlName(term.id,normalizeUnit(a.unit))||a.ul||'未定')+'）が読みます。'+
     'ここに書いたものは本人の画面には出ません。</p>';
   if(r.concern) h+='<div class="quote warn" style="margin-bottom:12px"><b>本人が気にしていること</b>'+esc(r.concern)+'</div>';
   HO_FIELDS.forEach(f=>{
@@ -2443,7 +2798,7 @@ function printSheets(termId){
       '<div class="sh-head"><b>'+esc(r.name)+'</b>'+
         '<span>'+esc(term.name)+'　'+esc(normalizeUnit((ASG_BY_TERM[term.id][r.id]||{}).unit)||'—')+
         '　UL：'+esc(x.to)+'</span>'+
-        '<span>G'+r.cg+' '+esc(tierOf(r.cg).name)+'／在籍'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+
+        '<span>'+esc(gradeText(r))+'／在籍'+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+
         '／全体'+r.overall+'%</span></div>'+
       '<div class="sh-cols">'+
         '<div>'+HO_FIELDS.map(f=>'<div class="sh-f"><b>'+esc(f.n)+'</b><p>'+
@@ -2516,12 +2871,19 @@ async function delTermFlow(id){
   }catch(e){ toast(e.message||'削除に失敗しました','bad'); }
 }
 /* いまの名簿とマイシートの稼働を、その期の割当の下地として保存する */
+/* 割当に書くULの名前。ユニットのULが決まっていればそれ（ULはユニットが持つ）、
+   無ければ割当に入っている名前のまま */
+function asgUlFor(termId,unitRaw,fallback){
+  const u=normalizeUnit(unitRaw);
+  if(Store.caps.termUnits && u && unitUlId(termId,u)) return unitUlName(termId,u);
+  return fallback||null;
+}
 async function seedTermFlow(id){
   const t=termById(id); if(!t) return;
   const saved=ASG_BY_TERM[id]||{};
   const rows=termMembers().filter(r=>!saved[r.id]).map(r=>({
     term_id:id, member_id:r.id,
-    unit:r.m.unit||null, ul:r.m.ul||null, mentor:r.m.mentor||null,
+    unit:normalizeUnit(r.m.unit)||r.m.unit||null, ul:asgUlFor(id,r.m.unit,r.m.ul), mentor:r.m.mentor||null,
     weekly_hours:r.work.hours, acc_std:r.work.accStd, acc_adv:r.work.accAdv
   }));
   if(!rows.length){ toast('取り込む人がいません'); return; }
@@ -2538,7 +2900,7 @@ async function saveAsgFlow(id){
   const rows=termMembers().map(r=>{
     const a=asgOf(id,r);
     return { term_id:id, member_id:r.id,
-      unit:a.unit||null, ul:a.ul||null, mentor:a.mentor||null,
+      unit:normalizeUnit(a.unit)||a.unit||null, ul:asgUlFor(id,a.unit,a.ul), mentor:a.mentor||null,
       weekly_hours:num(a.weekly_hours), acc_std:num(a.acc_std), acc_adv:num(a.acc_adv) };
   });
   try{
@@ -2559,7 +2921,7 @@ async function applyTermFlow(id){
   termMembers().forEach(r=>{
     const a=(ASG_BY_TERM[id]||{})[r.id]; if(!a) return;
     const bu=r.unit, au=normalizeUnit(a.unit)||'（未設定）';
-    const bl=String(r.m.ul||'').trim(), al=String(a.ul||'').trim();
+    const bl=String(r.m.ul||'').trim(), al=String(asgUlFor(id,a.unit,a.ul)||'').trim();
     if(bu!==au||bl!==al) moves.push({r:r,bu:bu,au:au,bl:bl,al:al});
   });
   const head=t.name+' を確定します。\n\n'+
@@ -2585,7 +2947,8 @@ async function applyTermFlow(id){
       }catch(e){}
     }
     ASG_EDIT={termId:'',rows:{},dirty:false};
-    await loadAll(['notes']); render();
+    /* 名簿（所属・UL）と期の状態が変わるので全部取り直す */
+    await loadAll(); render();
     toast(t.name+' を確定しました（'+n+'人に反映）','xp',6000);
   }catch(e){ toast(e.message||'確定に失敗しました','bad',6000); }
 }
@@ -2618,7 +2981,7 @@ function vMtg(){
     h+='<div class="card" style="padding:13px 15px">'+
       '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">'+
         '<b style="font-size:14.5px">'+memberLink(r)+'</b>'+
-        gradeChip(r.cg)+
+        gradeChipR(r)+
         (r.certified?'<span class="chip g">認定 G'+r.certified+'</span>':'')+
         (r.readyPromo?'<span class="chip m">昇格面談の対象</span>':'')+
         '<span class="tiny muted">在籍 '+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'</span>'+
@@ -2654,7 +3017,7 @@ function mtgText(){
   const list=ROWS.filter(r=>r.role==='member'&&r.unit===unit).sort(gradeDesc);
   const L=['【'+unit+'｜キャリアステップ確認 '+fmtDateFull(todayStr())+'】',''];
   list.forEach(r=>{
-    L.push('■ '+r.name+'（G'+r.cg+' '+tierOf(r.cg).name+'／在籍'+(r.months==null?'—':r.months.toFixed(1))+'ヶ月）');
+    L.push('■ '+r.name+'（'+gradeText(r)+'／在籍'+(r.months==null?'—':r.months.toFixed(1))+'ヶ月）');
     L.push('　進捗：'+r.done+'/'+r.total+'（'+r.pct+'%）／全体 '+r.overall+'%'+
       (r.readyPromo?'　★昇格面談の対象':''));
     L.push('　昇格予定：'+fmtDateFull(r.outlook.targetDate)+
@@ -2675,26 +3038,32 @@ function mtgText(){
    本人画面にまで反映されてしまうのを避けるため。 */
 const DW_TABS=[['summary','カルテ'],['step','チェック'],['handover','引き継ぎ'],
                ['notes','申し送り'],['scores','テスト'],['profile','設定']];
+/* 社員・メンターはグレードを持たないので、グレードまわりのタブは出さない */
+const DW_TABS_STAFF=[['notes','申し送り'],['profile','設定']];
+function dwTabsOf(r){ return r.isIntern? DW_TABS : DW_TABS_STAFF; }
 function openDrawer(id){ V.drawer=id; V.dwTab='summary'; renderDrawer(); }
 function closeDrawer(){ V.drawer=null; document.getElementById('drawer').classList.remove('on'); document.getElementById('scrim').classList.remove('on'); }
 function renderDrawer(){
   const r=BY_ID[V.drawer]; if(!r){ closeDrawer(); return; }
   const t=tierOf(r.cg);
+  const tabs=dwTabsOf(r);
+  if(!tabs.some(x=>x[0]===V.dwTab)) V.dwTab=tabs[0][0];
   let h='<div class="dw-head"><button class="dw-close" data-act="closeDw">✕</button>'+
     '<div style="display:flex;align-items:center;gap:12px">'+
       '<div style="width:52px;height:52px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;'+
         'background:radial-gradient(circle at 32% 26%,#36425F,#141A2B)">'+creature(gStage(r.checks,r.certified),46,'')+'</div>'+
       '<div><div style="font-size:17px;font-weight:700">'+esc(r.name)+
-        (r.role!=='member'?' <span class="chip g">'+roleName(r.role)+'</span>':'')+'</div>'+
+        (r.role!=='member'?' <span class="chip g">'+roleName(r.role)+'</span>':'')+' '+ulChips(r)+'</div>'+
       '<div class="tiny muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">'+
         esc(r.unit)+chargeChips(r,{full:true})+(r.mine?'<span class="chip v">自分の担当</span>':'')+'</div></div>'+
-      '<div style="margin-left:auto;text-align:right">'+gradeChip(r.cg)+
-        '<div class="tiny muted" style="margin-top:3px">在籍 '+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'／全体 '+r.overall+'%</div></div>'+
+      '<div style="margin-left:auto;text-align:right">'+gradeChipR(r)+
+        (r.isIntern?'<div class="tiny muted" style="margin-top:3px">在籍 '+(r.months==null?'—':r.months.toFixed(1)+'ヶ月')+'／全体 '+r.overall+'%</div>':'')+'</div>'+
     '</div>'+
+    (r.isIntern?
     '<div style="display:flex;gap:8px;align-items:center;margin-top:10px">'+
       '<span class="mini" style="flex:1;height:8px"><i style="width:'+r.pct+'%;background:'+t.hex+'"></i></span>'+
-      '<b class="mono" style="font-size:12px">'+r.done+' / '+r.total+'</b></div>'+
-    '<div class="dw-tabs">'+DW_TABS.map(x=>
+      '<b class="mono" style="font-size:12px">'+r.done+' / '+r.total+'</b></div>' : '')+
+    '<div class="dw-tabs">'+tabs.map(x=>
       '<button data-act="dwTab" data-t="'+x[0]+'" class="'+(V.dwTab===x[0]?'on':'')+'">'+x[1]+
       (x[0]==='notes'&&r.noteCount?' '+r.noteCount:'')+'</button>').join('')+
       '<span class="spacer"></span>'+
@@ -3013,9 +3382,11 @@ function dwProfile(r){
     '<div class="f"><label>昇格予定時期の上書き<span class="muted" style="font-weight:400">（空なら 入社日＋標準期間 で自動計算：'+
       fmtDateFull(addMonths(r.m.join_date,periodMonths(r.cg)))+'）</span></label>'+
       '<input type="date" id="pfTarget" value="'+esc(r.m.promotion_target||'')+'"></div>'+
-    '<div class="f"><label>権限</label><select id="pfRole">'+
-      ROLES.map(o=>[o.k,o.n+'（'+o.d+'）']).map(o=>
-        '<option value="'+o[0]+'"'+(r.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label>立場</label><select id="pfRole">'+
+      ROLES.map(o=>[o.k,o.n+'（'+o.d+'）']).concat(r.role==='ul'?[['ul',roleName('ul')]]:[]).map(o=>
+        '<option value="'+o[0]+'"'+(r.role===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>'+
+      '<p class="tiny muted" style="margin:4px 0 0">ULは立場ではありません。「期・ユニット編成 → ユニットとUL」でユニットに割り当てます'+
+        (r.ulUnits.length?'（いま：'+r.ulUnits.map(x=>esc(x.unit)).join('・')+' のUL）':'')+'。</p></div>'+
     '<button class="btn vio" data-act="saveProfile" data-id="'+r.id+'">保存する</button>'+
     '</div>'+
     workFormHTML(r)+
@@ -3099,6 +3470,9 @@ async function saveProfileFor(id){
   const patch={ id:id, name:g('pfName'), unit:g('pfUnit')||null, ul:g('pfUl')||null, mentor:g('pfMentor')||null,
     join_date:g('pfJoin')||null, certified_grade:g('pfGrade')?+g('pfGrade'):null,
     promotion_target:g('pfTarget')||null, role:g('pfRole')||'member' };
+  /* 立場を画面で選び直したら、移行で仮決めした印は外す（確認済みになる） */
+  const r0=BY_ID[id];
+  if(r0 && 'role_confirmed' in r0.m && patch.role!=='ul'){ patch.role_confirmed=true; patch.legacy_ul=false; }
   try{
     await Store.upsertMember(patch);
     await loadAll(['states']); render(); renderDrawer(); toast('保存しました');
@@ -3323,6 +3697,7 @@ function vSettings(){
       '誰にでもなりすませてしまうため）。</p>'+
     '</div>';
 
+  h+=roleConfirmCardHTML();
   h+=nameVariantCardHTML();
   h+=handoverCardHTML();
 
@@ -3373,7 +3748,8 @@ function vSettings(){
     [['チェックの保存（関数経由）',caps.rpcCheck],
      ['ログイン画面の名前検索',caps.rosterSearch],
      ['しきい値の共有',caps.settings],
-     ['期・ユニット編成（履歴を残す）',caps.terms]]
+     ['期・ユニット編成（履歴を残す）',caps.terms],
+     ['ユニットとUL（ULをユニットで決める）',caps.termUnits]]
     .map(x=>'<div>'+(x[1]?'✓ ':'— ')+x[0]+(x[1]?'':'（supabase/parts/ の貼り直しで有効になります）')+'</div>').join('')+
     '</div></div>';
   return h;
@@ -3392,6 +3768,7 @@ function render(){
   else if(V.tab==='notes')  v.innerHTML=vNotes();
   else if(V.tab==='scores') v.innerHTML=vScores();
   else if(V.tab==='terms')  v.innerHTML=vTerms();
+  else if(V.tab==='handover')v.innerHTML=vHandover();
   else if(V.tab==='settings')v.innerHTML=vSettings();
   else                      v.innerHTML=vMtg();
   renderNav();
@@ -3401,6 +3778,11 @@ function render(){
   const nv=document.getElementById('nvis');  if(nv) nv.onchange=e=>{ NFILTER.vis=e.target.value; render(); };
   const mu=document.getElementById('mtgUnit'); if(mu) mu.onchange=e=>{ V.mtgUnit=e.target.value; render(); };
   const hs=document.getElementById('hoTermSel'); if(hs) hs.onchange=e=>{ V.hoTerm=e.target.value; renderDrawer(); };
+  const hvt=document.getElementById('hoViewTerm'); if(hvt) hvt.onchange=e=>{ V.hoView=e.target.value; V.hoUnit=''; render(); };
+  const hvu=document.getElementById('hoViewUnit'); if(hvu) hvu.onchange=e=>{ V.hoUnit=e.target.value; render(); };
+  document.querySelectorAll('.tuSel').forEach(sel=>{
+    sel.onchange=e=>{ saveTermUnitFlow(sel.dataset.term, sel.dataset.tuunit, e.target.value); };
+  });
   const ht=document.getElementById('hoTo'); if(ht) ht.oninput=e=>{ HANDOVER.to=e.target.value; };
   if(V.drawer) renderDrawer();
 }
@@ -3413,6 +3795,14 @@ document.addEventListener('click',async e=>{
   if(a==='tab'){ V.tab=el.dataset.tab; F.alert=''; render(); window.scrollTo(0,0); }
   else if(a==='sort'){ const k=el.dataset.k; if(V.sort===k) V.dir=-V.dir; else { V.sort=k; V.dir=(k==='name'||k==='unit'||k==='target'||k==='until')?1:-1; } render(); }
   else if(a==='alert'){ F.alert=el.dataset.a; V.tab='roster'; render(); window.scrollTo(0,0); }
+  else if(a==='setRole'){
+    const r=BY_ID[el.dataset.id]; if(!r) return;
+    try{
+      await Store.setRole(r.id, el.dataset.r);
+      await loadAll(); render();
+      toast(r.name+' さんを'+roleName(el.dataset.r)+'にしました');
+    }catch(err){ toast(err.message||'保存に失敗しました','bad',6000); }
+  }
   else if(a==='open'){ e.preventDefault(); openDrawer(el.dataset.id); }
   else if(a==='closeDw'){ closeDrawer(); }
   else if(a==='dwTab'){ V.dwTab=el.dataset.t; renderDrawer(); }
@@ -3591,7 +3981,7 @@ document.addEventListener('click',async e=>{
   else if(a==='clearFilters'){ F.unit=''; F.q=''; F.role='all'; F.alert=''; F.mine=false; render(); }
   else if(a==='mine'){ F.mine=!F.mine; render(); }
   else if(a==='remind'){
-    const t=remindText();
+    const t=remindText(el.dataset.kind);
     if(!t){ toast('対象の人がいません'); return; }
     await copyText(t,'リマインド文をコピーしました。Slackに貼ってください');
   }

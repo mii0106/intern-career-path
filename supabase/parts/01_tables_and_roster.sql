@@ -1,5 +1,5 @@
 -- ============================================================
--- STEP｜キャリアステップシート  Supabase スキーマ  （1/4）
+-- STEP｜キャリアステップシート  Supabase スキーマ  （1/5）
 -- テーブル・補助関数・名簿・パスコードの保管
 -- ------------------------------------------------------------
 -- Supabase の SQL Editor に貼り付けて RUN してください。
@@ -61,16 +61,31 @@ create table if not exists public.members (
   active          boolean not null default true,
   created_at      timestamptz not null default now()
 );
-/* 権限は3つ。
-     member … インターン本人。自分の分だけ見える
-     mentor … 育成。管理者ツールで全員を見られる
-     ul     … ユニットリーダー。管理者ツールで全員を見られる
-   mentor と ul にできることの差はない（表示上の役割の違い）。
+/* 立場（ベースの身分）は3つ。
+     member … インターン。本人画面を使い、グレードを持つ
+     staff  … 社員。グレードを持たない。管理者ツールで全員を見られる
+     mentor … メンター（育成）。グレードを持たない。管理者ツールで全員を見られる
+
+   UL は立場にしない。「その期のユニットのULに誰が入っているか」
+   （term_units.ul_member_id、4/4で作る）から毎回決める。
+   そうしておけば、昇格の途中でULになったインターンも、半期ごとの交代も、
+   ユニットのUL欄を差し替えるだけで済み、アカウントを作り直さなくていい。
+   インターンがULになっても立場は member のままなので、本人画面とグレードはそのまま残る。
+
+   'ul' は以前の「UL」という立場の名残り。5/5 の移行で member か staff に振り分ける。
+   移行前のデータが残っていても壊れないよう、値としてはまだ許しておく。
    'admin' は旧「管理者」。中身は mentor と同じなので、下で mentor に寄せる。 */
 alter table public.members drop constraint if exists members_role_chk;
 update public.members set role = 'mentor' where role = 'admin';
 alter table public.members add constraint members_role_chk
-  check (role in ('member','mentor','ul'));
+  check (role in ('member','staff','mentor','ul'));
+/* 移行で立場を仮に決めた人の印。
+     role_confirmed = false … 自動で仮決めしただけ。管理者ツールの設定で確かめてもらう
+     legacy_ul      = true  … 以前「UL」だった人。確かめてもらうまでは管理者ツールを
+                              これまでどおり使えるようにしておく（移行した瞬間に
+                              入れなくなる人を出さないため） */
+alter table public.members add column if not exists role_confirmed boolean not null default true;
+alter table public.members add column if not exists legacy_ul      boolean not null default false;
 
 -- チェックが入った項目。1行＝1項目。
 create table if not exists public.progress (
@@ -146,13 +161,36 @@ returns uuid language sql stable security definer set search_path = public as $f
   select id from public.members where auth_id = auth.uid() limit 1
 $fn$;
 
+/* その人が管理者ツールを使えるか。
+     ・立場が社員・メンター
+     ・いま（いまの期・編成中の期）どこかのユニットのULに入っている
+     ・移行前の「UL」のまま、まだ立場を確かめていない
+   のどれかなら使える。ULかどうかは members には持たず、ユニットの側から引く。
+
+   plpgsql にしているのは、term_units（4/4で作る）がまだ無い状態でも
+   この関数を作れるようにするため（sql 関数は作るときに中身を検査する）。 */
+create or replace function public.is_manager_member(p_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $fn$
+declare v boolean;
+begin
+  if p_id is null then return false; end if;
+  select (role in ('staff','mentor','ul') or legacy_ul) into v
+    from public.members where id = p_id and active;
+  if v is null then return false; end if;
+  if v then return true; end if;
+  begin
+    return exists (
+      select 1 from public.term_units u join public.terms t on t.id = u.term_id
+       where u.ul_member_id = p_id and t.status in ('active','draft'));
+  exception when undefined_table then return false;
+  end;
+end $fn$;
+
 create or replace function public.is_manager()
-returns boolean language sql stable security definer set search_path = public as $fn$
-  select exists (
-    select 1 from public.members
-    where auth_id = auth.uid() and role in ('mentor','ul') and active
-  )
-$fn$;
+returns boolean language plpgsql stable security definer set search_path = public as $fn$
+begin
+  return public.is_manager_member(public.current_member_id());
+end $fn$;
 
 /* 卒業・退職（members.active = false）した本人からの書き込みを止めるためのガード。
    記録（チェック・申し送り・テスト）はそのまま残すが、

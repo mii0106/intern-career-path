@@ -155,7 +155,7 @@ const Store = (() => {
      まだ流していない環境でも、画面がそのまま動くようにする。
      使える機能だけをオンにして、無い機能は従来のやり方に落とす。
      ============================================================ */
-  const caps = { rpcCheck:false, rosterSearch:false, settings:false, terms:false };
+  const caps = { rpcCheck:false, rosterSearch:false, settings:false, terms:false, termUnits:false };
   let capsDone = false;   /* 一度でも通信できたか。電波が悪いだけの結果を信じない */
   async function detectCaps(){
     let ok=true;
@@ -450,13 +450,14 @@ const Store = (() => {
       return r;
     },
 
-    /* 管理者キーを入れて、育成／ULの権限を自分に付ける。
-       wantRole 'mentor'（育成）か 'ul'。できることは同じで、表示上の役割が違うだけ。
+    /* 管理者キーを入れて、社員／メンターの立場を自分に付ける。
+       wantRole 'mentor'（メンター）か 'staff'（社員）。できることは同じ。
+       ULは立場ではないので選ばない（ユニットのULに入れてもらうと使えるようになる）。
        キーが合っていればその場で付く（承認待ちはない）。
        サーバーが古い（役割を選べない版）のときは、そこまで戻して呼び直す。 */
     async requestManager(code, wantRole){
       need();
-      const want = wantRole==='mentor' ? 'mentor' : 'ul';
+      const want = wantRole==='mentor' ? 'mentor' : 'staff';
       const missing=e=>/does not exist|Could not find the function/i.test(String((e&&e.message)||''));
       let r=await sb.rpc('request_manager',{p_code:code, p_role:want});
       if(r.error && missing(r.error)) r=await sb.rpc('request_manager',{p_code:code});
@@ -647,7 +648,7 @@ const Store = (() => {
       /* 期と割当。supabase/parts/ をまだ貼り直していない環境では
          caps.terms が false なので、空のまま返して画面側で案内を出す。 */
       if(want('terms')){
-        out.terms=[]; out.assignments=[];
+        out.terms=[]; out.assignments=[]; out.termUnits=[];
         if(caps.terms){
           try{
             /* assignments は「人数 × 期」で増えるので、ここもページングする */
@@ -657,6 +658,13 @@ const Store = (() => {
             ]);
             out.terms=t; out.assignments=a;
           }catch(e){ caps.terms=false; }
+          /* ユニットのUL（term_units）は、さらにあとから足した表。無ければ空のまま */
+          if(caps.terms){
+            try{
+              out.termUnits=await pageAll(()=>sb.from('term_units').select('*').order('term_id').order('unit'));
+              caps.termUnits=true;
+            }catch(e){ caps.termUnits=false; }
+          }
         }
       }
       return out;
@@ -773,6 +781,46 @@ const Store = (() => {
         .update({handover:handover||{}, updated_at:new Date().toISOString()})
         .eq('term_id',termId).eq('member_id',memberId));
     },
+    /* ---------- ユニットのUL ----------
+       ULは「その期のユニットが持つもの」。ここを差し替えるだけで任命・交代が済む。
+       これまでの画面のために、そのユニットの人の割当（assignments.ul）と、
+       いまの期なら名簿（members.ul）にも名前を写す。
+         unit      … 正の表記（unitA など）
+         ulId      … ULにする人のメンバーID（空ならULを外す）
+         ulName    … その人の表示名（写しに使う）
+         memberIds … そのユニットに入っている人（写しの対象）
+         staleKeys … 表記ゆれで別の行になっていた古い unit の値（消して1つにまとめる）
+         isActive  … いまの期か（そうなら名簿にも写す） */
+    async saveTermUnit(termId,o){
+      need(); needTerms();
+      if(!caps.termUnits) throw new Error('この機能を使うには supabase/parts/ のSQLを1から5まで貼り直してください（SETUP.md 手順2）');
+      const now=new Date().toISOString();
+      chk(await sb.from('term_units').upsert(
+        {term_id:termId, unit:o.unit, ul_member_id:o.ulId||null, updated_at:now},
+        {onConflict:'term_id,unit'}));
+      const stale=(o.staleKeys||[]).filter(k=>k!==o.unit);
+      if(stale.length) chk(await sb.from('term_units').delete().eq('term_id',termId).in('unit',stale));
+      const ids=o.memberIds||[];
+      if(ids.length){
+        chk(await sb.from('assignments').update({ul:o.ulName||null, updated_at:now})
+          .eq('term_id',termId).in('member_id',ids));
+        if(o.isActive) chk(await sb.from('members').update({ul:o.ulName||null}).in('id',ids).eq('active',true));
+      }
+    },
+    /* 立場（インターン／社員／メンター）を決める。移行で仮決めした人の確認にも使う */
+    async setRole(memberId,role){
+      need();
+      if(['member','staff','mentor'].indexOf(role)<0) throw new Error('立場の値が正しくありません');
+      chk(await sb.from('members').update({role:role, role_confirmed:true, legacy_ul:false}).eq('id',memberId));
+    },
+    /* 本人画面用。自分がULに入っているユニット（いまの期・編成中の期） */
+    async myUlUnits(){
+      need();
+      try{
+        const r=await sb.rpc('my_ul_units');
+        return r.error? [] : (r.data||[]);
+      }catch(e){ return []; }
+    },
     /* 期を確定して、その割当を名簿（members.unit/ul/mentor）に書き戻す */
     async applyTerm(termId){
       need(); needTerms();
@@ -832,7 +880,15 @@ const Store = (() => {
     /* 起動時に電波が悪くて判定できていなければ、ログインできたここでやり直す。
        判定を間違えると、書き込み先（関数か直接か）を取り違えてしまうため。 */
     if(!capsDone) await detectCaps();
-    me={member:m, role:m.role, isManager:isManagerRole(m.role)};
+    /* 管理者ツールを使えるかはサーバーに聞く。ULは立場ではなく
+       「ユニットのULに入っているか」で決まるので、role だけでは分からないため。
+       古いサーバー（関数が無い・判定できない）のときは role で判断する。 */
+    let mgr=isManagerRole(m.role);
+    try{
+      const r=await sb.rpc('is_manager');
+      if(!r.error && typeof r.data==='boolean') mgr=r.data;
+    }catch(e){}
+    me={member:m, role:m.role, isManager:mgr};
     return me;
   }
 

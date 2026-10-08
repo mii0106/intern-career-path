@@ -593,7 +593,11 @@ const DEFAULT={
 };
 let D=JSON.parse(JSON.stringify(DEFAULT));
 /* 育成・ULの権限を付けるとき、どちらとして入るか（設定タブで選ぶ） */
-let WANT_ROLE='mentor';
+let WANT_ROLE='staff';
+/* 社員・メンターとしてログインしているか（グレードが無いので本人用シートを出さない） */
+let STAFF_MODE=false;
+/* 自分がULに入っているユニット（いまの期・編成中の期） */
+let MY_UL_UNITS=[];
 let view='home', openG=null, ready=false, profileDirty=false;
 let stepSeg='grades';       /* ステップタブの中身：grades（一覧）／map（横並び） */
 let PWFORM=false;           /* 設定タブのパスワード変更フォームを開いているか */
@@ -840,7 +844,7 @@ function vHome(){
   const rest=tt-dn;
   const nm=D.profile.name?esc(D.profile.name)+' さん':'名前を登録しよう';
 
-  let h=offlineNote()+'<div class="home-grid"><div class="hg-l"><section class="hero">'+
+  let h=offlineNote()+gradeNudgeHTML()+'<div class="home-grid"><div class="hg-l"><section class="hero">'+
    '<div class="hero-top"><div>'+
      '<div class="hero-grade">GRADE '+cg+' ／ '+t.name+'（'+g.period+'）</div>'+
      '<div class="hero-title disp">'+(D.buddy?esc(D.buddy):'なまえ未設定')+'</div>'+
@@ -898,6 +902,23 @@ function vHome(){
    '<div class="tiny muted">10グレード中 <b style="color:var(--ink)">'+cleared+'</b> グレード達成／全'+totalItems()+'項目のうち '+totalChecked()+' 項目クリア</div>'+
    '</div></div></div>';
   return h;
+}
+/* グレードが未入力の人への呼びかけ。
+   認定グレードもチェックも空だと、ULの画面では「未入力」として出る
+   （G1とは別に数える）。ここで1タップで埋められるようにしておく。 */
+function gradeUnset(){ return !D.profile.grade && totalChecked()===0; }
+function gradeNudgeHTML(){
+  if(!gradeUnset()) return '';
+  return '<div class="card" style="border:2px solid var(--violet);margin-bottom:14px">'+
+    '<b style="font-size:15px">まずは、いまのグレードを教えてください</b>'+
+    '<p class="tiny muted" style="margin:6px 0 10px;line-height:1.8">まだグレードが入っていないので、'+
+    'ULの画面ではあなたが<b>「未入力」</b>と表示されています。'+
+    '社内で認定されているグレードを選ぶと、そこから先の項目が開いて、相棒もそのグレードから育ちます。'+
+    'わからなければ、次の1on1でULに聞いてみてください。</p>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+    GRADES.map(g=>'<button class="pill" style="cursor:pointer;padding:6px 10px;border:1px solid var(--line);background:#fff" '+
+      'data-act="setGrade" data-g="'+g.n+'">G'+g.n+'</button>').join('')+
+    '</div></div>';
 }
 /* 「今週やること」の1行。チェックとピン留めの解除ができる */
 function nextItemHTML(i){
@@ -1171,26 +1192,34 @@ function vSettings(){
    '</div></div>';
   if(!Store.isManager){
     h+='<div class="sec-label">自分の権限</div><div class="card">'+
-     '<p class="tiny muted" style="margin:0 0 10px">いまは<b>メンバー</b>です。'+
-     '育成・ULの方は、どちらで入るかを選んで管理者キーを入れてください。'+
-     'キーが合っていれば、その場でメンバー全員の状況を見られる管理者ツールが使えるようになります。</p>'+
+     '<p class="tiny muted" style="margin:0 0 10px">いまは<b>インターン</b>です。'+
+     '<b>ULになったインターンの方は、ここに何も入れなくて大丈夫です。</b>'+
+     'ユニットのULに設定されると、この画面はそのままで管理者ツールも使えるようになります。</p>'+
+     '<p class="tiny muted" style="margin:0 0 10px">社員・メンターの方だけ、どちらかを選んで管理者キーを入れてください。'+
+     '社員・メンターにはグレードが無いので、本人用のシートは使わなくなります。</p>'+
      '<div class="field" style="margin-bottom:8px"><label>どちらとして入りますか</label>'+
        '<div class="seg2" id="wantRole">'+
          ROLES.filter(r=>r.k!=='member').map(r=>
            '<button type="button" data-act="wantRole" data-r="'+r.k+'" class="'+(WANT_ROLE===r.k?'on':'')+'">'+r.n+'</button>').join('')+
        '</div>'+
-       '<p class="tiny muted" style="margin:6px 0 0">できることは同じです。管理者ツールでの表示と、'+
-       'メンバーの「担当」の出しかたが変わります。</p></div>'+
+       '<p class="tiny muted" style="margin:6px 0 0">できることは同じです（どちらもメンバー全員の状況を見られます）。</p></div>'+
      '<div class="field" style="margin-bottom:8px"><input type="password" id="adminKey" placeholder="管理者キー"></div>'+
-     '<button class="savebtn" data-act="claimManager">この権限にする</button></div>';
+     '<button class="savebtn" data-act="claimManager">この立場にする</button></div>';
   }else{
     h+='<div class="sec-label">自分の権限</div><div class="card">'+
-     '<p class="tiny muted" style="margin:0 0 10px">あなたは<b>'+roleName(Store.me.member.role)+'</b>です。'+
-     'メンバー全員の状況を管理者ツールで見られます。'+
-     '自分がULやメンターに設定されている人は「自分の担当」として出ます。</p>'+
+     '<p class="tiny muted" style="margin:0 0 10px">あなたは<b>インターン</b>で、'+
+     (MY_UL_UNITS.length? '<b>'+MY_UL_UNITS.map(u=>esc(u.unit)+'のUL'+(u.status==='draft'?'（'+esc(u.term_name)+'から）':'')).join('・')+'</b>です。'
+                        : 'ULとして管理者ツールを使えます。')+
+     'この画面（自分のシート）はそのまま使えて、担当ユニットのことは管理者ツールで見られます。</p>'+
      '<a class="savebtn" href="admin.html" style="display:block;text-align:center;text-decoration:none">管理者ツールをひらく →</a></div>';
   }
-  h+='<div class="sec-label">ログイン</div><div class="card">'+
+  h+=loginCardHTML();
+  h+='<div style="height:8px"></div>';
+  return h;
+}
+/* ログイン（パスワードの変更・ログアウト）。社員・メンターの画面でも同じものを使う */
+function loginCardHTML(){
+  return '<div class="sec-label">ログイン</div><div class="card">'+
    '<p class="tiny muted" style="margin:0 0 12px">入力内容は自動保存され、ULやメンターの管理画面にも反映されます。'+
    'チェックを消したいときや、記録の控えが必要なときはULに相談してください。</p>'+
    /* パスワードは自分で変えられるようにしておく。ULに頼むしかない形だと、
@@ -1210,8 +1239,18 @@ function vSettings(){
    '</div>'+
    '<div style="height:8px"></div>'+
    '<button class="danger" data-act="logout" style="border-color:var(--line);color:var(--ink2)">ログアウトする</button></div>';
-  h+='<div style="height:8px"></div>';
-  return h;
+}
+/* 社員・メンターがこの画面を開いたとき。グレードを持たないので、
+   本人用のシート（グレード・相棒・チェック）は出さずに管理者ツールへ案内する。
+   「社員なのにG1」と出ていたのは、ここでシートをそのまま出していたため。 */
+function vStaffHome(){
+  return '<div style="max-width:520px;margin:0 auto">'+
+    '<div class="sec-label">'+esc(D.profile.name||'')+' さん</div><div class="card">'+
+    '<p style="margin:0 0 8px;font-weight:700">あなたは'+esc(roleName(Store.me.member.role))+'です</p>'+
+    '<p class="tiny muted" style="margin:0 0 12px;line-height:1.9">社員・メンターにはグレードが無いので、本人用のシートはありません。'+
+    'メンバーの状況・引き継ぎ・ユニットの編成は管理者ツールで見られます。</p>'+
+    '<a class="savebtn" href="admin.html" style="display:block;text-align:center;text-decoration:none">管理者ツールをひらく →</a></div>'+
+    loginCardHTML()+'</div>';
 }
 
 function roadmap(showBuddy){
@@ -1412,6 +1451,12 @@ function render(keepScroll){
   const y=window.scrollY;
   withFocus(()=>{
     const v=document.getElementById('view');
+    if(STAFF_MODE){
+      v.innerHTML=vStaffHome();
+      document.getElementById('tabbar').innerHTML='';
+      document.getElementById('tabbar').style.display='none';
+      return;
+    }
     if(openG) v.innerHTML=vDetail(openG);
     else if(view==='home') v.innerHTML=vHome();
     else if(view==='step') v.innerHTML=(stepSeg==='map'?vMap():vGrades());
@@ -1443,6 +1488,10 @@ document.addEventListener('click',async e=>{
     }
   }
   else if(a==='stepSeg'){ stepSeg=el.dataset.s; render(); }
+  else if(a==='setGrade'){
+    D.profile.grade=String(+el.dataset.g); profileDirty=true; save(); render();
+    toast('Grade '+el.dataset.g+' にしました。マイシートでいつでも直せます','xp');
+  }
   else if(a==='stepTodo'){ stepTodo=!stepTodo; render(true); }
   else if(a==='sheetSeg'){ sheetSeg=el.dataset.s; render(); }
   else if(a==='openDex'){ dexOpen=true; renderDex(); }
@@ -1507,7 +1556,7 @@ document.addEventListener('click',async e=>{
       if(status==='approved'){ toast(roleName(WANT_ROLE)+'になりました','xp'); location.href='admin.html'; }
       else{
         /* 承認制をやめる前のサーバーがまだ動いている場合だけここに来る */
-        el.disabled=false; el.textContent='この権限にする';
+        el.disabled=false; el.textContent='この立場にする';
         toast('サーバー側が古いままです。SETUP.md 手順2の貼り直しをしてください',null,6000);
       }
     }catch(err){ el.disabled=false; el.textContent='この権限にする'; toast(err.message||'管理者キーが違います',null,5000); }
@@ -2086,7 +2135,11 @@ async function boot(){
   document.getElementById('gate').classList.remove('on');
   document.getElementById('app').style.display='';
   await load();
+  const rk=roleKey(Store.me&&Store.me.member&&Store.me.member.role);
+  STAFF_MODE = rk==='staff' || rk==='mentor';
   render();
+  if(Store.isManager && !STAFF_MODE)
+    Store.myUlUnits().then(u=>{ MY_UL_UNITS=u||[]; if(view==='sheet') render(true); }).catch(()=>{});
   checkEvolution();   /* 前回から進んでいたら、ここで進化を見せる */
   /* 共有事項とテスト結果は裏で読んで、記録タブを開いたときに待たせない */
   loadLog().then(()=>render(true)).catch(()=>{});

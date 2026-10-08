@@ -1,5 +1,5 @@
 -- ============================================================
--- STEP｜キャリアステップシート  Supabase スキーマ  （2/4）
+-- STEP｜キャリアステップシート  Supabase スキーマ  （2/5）
 -- 本人側からの書き込みと RLS
 -- ------------------------------------------------------------
 -- Supabase の SQL Editor に貼り付けて RUN してください。
@@ -180,7 +180,7 @@ begin
   if v_hash is null then raise exception '管理者キーがまだ設定されていません（SETUP.md 手順5）'; end if;
   if v_hash <> crypt(coalesce(p_code,''), v_hash) then raise exception '管理者キーが違います'; end if;
 
-  update public.members set role = 'ul' where id = v_id and role = 'member';
+  update public.members set role = 'staff', role_confirmed = true, legacy_ul = false where id = v_id and role = 'member';
   return (select role from public.members where id = v_id);
 end $fn$;
 
