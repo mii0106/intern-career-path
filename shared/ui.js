@@ -3,21 +3,35 @@
    ============================================================ */
 
 /* ------------------------------------------------------------
-   権限は3つ。member・mentor（育成）・ul。
-   育成とULでできることは同じで、管理者ツールで全員を見られる。
-   'admin' は旧「管理者」で、まだ role を移していないサーバーから
-   返ってくることがあるので、育成として扱う。
+   立場（ベースの身分）は3つ。member（インターン）・staff（社員）・mentor（メンター）。
+     member … 本人画面を使い、グレードを持つ
+     staff  … 管理者ツールだけ。グレードを持たない
+     mentor … 管理者ツールだけ。グレードを持たない
+   ULは立場ではない。「その期のユニットのULに誰が入っているか」で決まる
+   （supabase/parts/04 の term_units）。インターンがULになっても立場は
+   member のままなので、本人画面とグレードはそのまま残り、管理者ツールが“乗る”。
+
+   'ul' は以前の「UL」という立場の名残り。移行（supabase/parts/05）で
+   member か staff に振り分けるが、移行前のサーバーから返ってきても
+   落ちないように、管理者ツールを使える立場として残しておく。
+   'admin' は旧「管理者」で、メンターとして扱う。
    ------------------------------------------------------------ */
 const ROLES=[
-  {k:'member', n:'メンバー', s:'メンバー', d:'自分のシートだけ'},
-  {k:'mentor', n:'育成',     s:'育成',     d:'管理者ツールで全員を見られる'},
-  {k:'ul',     n:'UL',       s:'UL',       d:'管理者ツールで全員を見られる'}
+  {k:'member', n:'インターン', s:'インターン', d:'本人画面を使う。グレードを持つ'},
+  {k:'staff',  n:'社員',       s:'社員',       d:'管理者ツールだけ。グレードは持たない'},
+  {k:'mentor', n:'メンター',   s:'メンター',   d:'管理者ツールだけ。グレードは持たない'}
 ];
+const LEGACY_UL_ROLE={k:'ul', n:'UL（移行前）', s:'UL', d:'以前の立場。インターンか社員に振り分けてください'};
 function roleKey(role){ return role==='admin' ? 'mentor' : (role||'member'); }
-function isManagerRole(role){ const k=roleKey(role); return k==='mentor'||k==='ul'; }
-function roleName(role){ const k=roleKey(role); return (ROLES.find(r=>r.k===k)||ROLES[0]).n; }
-/* 育成とULをまとめて呼ぶときの言い方。画面の文言をここに集める */
-const MANAGER_LABEL='育成・UL';
+/* 立場だけで管理者ツールを使えるか（ULかどうかはここでは分からない。サーバーの is_manager を見る） */
+function isManagerRole(role){ const k=roleKey(role); return k==='staff'||k==='mentor'||k==='ul'; }
+/* グレードを持つのはインターンだけ */
+function isInternRole(role){ return roleKey(role)==='member'; }
+function roleName(role){ const k=roleKey(role);
+  if(k==='ul') return LEGACY_UL_ROLE.n;
+  return (ROLES.find(r=>r.k===k)||ROLES[0]).n; }
+/* UL・社員・メンターをまとめて呼ぶときの言い方。画面の文言をここに集める */
+const MANAGER_LABEL='UL・メンター';
 
 /* ------------------------------------------------------------
    所属Unit

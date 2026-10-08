@@ -1,5 +1,5 @@
 -- ============================================================
--- STEP｜キャリアステップシート  Supabase スキーマ  （3/4）
+-- STEP｜キャリアステップシート  Supabase スキーマ  （3/5）
 -- チェック・名前検索・管理者への昇格
 -- ------------------------------------------------------------
 -- Supabase の SQL Editor に貼り付けて RUN してください。
@@ -125,7 +125,8 @@ language sql stable security definer set search_path = public as $fn$
     from public.members m
    where m.active
      and length(coalesce(trim(p_q), '')) >= 2
-     and (not p_managers or m.role in ('mentor','ul'))
+     /* 管理者ツールのログイン画面用。ULはユニットの側から決まるので、立場だけでは絞らない */
+     and (not p_managers or public.is_manager_member(m.id))
      and (m.name ilike '%' || trim(p_q) || '%' or coalesce(m.unit,'') ilike '%' || trim(p_q) || '%')
    order by m.name
    limit 10
@@ -163,9 +164,12 @@ $fn$;
 grant execute on function public.roster_mentors() to anon, authenticated;
 
 -- ============================================================
--- 5.7 管理者になるまでの流れを「申請 → 既存管理者の承認」に変える
---     管理者キーを知っている人が、育成／ULのどちらとして入るかを選んで
+-- 5.7 管理者キーで立場を「社員」か「メンター」にする
+--     管理者キーを知っている人が、社員／メンターのどちらとして入るかを選んで
 --     その場で権限を付ける。承認を待つ必要はない。
+--     ULは立場ではないので、ここでは選ばない（ユニットのUL欄に入れると使えるようになる）。
+--     インターンが管理者キーを入れると「社員」になってグレードが消えるので、
+--     インターンのULはキーを入れずに、ユニットのULに設定してもらう。
 --     そのぶんキーの管理がすべてなので、メンバーには配らないこと。
 --     総当り対策として、5回続けて間違えると15分ロックする。
 -- ============================================================
@@ -181,7 +185,7 @@ create table if not exists public.manager_requests (
 -- 育成として入りたいのか、ULとして入りたいのか。承認するとこの権限が付く。
 alter table public.manager_requests add column if not exists want_role text not null default 'ul';
 alter table public.manager_requests drop constraint if exists mreq_want_role_chk;
-alter table public.manager_requests add constraint mreq_want_role_chk check (want_role in ('mentor','ul'));
+alter table public.manager_requests add constraint mreq_want_role_chk check (want_role in ('mentor','ul','staff'));
 alter table public.manager_requests enable row level security;
 drop policy if exists mreq_read on public.manager_requests;
 create policy mreq_read on public.manager_requests for select to authenticated
@@ -196,7 +200,8 @@ drop function if exists public.request_manager(text);
 create or replace function public.request_manager(p_code text, p_role text default 'ul')
 returns text language plpgsql security definer set search_path = public, extensions as $fn$
 declare v_id uuid := public.current_member_id(); v_hash text; v_lock timestamptz;
-        v_want text := case when p_role = 'mentor' then 'mentor' else 'ul' end;
+        /* 古い画面からは 'ul' が来ることがある。ULは立場ではなくなったので社員として扱う */
+        v_want text := case when p_role = 'mentor' then 'mentor' else 'staff' end;
 begin
   if v_id is null then raise exception 'not linked'; end if;
   select admin_key_locked_until into v_lock from public.members where id = v_id;
@@ -223,7 +228,8 @@ begin
 
   /* キーが合っていれば、その場で権限を付ける（承認待ちはない）。
      すでに育成／ULの人が選び直した場合も、選んだほうに切り替える。 */
-  update public.members set role = v_want where id = v_id and role <> v_want;
+  update public.members set role = v_want, role_confirmed = true, legacy_ul = false
+   where id = v_id and (role <> v_want or not role_confirmed or legacy_ul);
   return 'approved';
 end $fn$;
 

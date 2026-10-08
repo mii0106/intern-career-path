@@ -1,5 +1,5 @@
 -- ============================================================
--- STEP｜キャリアステップシート  Supabase スキーマ  （4/4）
+-- STEP｜キャリアステップシート  Supabase スキーマ  （4/5）
 -- しきい値・期とユニット編成・ログインリセットの依頼
 -- ------------------------------------------------------------
 -- Supabase の SQL Editor に貼り付けて RUN してください。
@@ -147,6 +147,56 @@ create view public.my_assignments with (security_invoker = false) as
    where a.member_id = public.current_member_id();
 grant select on public.my_assignments to authenticated;
 
+/* ------------------------------------------------------------
+   7.5 ユニットとUL
+   ------------------------------------------------------------
+   ULは「人の立場」ではなく「その期のユニットが持つもの」として置く。
+   1期 × 1ユニット = 1行で、そのユニットのULを1人（メンバーのID）だけ持つ。
+
+     ・UL任命・交代 … この行の ul_member_id を差し替えるだけ
+     ・半期の編成替え … 新しい期の行を作るだけ（前の期の行は履歴として残る）
+     ・管理者ツールを使えるか … is_manager_member()（1/5）がここを見る。
+       いまの期・編成中の期のどこかでULに入っていれば使える
+
+   assignments.ul と members.ul（名前の文字列）は、これまでの画面のための写し。
+   管理者ツールでユニットのULを変えると、そのユニットの人の分もまとめて書き換える。
+   ------------------------------------------------------------ */
+create table if not exists public.term_units (
+  term_id      uuid not null references public.terms(id) on delete cascade,
+  unit         text not null,                       -- shared/config.js の UNITS と同じ表記（unitA など）
+  ul_member_id uuid references public.members(id) on delete set null,
+  updated_at   timestamptz not null default now(),
+  primary key (term_id, unit)
+);
+create index if not exists term_units_ul_idx on public.term_units(ul_member_id);
+alter table public.term_units enable row level security;
+drop policy if exists tu_read   on public.term_units;
+drop policy if exists tu_write  on public.term_units;
+drop policy if exists tu_update on public.term_units;
+drop policy if exists tu_delete on public.term_units;
+create policy tu_read on public.term_units for select to authenticated
+  using (public.is_manager());
+create policy tu_write on public.term_units for insert to authenticated
+  with check (public.is_manager());
+create policy tu_update on public.term_units for update to authenticated
+  using (public.is_manager()) with check (public.is_manager());
+create policy tu_delete on public.term_units for delete to authenticated
+  using (public.is_manager());
+
+/* 自分がULに入っているユニット（本人画面に「担当ユニット」を出すため）。
+   いまの期と編成中の期のぶんだけ返す。 */
+create or replace function public.my_ul_units()
+returns table(term_id uuid, term_name text, status text, unit text)
+language sql stable security definer set search_path = public as $fn$
+  select t.id, t.name, t.status, u.unit
+    from public.term_units u join public.terms t on t.id = u.term_id
+   where u.ul_member_id = public.current_member_id()
+     and t.status in ('active','draft')
+   order by t.starts_on desc, u.unit
+$fn$;
+revoke all on function public.my_ul_units() from public;
+grant execute on function public.my_ul_units() to authenticated;
+
 /* 期を確定する。
    その期の割当を members に書き戻し（＝いまの所属になる）、
    その期を active に、ほかの active を closed にする。
@@ -161,9 +211,12 @@ begin
     raise exception 'その期は見つかりません';
   end if;
 
+  /* ULはユニットの側（term_units）を正とする。まだ決めていないユニットは割当の写しを使う */
   update public.members m
      set unit   = a.unit,
-         ul     = a.ul,
+         ul     = coalesce((select um.name from public.term_units u
+                              join public.members um on um.id = u.ul_member_id
+                             where u.term_id = p_term and u.unit = a.unit), a.ul),
          mentor = a.mentor
     from public.assignments a
    where a.term_id = p_term and a.member_id = m.id and m.active;
