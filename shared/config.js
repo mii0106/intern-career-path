@@ -69,7 +69,7 @@ window.STEP_CONFIG = {
      アルファベットとして読めるものだけ。「営業部」のような値は足さない）。
      とはいえ、まだ誰も居ないUnitは名簿から拾えないので、
      新しいUnitができたらここに書き足すのが正しい直し方。 */
-  UNITS: ['unitA','unitB','unitC','unitD','unitE','unitF','unitG','unitH'],
+  UNITS: ['unitA','unitB','unitC','unitD','unitE','unitF','unitG','unitH','unitI'],
 
   /* マイシートの「得意・のばしたい領域」で選べるタグ。
      ユニット編成のときに「このユニットにはデザインができる人がいない」を
